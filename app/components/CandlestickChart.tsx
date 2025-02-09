@@ -34,6 +34,22 @@ interface CrossPoint {
   value: number;
 }
 
+interface BacktestResult {
+  totalTrades: number;
+  successfulTrades: number;
+  totalReturn: number;
+  successRate: number;
+  averageReturn: number;
+  trades: {
+    entryTime: Time;
+    exitTime: Time;
+    entryPrice: number;
+    exitPrice: number;
+    return: number;
+    isSuccess: boolean;
+  }[];
+}
+
 export const CandlestickChart: React.FC<ChartProps> = ({ symbol }) => {
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -47,10 +63,55 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol }) => {
   
   const { prices, tickers } = useUpbitStore();
   const [chartPrice, setChartPrice] = useState<number>(0);
+  const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   
   const currentPrice = prices[symbol]?.currentPrice ?? 0;
   const lastUpdated = prices[symbol]?.lastUpdated ?? '-';
   const tickerData = tickers[symbol];
+
+  // MA 기간 설정을 위한 상태 추가
+  const [shortPeriod, setShortPeriod] = useState<number>(5);
+  const [longPeriod, setLongPeriod] = useState<number>(10);
+  
+  // MA 기간 변경 핸들러
+  const handleMAChange = (type: 'short' | 'long', value: number) => {
+    if (type === 'short') {
+      setShortPeriod(value);
+    } else {
+      setLongPeriod(value);
+    }
+    
+    // 차트 데이터 업데이트
+    if (candleSeriesRef.current && shortEMASeriesRef.current && longEMASeriesRef.current) {
+      const candleData = candleSeriesRef.current.data() as CandlestickData<Time>[];
+      const shortEMAData = calculateEMA(candleData, type === 'short' ? value : shortPeriod);
+      const longEMAData = calculateEMA(candleData, type === 'long' ? value : longPeriod);
+      
+      shortEMASeriesRef.current.setData(shortEMAData);
+      longEMASeriesRef.current.setData(longEMAData);
+      
+      // 크로스 포인트 업데이트
+      const crossPoints = findCrossPoints(shortEMAData, longEMAData);
+      crossPointsRef.current = crossPoints;
+      
+      // 매수/매도 마커 업데이트
+      const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
+        time: point.time,
+        position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
+        color: point.position === 'buy' ? '#26a69a' : '#ef5350',
+        shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
+        text: point.position === 'buy' ? '매수' : '매도',
+      }));
+      
+      if (candleSeriesRef.current) {
+        createSeriesMarkers(candleSeriesRef.current, markers);
+      }
+      
+      // 백테스팅 결과 업데이트
+      const result = calculateBacktestResult(candleData, crossPoints);
+      setBacktestResult(result);
+    }
+  };
 
   useEffect(() => {
     if (!container.current) return;
@@ -130,6 +191,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol }) => {
         // 크로스 포인트 찾기
         const crossPoints = findCrossPoints(shortEMAData, longEMAData);
         crossPointsRef.current = crossPoints;
+
+        // 백테스팅 결과 계산
+        const result = calculateBacktestResult(candleData, crossPoints);
+        setBacktestResult(result);
 
         // 데이터 설정
         candlestickSeries.setData(candleData);
@@ -285,6 +350,51 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol }) => {
     return crossPoints;
   };
 
+  // 백테스팅 결과 계산 함수
+  const calculateBacktestResult = (data: CandlestickData<Time>[], crossPoints: CrossPoint[]): BacktestResult => {
+    const FEE = 0.0005; // 0.05% 수수료
+    const trades = [];
+    let currentPosition: { time: Time; price: number; } | null = null;
+    
+    for (let i = 0; i < crossPoints.length; i++) {
+      const point = crossPoints[i];
+      
+      if (point.position === 'buy' && !currentPosition) {
+        // 매수 신호
+        currentPosition = { time: point.time, price: point.value };
+      } else if (point.position === 'sell' && currentPosition) {
+        // 매도 신호 - 수익률 계산
+        const entryPrice = currentPosition.price;
+        const exitPrice = point.value;
+        const grossReturn = (exitPrice - entryPrice) / entryPrice;
+        const netReturn = grossReturn - (FEE * 2); // 매수, 매도 각각 수수료 적용
+        
+        trades.push({
+          entryTime: currentPosition.time,
+          exitTime: point.time,
+          entryPrice,
+          exitPrice,
+          return: netReturn,
+          isSuccess: netReturn > 0
+        });
+        
+        currentPosition = null;
+      }
+    }
+    
+    const successfulTrades = trades.filter(t => t.isSuccess).length;
+    const totalReturn = trades.reduce((sum, t) => sum + t.return, 0);
+    
+    return {
+      totalTrades: trades.length,
+      successfulTrades,
+      totalReturn,
+      successRate: trades.length > 0 ? (successfulTrades / trades.length) * 100 : 0,
+      averageReturn: trades.length > 0 ? totalReturn / trades.length : 0,
+      trades
+    };
+  };
+
   // 시세 차이 계산
   const priceDiff = currentPrice > 0 && chartPrice > 0 
     ? currentPrice - chartPrice 
@@ -295,6 +405,38 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol }) => {
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
+      {/* MA 설정 패널 */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">단기 이동평균선 기간</div>
+          <div className="flex items-center space-x-4">
+            <input
+              type="range"
+              min="2"
+              max="30"
+              value={shortPeriod}
+              onChange={(e) => handleMAChange('short', parseInt(e.target.value))}
+              className="flex-1"
+            />
+            <div className="text-white font-bold w-12 text-center">{shortPeriod}</div>
+          </div>
+        </div>
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">장기 이동평균선 기간</div>
+          <div className="flex items-center space-x-4">
+            <input
+              type="range"
+              min="5"
+              max="50"
+              value={longPeriod}
+              onChange={(e) => handleMAChange('long', parseInt(e.target.value))}
+              className="flex-1"
+            />
+            <div className="text-white font-bold w-12 text-center">{longPeriod}</div>
+          </div>
+        </div>
+      </div>
+
       {/* 시세 비교 정보 */}
       <div className="grid grid-cols-4 gap-4 mb-4">
         <div className="bg-gray-800 p-4 rounded-lg">
@@ -330,6 +472,79 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol }) => {
         {symbol} 3분봉 차트
       </div>
       <div ref={container} id="chart" className="w-full" />
+
+      {/* 백테스팅 결과 표시 */}
+      {backtestResult && (
+        <div className="grid grid-cols-5 gap-4 mt-4">
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">총 거래 횟수</div>
+            <div className="text-white text-lg font-bold">
+              {backtestResult.totalTrades}회
+            </div>
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">성공 거래</div>
+            <div className="text-white text-lg font-bold">
+              {backtestResult.successfulTrades}회
+            </div>
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">성공률</div>
+            <div className="text-white text-lg font-bold">
+              {backtestResult.successRate.toFixed(2)}%
+            </div>
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">총 수익률</div>
+            <div className={`text-lg font-bold ${
+              backtestResult.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {(backtestResult.totalReturn * 100).toFixed(2)}%
+            </div>
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">평균 수익률</div>
+            <div className={`text-lg font-bold ${
+              backtestResult.averageReturn >= 0 ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {(backtestResult.averageReturn * 100).toFixed(2)}%
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 개별 거래 내역 */}
+      {backtestResult && backtestResult.trades.length > 0 && (
+        <div className="mt-4 bg-gray-800 p-4 rounded-lg">
+          <div className="text-white text-lg font-bold mb-4">거래 내역</div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-white">
+              <thead>
+                <tr className="text-gray-400">
+                  <th className="px-4 py-2">진입 시간</th>
+                  <th className="px-4 py-2">청산 시간</th>
+                  <th className="px-4 py-2">진입 가격</th>
+                  <th className="px-4 py-2">청산 가격</th>
+                  <th className="px-4 py-2">수익률</th>
+                </tr>
+              </thead>
+              <tbody>
+                {backtestResult.trades.map((trade, index) => (
+                  <tr key={index} className="border-t border-gray-700">
+                    <td className="px-4 py-2">{new Date((trade.entryTime as number) * 1000).toLocaleString()}</td>
+                    <td className="px-4 py-2">{new Date((trade.exitTime as number) * 1000).toLocaleString()}</td>
+                    <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
+                    <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {(trade.return * 100).toFixed(2)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }; 
