@@ -1,9 +1,24 @@
 import { useEffect, useRef } from 'react';
 import { useUpbitStore } from '../store/useUpbitStore';
 
+interface TradeData {
+  trade_price: number;
+  trade_volume: number;
+  ask_bid: string;
+  trade_time: string;
+}
+
+interface TickerData {
+  trade_price: number;
+  opening_price: number;
+  high_price: number;
+  low_price: number;
+  timestamp: number;
+}
+
 export const useUpbitWebSocket = (symbol: string) => {
   const wsRef = useRef<WebSocket | null>(null);
-  const { addPrice, setIsConnected } = useUpbitStore();
+  const { addPrice, setIsConnected, updateTickerData } = useUpbitStore();
   
   useEffect(() => {
     const connect = () => {
@@ -43,8 +58,18 @@ export const useUpbitWebSocket = (symbol: string) => {
           if (typeof reader.result === 'string') {
             const data = JSON.parse(reader.result);
             
-            if (data.type === 'trade' || data.type === 'ticker') {
-              addPrice(symbol, data.trade_price);
+            if (data.type === 'trade') {
+              const tradeData = data as TradeData;
+              addPrice(symbol, tradeData.trade_price);
+            } else if (data.type === 'ticker') {
+              const tickerData = data as TickerData;
+              updateTickerData(symbol, {
+                currentPrice: tickerData.trade_price,
+                openPrice: tickerData.opening_price,
+                highPrice: tickerData.high_price,
+                lowPrice: tickerData.low_price,
+                timestamp: tickerData.timestamp,
+              });
             }
           }
         };
