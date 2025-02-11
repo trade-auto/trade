@@ -227,21 +227,26 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       
       // 매수/매도 마커 생성
       const markers: SeriesMarker<Time>[] = [];
-      ollamaResponse.signals.forEach((signal, index) => {
-        if (signal === 'BUY' || signal === 'SELL') {
+      
+      if (Array.isArray(ollamaResponse.signals) && Array.isArray(ollamaResponse.reasons)) {
+        ollamaResponse.signals.forEach((signal, index) => {
           const reason = ollamaResponse.reasons[index];
-          markers.push({
-            time: candleData[index].time,
-            position: signal === 'BUY' ? 'belowBar' : 'aboveBar',
-            color: signal === 'BUY' ? 
-              `rgba(38, 166, 154, ${reason.confidence})` : 
-              `rgba(239, 83, 80, ${reason.confidence})`,
-            shape: signal === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: `${signal === 'BUY' ? '매수' : '매도'}\n신뢰도: ${(reason.confidence * 100).toFixed(1)}%\n${reason.reason}`,
-            size: 1 + reason.confidence
-          });
-        }
-      });
+          if (signal === 'BUY' || signal === 'SELL') {
+            markers.push({
+              time: candleData[index].time,
+              position: signal === 'BUY' ? 'belowBar' : 'aboveBar',
+              color: signal === 'BUY' ? 
+                `rgba(38, 166, 154, ${reason.confidence || 1})` : 
+                `rgba(239, 83, 80, ${reason.confidence || 1})`,
+              shape: signal === 'BUY' ? 'arrowUp' : 'arrowDown',
+              text: `${signal}\n신뢰도: ${((reason.confidence || 1) * 100).toFixed(1)}%\n${reason.reason || ''}`,
+              size: 2
+            });
+          }
+        });
+      }
+
+      console.log('생성된 마커:', markers);
 
       if (candleSeriesRef.current) {
         createSeriesMarkers(candleSeriesRef.current, markers);
@@ -250,7 +255,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       // 백테스팅 결과 계산
       const backtestResult = calculateBacktestResult(candleData, markers.map(marker => ({
         time: marker.time,
-        position: (marker.text || '').startsWith('매수') ? 'buy' : 'sell',
+        position: marker.position === 'belowBar' ? 'buy' : 'sell',
         value: candleData.find(c => c.time === marker.time)?.close || 0
       })));
       setBacktestResult(backtestResult);

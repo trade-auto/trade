@@ -60,25 +60,40 @@ ${JSON.stringify(candles, null, 2)}
         model: 'deepseek-r1:32b', 
         messages: [message],
         stream: false,
-        format: 'json'
+        format: 'json',
+        options: {
+          temperature: 0.7,
+          top_p: 0.7
+        }
       });
 
       console.log('OLLAMA 원본 응답:', response);
 
       // 응답이 없거나 content가 없는 경우 처리
       if (!response || !response.message || !response.message.content) {
+        console.error('OLLAMA 응답이 비어있습니다');
         throw new Error('OLLAMA 응답이 비어있습니다');
       }
 
-      const responseText = response.message.content.trim();
+      let responseText = response.message.content.trim();
       console.log('OLLAMA 응답 텍스트:', responseText);
+
+      // JSON 형식이 아닌 경우 처리
+      if (!responseText.startsWith('{')) {
+        // JSON 형식 찾기
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          responseText = jsonMatch[0];
+        } else {
+          throw new Error('유효한 JSON 응답을 찾을 수 없습니다');
+        }
+      }
 
       let parsedResult;
       try {
-        // 응답을 JSON으로 파싱
         parsedResult = JSON.parse(responseText);
       } catch (parseError) {
-        console.error('JSON 파싱 실패:', parseError);
+        console.error('JSON 파싱 실패:', parseError, '\n응답 텍스트:', responseText);
         
         // 기본 응답 생성
         parsedResult = {
@@ -87,7 +102,7 @@ ${JSON.stringify(candles, null, 2)}
             time: candle.time,
             signal: 'HOLD',
             confidence: 0.5,
-            reason: '분석 불가'
+            reason: 'JSON 파싱 실패'
           }))
         };
       }
@@ -123,7 +138,7 @@ ${JSON.stringify(candles, null, 2)}
       // 에러 발생 시 기본 응답 반환
       const fallbackResult = {
         signals: candles.map(() => 'HOLD'),
-        reasons: candles.map((candle) => ({
+        reasons: candles.map((candle: CandleData) => ({
           time: candle.time,
           signal: 'HOLD',
           confidence: 0.5,
