@@ -82,6 +82,18 @@ interface TickerData {
   market_state: string;
 }
 
+interface SignalReason {
+  time: number;
+  signal: 'BUY' | 'SELL' | 'HOLD';
+  confidence: number;
+  reason: string;
+}
+
+interface OllamaResponse {
+  signals: string[];
+  reasons: SignalReason[];
+}
+
 export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) => {
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -174,6 +186,80 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     return 10;                        // 년봉
   };
 
+  // OLLAMA API를 통한 매수/매도 신호 생성
+  const generateSignals = async (candleData: CandlestickData<Time>[], volumeData: HistogramData<Time>[]) => {
+    try {
+      console.log('OLLAMA API 요청 데이터:', {
+        candles: candleData.map(candle => ({
+          time: candle.time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: volumeData.find(v => v.time === candle.time)?.value || 0
+        })),
+        timeframe: chartType
+      });
+
+      const response = await fetch('/api/ollama', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          candles: candleData.map(candle => ({
+            time: candle.time,
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: volumeData.find(v => v.time === candle.time)?.value || 0
+          })),
+          timeframe: chartType
+        }),
+      });
+
+      const rawResponse = await response.text();
+      console.log('OLLAMA API 원본 응답:', rawResponse);
+
+      const ollamaResponse: OllamaResponse = JSON.parse(rawResponse);
+      console.log('OLLAMA API 파싱된 응답:', ollamaResponse);
+      
+      // 매수/매도 마커 생성
+      const markers: SeriesMarker<Time>[] = [];
+      ollamaResponse.signals.forEach((signal, index) => {
+        if (signal === 'BUY' || signal === 'SELL') {
+          const reason = ollamaResponse.reasons[index];
+          markers.push({
+            time: candleData[index].time,
+            position: signal === 'BUY' ? 'belowBar' : 'aboveBar',
+            color: signal === 'BUY' ? 
+              `rgba(38, 166, 154, ${reason.confidence})` : 
+              `rgba(239, 83, 80, ${reason.confidence})`,
+            shape: signal === 'BUY' ? 'arrowUp' : 'arrowDown',
+            text: `${signal === 'BUY' ? '매수' : '매도'}\n신뢰도: ${(reason.confidence * 100).toFixed(1)}%\n${reason.reason}`,
+            size: 1 + reason.confidence
+          });
+        }
+      });
+
+      if (candleSeriesRef.current) {
+        createSeriesMarkers(candleSeriesRef.current, markers);
+      }
+
+      // 백테스팅 결과 계산
+      const backtestResult = calculateBacktestResult(candleData, markers.map(marker => ({
+        time: marker.time,
+        position: (marker.text || '').startsWith('매수') ? 'buy' : 'sell',
+        value: candleData.find(c => c.time === marker.time)?.close || 0
+      })));
+      setBacktestResult(backtestResult);
+
+    } catch (error) {
+      console.error('매수/매도 신호 생성 중 오류:', error);
+    }
+  };
+
   // 데이터 로드 함수를 useCallback으로 감싸서 재사용 가능하게 만듦
   const loadChartData = useCallback(async () => {
     try {
@@ -258,17 +344,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       // 마지막 캔들 저장
       lastCandleRef.current = candleData[candleData.length - 1];
 
-      // 이동평균 계산
-      const shortEMAData = calculateEMA(candleData, 5);
-      const longEMAData = calculateEMA(candleData, 10);
-
-      // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(shortEMAData, longEMAData);
-      crossPointsRef.current = crossPoints;
-
-      // 백테스팅 결과 계산
-      const result = calculateBacktestResult(candleData, crossPoints);
-      setBacktestResult(result);
+      // OLLAMA를 통한 매수/매도 신호 생성
+      await generateSignals(candleData, volumeData);
 
       // 데이터 설정
       if (candleSeriesRef.current) {
@@ -276,25 +353,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       }
       if (volumeSeriesRef.current) {
         volumeSeriesRef.current.setData(volumeData);
-      }
-      if (shortEMASeriesRef.current) {
-        shortEMASeriesRef.current.setData(shortEMAData);
-      }
-      if (longEMASeriesRef.current) {
-        longEMASeriesRef.current.setData(longEMAData);
-      }
-
-      // 매수/매도 마커 생성
-      const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
-        time: point.time,
-        position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
-        color: point.position === 'buy' ? '#26a69a' : '#ef5350',
-        shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
-        text: point.position === 'buy' ? '매수' : '매도',
-      }));
-      
-      if (candleSeriesRef.current) {
-        createSeriesMarkers(candleSeriesRef.current, markers);
       }
 
       // 마지막 가격 표시
