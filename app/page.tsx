@@ -11,6 +11,14 @@ const SYMBOLS = [
   { symbol: 'KRW-ONDO', name: '온도' }
 ];
 
+const CHART_TYPES = [
+  { value: 'seconds/1', label: '1초봉' },
+  { value: '1', label: '1분봉' },
+  { value: '240', label: '일봉' },
+  { value: '7200', label: '월봉' },
+  { value: '86400', label: '년봉' }
+];
+
 export default function Home() {
   const [selectedSymbol, setSelectedSymbol] = useState(SYMBOLS[0].symbol);
   
@@ -63,12 +71,19 @@ export default function Home() {
           </div>
         </div>
         
-        {/* 차트 */}
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <h2 className="text-2xl font-bold text-white mb-4">
-            {SYMBOLS.find(s => s.symbol === selectedSymbol)?.name} 차트
-          </h2>
-          <CandlestickChart symbol={selectedSymbol} />
+        {/* 차트 그리드 */}
+        <div className="grid grid-cols-2 gap-4">
+          {CHART_TYPES.map(({ value, label }) => (
+            <div key={value} className="bg-gray-800 p-4 rounded-lg">
+              <h2 className="text-xl font-bold text-white mb-4">
+                {SYMBOLS.find(s => s.symbol === selectedSymbol)?.name} {label}
+              </h2>
+              <CandlestickChart 
+                symbol={selectedSymbol} 
+                chartType={value}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </main>
