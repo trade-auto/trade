@@ -35,8 +35,9 @@ interface UpbitCandle {
 
 interface CrossPoint {
   time: Time;
-  position: 'buy' | 'sell';
+  position: 'buy' | 'sell' | 'stop_loss';
   value: number;
+  reason: string;
 }
 
 interface BacktestResult {
@@ -52,6 +53,7 @@ interface BacktestResult {
     exitPrice: number;
     return: number;
     isSuccess: boolean;
+    reason: string;
   }[];
 }
 
@@ -130,16 +132,19 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       longEMASeriesRef.current.setData(longEMAData);
       
       // 크로스 포인트 업데이트
-      const crossPoints = findCrossPoints(shortEMAData, longEMAData);
+      const crossPoints = findCrossPoints(candleData, shortEMAData, mediumEMAData, longEMAData);
       crossPointsRef.current = crossPoints;
       
       // 매수/매도 마커 업데이트
       const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
         time: point.time,
         position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
-        color: point.position === 'buy' ? '#26a69a' : '#ef5350',
-        shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
-        text: point.position === 'buy' ? '매수' : '매도',
+        color: point.position === 'buy' ? '#26a69a' : 
+               point.position === 'sell' ? '#ef5350' : '#ff9800',  // stop_loss는 주황색
+        shape: point.position === 'buy' ? 'arrowUp' : 
+               point.position === 'sell' ? 'arrowDown' : 'circle',  // stop_loss는 원형
+        text: `${point.position === 'buy' ? '매수' : 
+               point.position === 'sell' ? '매도' : '손절'} (${point.reason})`,
       }));
       
       if (candleSeriesRef.current) {
@@ -270,7 +275,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const longEMAData = calculateEMA(candleData, longPeriod);
 
       // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(shortEMAData, longEMAData);
+      const crossPoints = findCrossPoints(candleData, shortEMAData, mediumEMAData, longEMAData);
       crossPointsRef.current = crossPoints;
 
       // 백테스팅 결과 계산
@@ -298,9 +303,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
         time: point.time,
         position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
-        color: point.position === 'buy' ? '#26a69a' : '#ef5350',
-        shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
-        text: point.position === 'buy' ? '매수' : '매도',
+        color: point.position === 'buy' ? '#26a69a' : 
+               point.position === 'sell' ? '#ef5350' : '#ff9800',  // stop_loss는 주황색
+        shape: point.position === 'buy' ? 'arrowUp' : 
+               point.position === 'sell' ? 'arrowDown' : 'circle',  // stop_loss는 원형
+        text: `${point.position === 'buy' ? '매수' : 
+               point.position === 'sell' ? '매도' : '손절'} (${point.reason})`,
       }));
       
       if (candleSeriesRef.current) {
@@ -563,31 +571,144 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     }));
   };
 
-  // 크로스 포인트 찾기 함수
-  const findCrossPoints = (shortEMA: LineData<Time>[], longEMA: LineData<Time>[]): CrossPoint[] => {
+  // 거래량 평균 계산 함수 추가
+  const calculateVolumeMA = (data: CandlestickData<Time>[], period: number): number => {
+    const recentData = data.slice(-period);
+    const volumeSum = recentData.reduce((sum, candle) => sum + (candle as any).volume, 0);
+    return volumeSum / period;
+  };
+
+  // RSI 계산 함수 추가
+  const calculateRSI = (data: CandlestickData<Time>[], period: number = 14): number[] => {
+    const rsi: number[] = [];
+    let gains = 0;
+    let losses = 0;
+
+    for (let i = 1; i < period + 1; i++) {
+      const difference = data[i].close - data[i - 1].close;
+      if (difference >= 0) {
+        gains += difference;
+      } else {
+        losses -= difference;
+      }
+    }
+
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+    let rs = avgGain / avgLoss;
+    rsi.push(100 - (100 / (1 + rs)));
+
+    for (let i = period + 1; i < data.length; i++) {
+      const difference = data[i].close - data[i - 1].close;
+      if (difference >= 0) {
+        avgGain = (avgGain * (period - 1) + difference) / period;
+        avgLoss = (avgLoss * (period - 1)) / period;
+      } else {
+        avgGain = (avgGain * (period - 1)) / period;
+        avgLoss = (avgLoss * (period - 1) - difference) / period;
+      }
+      rs = avgGain / avgLoss;
+      rsi.push(100 - (100 / (1 + rs)));
+    }
+
+    return rsi;
+  };
+
+  // 크로스 포인트 찾기 함수 수정
+  const findCrossPoints = (
+    data: CandlestickData<Time>[],
+    shortEMA: LineData<Time>[],
+    mediumEMA: LineData<Time>[],
+    longEMA: LineData<Time>[]
+  ): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
+    const rsiValues = calculateRSI(data);
     
     for (let i = 1; i < shortEMA.length; i++) {
       const prevShort = shortEMA[i - 1].value;
+      const prevMedium = mediumEMA[i - 1].value;
       const prevLong = longEMA[i - 1].value;
       const currShort = shortEMA[i].value;
+      const currMedium = mediumEMA[i].value;
       const currLong = longEMA[i].value;
       
-      // 골든크로스 (5분선이 10분선을 상향돌파)
+      const volume = (data[i] as any).volume;
+      const avgVolume = calculateVolumeMA(data.slice(0, i + 1), 10); // 10일 평균 거래량
+      const rsi = rsiValues[i];
+      
+      // 괴리율 계산
+      const deviation = ((currShort - currMedium) / currMedium) * 100;
+
+      // 매수 신호 1: 골든 크로스
+      if (prevShort <= prevMedium && currShort > currMedium) {
+        crossPoints.push({
+          time: shortEMA[i].time,
+          position: 'buy',
+          value: currShort,
+          reason: '골든크로스'
+        });
+      }
+
+      // 매수 신호 2: 거래량 급증 + RSI < 70
+      if (volume > avgVolume * 2 && rsi < 70 && currShort > currMedium) {
+        crossPoints.push({
+          time: shortEMA[i].time,
+          position: 'buy',
+          value: currShort,
+          reason: '거래량 급증 + RSI 적정'
+        });
+      }
+
+      // 매수 신호 3: 장기선 돌파
       if (prevShort <= prevLong && currShort > currLong) {
         crossPoints.push({
           time: shortEMA[i].time,
           position: 'buy',
           value: currShort,
+          reason: '장기선 돌파'
         });
       }
-      // 데드크로스 (5분선이 10분선을 하향돌파)
-      else if (prevShort >= prevLong && currShort < currLong) {
+
+      // 매도 신호 1: 데드 크로스
+      if (prevShort >= prevMedium && currShort < currMedium) {
         crossPoints.push({
           time: shortEMA[i].time,
           position: 'sell',
           value: currShort,
+          reason: '데드크로스'
         });
+      }
+
+      // 매도 신호 2: 과매수 + 거래량 급증
+      if (deviation > 2.5 && volume > avgVolume * 2) {
+        crossPoints.push({
+          time: shortEMA[i].time,
+          position: 'sell',
+          value: currShort,
+          reason: '과매수 + 거래량 급증'
+        });
+      }
+
+      // 매도 신호 3: RSI 과매수
+      if (rsi > 70) {
+        crossPoints.push({
+          time: shortEMA[i].time,
+          position: 'sell',
+          value: currShort,
+          reason: 'RSI 과매수'
+        });
+      }
+
+      // 손절 신호
+      if (currShort < currMedium && deviation < -2) {
+        if (volume < avgVolume * 0.5) {
+          crossPoints.push({
+            time: shortEMA[i].time,
+            position: 'stop_loss',
+            value: currShort,
+            reason: '20일선 하향 이탈 + 거래량 급감'
+          });
+        }
       }
     }
     
@@ -606,8 +727,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       if (point.position === 'buy' && !currentPosition) {
         // 매수 신호
         currentPosition = { time: point.time, price: point.value };
-      } else if (point.position === 'sell' && currentPosition) {
-        // 매도 신호 - 수익률 계산
+      } else if ((point.position === 'sell' || point.position === 'stop_loss') && currentPosition) {
+        // 매도 또는 손절 신호
         const entryPrice = currentPosition.price;
         const exitPrice = point.value;
         const grossReturn = (exitPrice - entryPrice) / entryPrice;
@@ -619,7 +740,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           entryPrice,
           exitPrice,
           return: netReturn,
-          isSuccess: netReturn > 0
+          isSuccess: netReturn > 0,
+          reason: point.reason
         });
         
         currentPosition = null;
@@ -784,6 +906,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
                   <th className="px-4 py-2">진입 가격</th>
                   <th className="px-4 py-2">청산 가격</th>
                   <th className="px-4 py-2">수익률</th>
+                  <th className="px-4 py-2">매매 사유</th>
                 </tr>
               </thead>
               <tbody>
@@ -796,6 +919,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
                     <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                       {(trade.return * 100).toFixed(2)}%
                     </td>
+                    <td className="px-4 py-2">{trade.reason}</td>
                   </tr>
                 ))}
               </tbody>

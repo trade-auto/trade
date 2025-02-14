@@ -37,6 +37,7 @@ interface CrossPoint {
   time: Time;
   position: 'buy' | 'sell';
   value: number;
+  reason?: string;
 }
 
 interface BacktestResult {
@@ -80,6 +81,13 @@ interface TickerData {
   lowest_52_week_price: number;
   lowest_52_week_date: string;
   market_state: string;
+}
+
+interface OrderBookData {
+  askPrice: number;
+  bidPrice: number;
+  askSize: number;
+  bidSize: number;
 }
 
 export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) => {
@@ -130,7 +138,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       longEMASeriesRef.current.setData(longEMAData);
       
       // 크로스 포인트 업데이트
-      const crossPoints = findCrossPoints(shortEMAData, longEMAData);
+      const crossPoints = findCrossPoints(candleData, shortEMAData, mediumEMAData, longEMAData);
       crossPointsRef.current = crossPoints;
       
       // 매수/매도 마커 업데이트
@@ -183,11 +191,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // 데이터 로드 함수를 useCallback으로 감싸서 재사용 가능하게 만듦
   const loadChartData = useCallback(async () => {
     try {
+      // 차트 타입에 따른 엔드포인트 및 데이터 개수 결정
       const endpoint = getChartEndpoint(chartType);
       const count = getChartCount(chartType);
-      // 현재 시간을 ISO 문자열로 변환
-      const now = new Date().toISOString();
-      const response = await fetch(`https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${now}`);
+      const response = await fetch(`/api/upbit/candles/${endpoint}?market=${symbol}&count=${count}`);
       const data = await response.json();
       
       let candleData: CandlestickData<Time>[] = [];
@@ -240,7 +247,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         candleData = candleData.sort((a, b) => (a.time as number) - (b.time as number));
         volumeData = volumeData.sort((a, b) => (a.time as number) - (b.time as number));
       } else {
-        candleData = data.map((item: UpbitCandle) => {
+        // API가 내림차순일 경우 오름차순(과거 → 최신)으로 정렬
+        const sortedData = data.sort((a: UpbitCandle, b: UpbitCandle) =>
+          new Date(a.candle_date_time_kst).getTime() - new Date(b.candle_date_time_kst).getTime()
+        );
+        candleData = sortedData.map((item: UpbitCandle) => {
           const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
           return {
             time: timestamp as Time,
@@ -249,19 +260,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
             low: item.low_price,
             close: item.trade_price,
           };
-        }).reverse();
+        });
 
-        volumeData = data.map((item: UpbitCandle) => {
+        volumeData = sortedData.map((item: UpbitCandle) => {
           const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
           return {
             time: timestamp as Time,
             value: item.candle_acc_trade_volume,
             color: item.trade_price >= item.opening_price ? '#26a69a80' : '#ef535080',
           };
-        }).reverse();
+        });
       }
 
-      // 마지막 캔들 저장
+      // API 데이터 정렬 및 mapping 후
+      console.log("캔들 데이터 개수:", candleData.length);
+      if (candleData.length === 0) {
+        console.error("캔들 데이터가 없습니다. API 응답 또는 정렬을 확인하세요.");
+      }
       lastCandleRef.current = candleData[candleData.length - 1];
 
       // 이동평균 계산
@@ -270,7 +285,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const longEMAData = calculateEMA(candleData, longPeriod);
 
       // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(shortEMAData, longEMAData);
+      const crossPoints = findCrossPoints(candleData, shortEMAData, mediumEMAData, longEMAData);
       crossPointsRef.current = crossPoints;
 
       // 백테스팅 결과 계산
@@ -311,7 +326,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const lastPrice = candleData[candleData.length - 1].close;
       setChartPrice(lastPrice);
 
-      // 차트 영역 맞추기
+      // 차트에 모든 봉이 보이도록 차트 뷰를 조정합니다.
       if (chartRef.current) {
         chartRef.current.timeScale().fitContent();
       }
@@ -325,6 +340,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
     // 차트 생성
     const chartOptions: DeepPartial<ChartOptions> = {
+      width: container.current.clientWidth,
+      height: 600,
       layout: {
         textColor: '#DDD',
         background: { type: ColorType.Solid, color: '#1E1E1E' }
@@ -333,8 +350,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         vertLines: { color: '#2B2B2B' },
         horzLines: { color: '#2B2B2B' }
       },
-      width: container.current.clientWidth,
-      height: 400,
       timeScale: {
         timeVisible: true,
         secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
@@ -563,31 +578,199 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     }));
   };
 
-  // 크로스 포인트 찾기 함수
-  const findCrossPoints = (shortEMA: LineData<Time>[], longEMA: LineData<Time>[]): CrossPoint[] => {
+  // 예: calculateEMA 함수 아래쪽 또는 상단에 추가
+  const calculateRSI = (data: CandlestickData<Time>[], period: number): number[] => {
+    if (data.length < period) return [];
+
+    let gains = 0;
+    let losses = 0;
+
+    // 초기값 계산 (첫 period-1개의 변화량)
+    for (let i = 1; i < period; i++) {
+      const diff = data[i].close - data[i - 1].close;
+      if(diff > 0) {
+        gains += diff;
+      } else {
+        losses += Math.abs(diff);
+      }
+    }
+
+    let avgGain = gains / (period - 1);
+    let avgLoss = losses / (period - 1);
+    const rsiArray: number[] = [];
+
+    // 첫 RSI 값 계산
+    let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsiArray[period - 1] = 100 - (100 / (1 + rs));
+
+    // 이후 RSI 값 계산
+    for (let i = period; i < data.length; i++) {
+      const diff = data[i].close - data[i - 1].close;
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? Math.abs(diff) : 0;
+
+      avgGain = ((avgGain * (period - 1)) + gain) / period;
+      avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+      rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+      rsiArray[i] = 100 - (100 / (1 + rs));
+    }
+
+    return rsiArray;
+  };
+
+  // 매매 신호 찾기 함수 (전략①~⑨ 적용)
+  const findCrossPoints = (
+    data: CandlestickData<Time>[],
+    shortEMA: LineData<Time>[],
+    mediumEMA: LineData<Time>[],
+    longEMA: LineData<Time>[]
+  ): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
+    const rsiValues = calculateRSI(data, 14);
+    const stochastic = calculateStochastic(data, 14, 3);
+    // chartType이 'seconds/'가 아니며, 240분 이상이면 일봉
+    const isDaily = !chartType.startsWith('seconds/') && parseInt(chartType) >= 240;
+    
+    // 연속 캔들 패턴 확인 함수 (틱 단위 차트 활용 조건)
+    const checkConsecutiveCandles = (index: number, count: number, type: 'bullish' | 'bearish'): boolean => {
+      for (let j = 0; j < count; j++) {
+        const candle = data[index - j];
+        const bullish = candle.close > candle.open;
+        if (type === 'bullish' && !bullish) return false;
+        if (type === 'bearish' && bullish) return false;
+      }
+      return true;
+    };
+    
+    // 피보나치 레벨 계산 함수
+    const calculateFibLevels = (high: number, low: number) => ({
+      level236: high - (high - low) * 0.236,
+      level382: high - (high - low) * 0.382,
+      level500: high - (high - low) * 0.500,
+    });
+    
+    // 호가창 분석 함수 (호가창 데이터를 기반으로 계산; 별도로 orderBookData state가 있다고 가정)
+    const analyzeOrderBook = (data: OrderBookData[]) => {
+      const topAsk = data[0]?.askPrice || 0;
+      const topBid = data[0]?.bidPrice || 0;
+      const spread = topAsk - topBid;
+      const spreadPercentage = (spread / topBid) * 100;
+      const askWallStrength = data.slice(0, 5).reduce((sum, item) => sum + item.askSize, 0);
+      const bidWallStrength = data.slice(0, 5).reduce((sum, item) => sum + item.bidSize, 0);
+      return {
+        isStableSpread: spreadPercentage < 0.1,
+        isPotentialUp: bidWallStrength > askWallStrength * 1.5,
+        isPotentialDown: askWallStrength > bidWallStrength * 1.5,
+      };
+    };
+    
+    const orderBookData: OrderBookData[] = []; // 실제 호가창 데이터를 여기에 할당하세요.
+    const orderBookAnalysis = analyzeOrderBook(orderBookData);
+    
+    let currentPosition: { price: number; time: Time } | null = null;
     
     for (let i = 1; i < shortEMA.length; i++) {
       const prevShort = shortEMA[i - 1].value;
+      const prevMedium = mediumEMA[i - 1].value;
       const prevLong = longEMA[i - 1].value;
       const currShort = shortEMA[i].value;
+      const currMedium = mediumEMA[i].value;
       const currLong = longEMA[i].value;
       
-      // 골든크로스 (5분선이 10분선을 상향돌파)
-      if (prevShort <= prevLong && currShort > currLong) {
-        crossPoints.push({
-          time: shortEMA[i].time,
-          position: 'buy',
-          value: currShort,
-        });
+      const volume = (data[i] as any).volume;
+      const avgVolume = calculateVolumeMA(data.slice(0, i + 1), 10);
+      const rsi = rsiValues[i];
+      const { k: currK, d: currD } = stochastic[i];
+      const { k: prevK, d: prevD } = stochastic[i - 1];
+      
+      const deviation = ((currShort - currMedium) / currMedium) * 100;
+      
+      // 피보나치 조건 - 최근 10개의 캔들에서 계산
+      const recentData = data.slice(Math.max(0, i - 10), i + 1);
+      const recentHigh = Math.max(...recentData.map(c => c.high));
+      const recentLow = Math.min(...recentData.map(c => c.low));
+      const fibLevels = calculateFibLevels(recentHigh, recentLow);
+      const fibBuyCondition =
+        Math.abs(currShort - fibLevels.level236) / fibLevels.level236 < 0.01 ||
+        Math.abs(currShort - fibLevels.level382) / fibLevels.level382 < 0.01;
+      
+      let buyConditions = [];
+      if (isDaily) {
+         // 일봉: 5일선(단기)과 20일선(중기)의 상향 돌파 및 피보나치 지지 조건 적용
+         buyConditions = [
+           prevShort <= prevMedium && currShort > currMedium,
+           fibBuyCondition
+         ];
+      } else {
+         // 분봉: 3분선과 5분선 상향 돌파, 괴리율, RSI, 스토캐스틱, 거래량, 피보나치 조건 적용
+         buyConditions = [
+           prevShort <= prevMedium && currShort > currMedium && (deviation >= 0.5 && deviation <= 1.5),
+           rsi < 30 && (i > 0 ? rsiValues[i - 1] < rsi : false),
+           (prevK <= prevD && currK > currD),
+           checkConsecutiveCandles(i, 3, 'bullish'),
+           volume > avgVolume * 2,
+           fibBuyCondition
+         ];
       }
-      // 데드크로스 (5분선이 10분선을 하향돌파)
-      else if (prevShort >= prevLong && currShort < currLong) {
-        crossPoints.push({
-          time: shortEMA[i].time,
-          position: 'sell',
-          value: currShort,
-        });
+      
+      if (
+         buyConditions.some(cond => cond) &&
+         (!isDaily ? (orderBookAnalysis.isStableSpread && orderBookAnalysis.isPotentialUp) : true) &&
+         !currentPosition
+      ) {
+         currentPosition = { price: currShort, time: shortEMA[i].time };
+         crossPoints.push({
+           time: shortEMA[i].time,
+           position: 'buy',
+           value: currShort,
+           reason: isDaily ? '일봉 매수 신호' : '분봉 매수 신호'
+         });
+      }
+      
+      let sellConditions = [];
+      if (isDaily) {
+         // 일봉: 5일선(단기) 하향 돌파 조건 적용
+         sellConditions = [
+           prevShort >= prevMedium && currShort < currMedium
+         ];
+      } else {
+         // 분봉: 5분선~10분선 하향 돌파, RSI, 스토캐스틱, 음봉 체크 조건 적용
+         sellConditions = [
+           prevMedium >= prevLong && currMedium < currLong,
+           rsi > 70 && (i > 0 ? rsiValues[i - 1] > rsi : false),
+           (prevK >= prevD && currK < currD),
+           checkConsecutiveCandles(i, 3, 'bearish')
+         ];
+      }
+      
+      // 손절 및 익절 관리
+      if (currentPosition) {
+        const profitRatio = (currShort - currentPosition.price) / currentPosition.price;
+        if (profitRatio >= 0.01) { // 익절: 1% 이상 수익
+          crossPoints.push({
+            time: shortEMA[i].time,
+            position: 'sell',
+            value: currShort,
+            reason: isDaily ? '일봉 익절' : '분봉 익절'
+          });
+          currentPosition = null;
+        } else if (profitRatio <= -0.005) { // 손절: 0.5% 이하 손실
+          crossPoints.push({
+            time: shortEMA[i].time,
+            position: 'sell',
+            value: currShort,
+            reason: isDaily ? '일봉 손절' : '분봉 손절'
+          });
+          currentPosition = null;
+        } else if (sellConditions.some(cond => cond) && (!isDaily ? orderBookAnalysis.isPotentialDown : true)) {
+          crossPoints.push({
+            time: shortEMA[i].time,
+            position: 'sell',
+            value: currShort,
+            reason: isDaily ? '일봉 매도 신호' : '분봉 매도 신호'
+          });
+          currentPosition = null;
+        }
       }
     }
     
@@ -647,8 +830,51 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     ? (priceDiff / chartPrice) * 100
     : 0;
 
+  // EMA 계산 함수 아래쪽에 다음 함수를 추가합니다.
+  const calculateVolumeMA = (data: CandlestickData<Time>[], period: number): number => {
+    if (!data.length) return 0;
+    const recent = data.slice(-period);
+    const total = recent.reduce((sum, candle) => sum + ((candle as any).volume || 0), 0);
+    return total / recent.length;
+  };
+
+  // EMA, RSI 함수 아래쪽이나 상단에 다음 함수를 추가합니다.
+  const calculateStochastic = (
+    data: CandlestickData<Time>[],
+    period: number,
+    kPeriod: number
+  ): { k: number; d: number }[] => {
+    const stochastics = [];
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        stochastics.push({ k: 0, d: 0 });
+        continue;
+      }
+      const sliceData = data.slice(i - period + 1, i + 1);
+      const lowestLow = Math.min(...sliceData.map(c => c.low));
+      const highestHigh = Math.max(...sliceData.map(c => c.high));
+      const currentClose = data[i].close;
+      const k = highestHigh === lowestLow ? 0 : ((currentClose - lowestLow) / (highestHigh - lowestLow)) * 100;
+      stochastics.push({ k, d: 0 });
+    }
+
+    // %D를 kPeriod의 단순 이동평균으로 계산
+    for (let i = 0; i < stochastics.length; i++) {
+      if (i < kPeriod - 1) {
+        stochastics[i].d = 0;
+      } else {
+        const sum = stochastics
+          .slice(i - kPeriod + 1, i + 1)
+          .reduce((acc, val) => acc + val.k, 0);
+        stochastics[i].d = sum / kPeriod;
+      }
+    }
+    return stochastics;
+  };
+
   return (
-    <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
+    <div className="w-full min-h-screen bg-[#1E1E1E] p-4 rounded-lg">
+      <div ref={container} style={{ width: '100%', height: '600px' }}></div>
       {/* MA 설정 패널 */}
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="bg-gray-800 p-4 rounded-lg">
@@ -729,7 +955,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       <div className="text-white text-lg font-bold mb-4">
         {symbol} {chartType} 차트
       </div>
-      <div ref={container} id="chart" className="w-full" />
 
       {/* 백테스팅 결과 표시 */}
       {backtestResult && (

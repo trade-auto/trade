@@ -1,7 +1,7 @@
 'use client';
 
 import { useUpbitWebSocket } from './hooks/useUpbitWebSocket';
-import { CandlestickChart } from './components/CandlestickChart';
+import { CandlestickChart } from './components/CandlestickChart1_d100p2_8';
 import { useUpbitStore } from './store/useUpbitStore';
 import { useState } from 'react';
 
@@ -19,8 +19,13 @@ const CHART_TYPES = [
   { value: '86400', label: '년봉' }
 ];
 
+// 추가: 차트 모드 상태 (combined vs non-combined)
+type ChartMode = "combined" | "non-combined";
+
 export default function Home() {
   const [selectedSymbol, setSelectedSymbol] = useState(SYMBOLS[0].symbol);
+  // 추가: 차트 모드 상태 변수 (기본은 non-combined)
+  const [chartMode, setChartMode] = useState<ChartMode>("non-combined");
   
   // 선택된 심볼에 대해서만 WebSocket 연결
   useUpbitWebSocket(selectedSymbol);
@@ -71,20 +76,48 @@ export default function Home() {
           </div>
         </div>
         
-        {/* 차트 그리드 */}
-        <div className="grid grid-cols-2 gap-4">
-          {CHART_TYPES.map(({ value, label }) => (
-            <div key={value} className="bg-gray-800 p-4 rounded-lg">
-              <h2 className="text-xl font-bold text-white mb-4">
-                {SYMBOLS.find(s => s.symbol === selectedSymbol)?.name} {label}
-              </h2>
-              <CandlestickChart 
-                symbol={selectedSymbol} 
-                chartType={value}
-              />
-            </div>
-          ))}
+        {/* 차트 모드 선택 버튼 */}
+        <div className="flex space-x-4 mb-8">
+          <button
+            onClick={() => setChartMode("non-combined")}
+            className={`px-4 py-2 rounded ${chartMode === "non-combined" ? "bg-blue-600" : "bg-gray-600"}`}
+          >
+            Non-Combined
+          </button>
+          <button
+            onClick={() => setChartMode("combined")}
+            className={`px-4 py-2 rounded ${chartMode === "combined" ? "bg-blue-600" : "bg-gray-600"}`}
+          >
+            Combined
+          </button>
         </div>
+
+        {/* 차트 그리드 또는 Combined 모드에 따른 단일 차트 렌더링 */}
+        {chartMode === "combined" ? (
+          <div className="bg-gray-800 p-4 rounded-lg mb-8">
+            <h2 className="text-xl font-bold text-white mb-4">
+              {SYMBOLS.find(s => s.symbol === selectedSymbol)?.name} Combined Chart
+            </h2>
+            <CandlestickChart 
+              symbol={selectedSymbol} 
+              chartType="combined"
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {CHART_TYPES.map(({ value, label }) => (
+              <div key={value} className="bg-gray-800 p-4 rounded-lg">
+                <h2 className="text-xl font-bold text-white mb-4">
+                  {SYMBOLS.find(s => s.symbol === selectedSymbol)?.name} {label}
+                </h2>
+                <CandlestickChart 
+                  symbol={selectedSymbol} 
+                  chartType={value}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );
