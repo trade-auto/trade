@@ -97,6 +97,12 @@ interface Trade {
   isSuccess: boolean;
 }
 
+// 날짜 선택을 위한 인터페이스 추가
+interface DateRange {
+  startDate: Date;
+  endDate: Date;
+}
+
 export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) => {
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -112,6 +118,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const prevVolumeRef = useRef<number>(0); // 이전 거래량을 저장하기 위한 ref 추가
   const prevTradeTimeRef = useRef<number>(0); // 이전 거래 시간을 저장하기 위한 ref 추가
   const accVolumeRef = useRef<number>(0); // 현재 캔들의 누적 거래량을 저장하기 위한 ref 추가
+  const isLoadingRef = useRef<boolean>(false); // 데이터 로딩 상태를 추적하기 위한 ref
+  const oldestTimestampRef = useRef<number | null>(null); // 가장 오래된 데이터의 timestamp를 저장하기 위한 ref
   
   const { prices, tickers } = useUpbitStore();
   const [chartPrice, setChartPrice] = useState<number>(0);
@@ -125,6 +133,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const [thirtyPeriod, setThirtyPeriod] = useState<number>(30);
   const [fortyPeriod, setFortyPeriod] = useState<number>(40);
   const [sixtyPeriod, setSixtyPeriod] = useState<number>(60);
+  
+  // 날짜 선택을 위한 인터페이스 추가
+  const [dateRange, setDateRange] = useState<DateRange>({
+    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 기본값: 7일 전
+    endDate: new Date() // 항상 현재 시간
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [progress, setProgress] = useState<number>(0);
   
   // MA 기간 변경 핸들러
   const handleMAChange = (type: 'thirty' | 'forty' | 'sixty', value: number) => {
@@ -197,236 +213,316 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     return 40;                        // 년봉 (기존 10개에서 30개 추가)
   };
 
-  // 데이터 로드 함수를 useCallback으로 감싸서 재사용 가능하게 만듦
-  const loadChartData = useCallback(async () => {
-    if (!chartRef.current || !candleSeriesRef.current) return;
+  // 날짜 범위 변경 핸들러
+  const handleDateRangeChange = (start: Date) => {
+    // 입력받은 시간을 한국 시간으로 변환
+    const koreanTime = new Date(start.getTime() + (9 * 60 * 60 * 1000));
+    
+    setDateRange({ 
+      startDate: koreanTime,
+      endDate: new Date() // 항상 현재 시간으로 설정
+    });
+    loadAllData(koreanTime, new Date());
+  };
 
+  // 전체 데이터 로드 함수
+  const loadAllData = useCallback(async (startDate: Date, endDate: Date) => {
+    if (!candleSeriesRef.current) return;
+    
     try {
+      setIsLoading(true);
+      setProgress(0);
+      
       const endpoint = getChartEndpoint(chartType);
-      const count = getChartCount(chartType);
+      const count = 200; // API 한 번 호출당 최대 개수
       
-      // 현재 시간으로 설정 (2시간 전 설정 제거)
-      const now = new Date();
-      // 한국 시간으로 변환 (UTC+9)
-      const koreanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
-      const toTime = koreanTime.toISOString();
+      let currentDate = new Date(endDate);
+      const existingData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+      let allCandleData: ExtendedCandlestickData[] = [...existingData];
       
-      const response = await fetch(`https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${toTime}`);
-      const data = await response.json();
-      
-      if (!Array.isArray(data) || data.length === 0) {
-        console.error('유효하지 않은 데이터 형식:', data);
-        return;
-      }
+      // 데이터 업데이트 함수
+      const updateChart = (newData: ExtendedCandlestickData[]) => {
+        if (!candleSeriesRef.current || !volumeSeriesRef.current || !chartRef.current) return;
 
-      let candleData: ExtendedCandlestickData[] = [];
-      let volumeData: HistogramData<Time>[] = [];
+        // 현재 차트의 visible range와 logical range 저장
+        const timeScale = chartRef.current.timeScale();
+        const visibleRange = timeScale.getVisibleRange();
+        const logicalRange = timeScale.getVisibleLogicalRange();
+        const scrollPosition = timeScale.scrollPosition();
 
-      // 모든 타입의 캔들에 대해 동일한 데이터 처리 방식 사용
-      candleData = data.map((item: UpbitCandle) => {
-        if (!item || !item.candle_date_time_kst) {
-          console.error('유효하지 않은 캔들 데이터:', item);
-          return null;
-        }
-        const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
-        return {
-          time: timestamp as Time,
-          open: item.opening_price,
-          high: item.high_price,
-          low: item.low_price,
-          close: item.trade_price,
-          volume: item.candle_acc_trade_volume
-        };
-      })
-      .filter((item): item is ExtendedCandlestickData => item !== null)
-      .reverse();
+        // 중복 제거를 위해 Map 사용
+        const uniqueDataMap = new Map<number, ExtendedCandlestickData>();
+        
+        // 기존 데이터와 새 데이터를 모두 Map에 추가
+        [...allCandleData, ...newData].forEach(item => {
+          uniqueDataMap.set(item.time as number, item);
+        });
+        
+        // Map의 값들을 배열로 변환하고 시간순으로 정렬
+        const uniqueData = Array.from(uniqueDataMap.values())
+          .sort((a, b) => (a.time as number) - (b.time as number));
 
-      if (candleData.length === 0) {
-        console.error('캔들 데이터가 비어있습니다.');
-        return;
-      }
-
-      volumeData = candleData.map(item => ({
-        time: item.time,
-        value: item.volume || 0,
-        color: item.close >= item.open ? '#26a69a80' : '#ef535080',
-      }));
-
-      // 마지막 캔들 저장
-      lastCandleRef.current = candleData[candleData.length - 1];
-
-      // 이동평균 계산
-      const threeEMAData = calculateEMA(candleData, thirtyPeriod);
-      const sixEMAData = calculateEMA(candleData, fortyPeriod);
-      const twentyEMAData = calculateEMA(candleData, sixtyPeriod);
-
-      // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
-      crossPointsRef.current = crossPoints;
-
-      // 데이터 설정
-      if (candleSeriesRef.current) {
-        candleSeriesRef.current.setData(candleData);
-      }
-      if (volumeSeriesRef.current) {
+        // 데이터 업데이트 전에 차트 업데이트 일시 중지
+        chartRef.current.timeScale().applyOptions({
+          lockVisibleTimeRangeOnResize: true,
+        });
+        
+        // 캔들스틱 데이터 업데이트
+        candleSeriesRef.current.setData(uniqueData);
+        
+        // 거래량 데이터 업데이트
+        const volumeData = uniqueData.map(item => ({
+          time: item.time,
+          value: item.volume || 0,
+          color: item.close >= item.open ? '#26a69a80' : '#ef535080',
+        }));
         volumeSeriesRef.current.setData(volumeData);
-      }
-      if (threeEMASeriesRef.current) {
-        threeEMASeriesRef.current.setData(threeEMAData);
-      }
-      if (sixEMASeriesRef.current) {
-        sixEMASeriesRef.current.setData(sixEMAData);
-      }
-      if (twentyEMASeriesRef.current) {
-        twentyEMASeriesRef.current.setData(twentyEMAData);
-      }
 
-      // 매수/매도 마커 생성
-      const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
-        time: point.time,
-        position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
-        color: point.position === 'buy' ? '#26a69a' : '#ef5350',
-        shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
-        text: point.position === 'buy' ? '매수' : '매도',
-      }));
+        // 이동평균선 업데이트
+        if (threeEMASeriesRef.current && sixEMASeriesRef.current && twentyEMASeriesRef.current) {
+          const threeEMAData = calculateEMA(uniqueData, thirtyPeriod);
+          const sixEMAData = calculateEMA(uniqueData, fortyPeriod);
+          const twentyEMAData = calculateEMA(uniqueData, sixtyPeriod);
+          
+          threeEMASeriesRef.current.setData(threeEMAData);
+          sixEMASeriesRef.current.setData(sixEMAData);
+          twentyEMASeriesRef.current.setData(twentyEMAData);
+          
+          // 크로스 포인트 업데이트
+          const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+          crossPointsRef.current = crossPoints;
+          
+          // 매수/매도 마커 업데이트
+          const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
+            time: point.time,
+            position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
+            color: point.position === 'buy' ? '#26a69a' : '#ef5350',
+            shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
+            text: point.position === 'buy' ? '매수' : '매도',
+          }));
+          
+          if (candleSeriesRef.current) {
+            createSeriesMarkers(candleSeriesRef.current, markers);
+          }
+        }
+
+        // 백테스팅 결과 업데이트
+        const result = calculateBacktestResult(uniqueData, crossPointsRef.current);
+        setBacktestResult(result);
+        
+        // 이전 뷰 상태 복원
+        requestAnimationFrame(() => {
+          if (!chartRef.current) return;
+          
+          // 스크롤 위치 복원
+          if (scrollPosition !== undefined) {
+            timeScale.scrollToPosition(scrollPosition, false);
+          }
+
+          // 뷰 범위 복원
+          if (logicalRange) {
+            timeScale.setVisibleLogicalRange(logicalRange);
+          } else if (visibleRange) {
+            timeScale.setVisibleRange(visibleRange);
+          }
+
+          // 차트 업데이트 잠금 해제
+          chartRef.current.timeScale().applyOptions({
+            lockVisibleTimeRangeOnResize: false,
+          });
+        });
+        
+        // 전체 데이터 업데이트
+        allCandleData = uniqueData;
+      };
+
+      // 비동기적으로 데이터 로드
+      const loadChunk = async () => {
+        while (currentDate >= startDate) {
+          try {
+            const toTime = currentDate.toISOString();
+            const response = await fetch(`https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${toTime}`);
+            
+            if (!response.ok) {
+              throw new Error(`API 요청 실패: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!Array.isArray(data) || data.length === 0) break;
+            
+            const newCandleData: ExtendedCandlestickData[] = data
+              .filter(item => new Date(item.candle_date_time_kst) >= startDate)
+              .map((item: UpbitCandle) => {
+                const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
+                return {
+                  time: timestamp as Time,
+                  open: item.opening_price,
+                  high: item.high_price,
+                  low: item.low_price,
+                  close: item.trade_price,
+                  volume: item.candle_acc_trade_volume
+                };
+              });
+            
+            // 새로운 데이터로 차트 즉시 업데이트
+            updateChart(newCandleData);
+            
+            // 마지막 데이터의 시간으로 다음 요청 시간 설정
+            const lastDataTime = new Date(data[data.length - 1].candle_date_time_kst);
+            currentDate = new Date(lastDataTime.getTime() - 1000); // 1초 빼서 중복 방지
+            
+            // 진행률 계산
+            const totalTime = endDate.getTime() - startDate.getTime();
+            const processedTime = endDate.getTime() - currentDate.getTime();
+            const newProgress = Math.min((processedTime / totalTime) * 100, 100);
+            setProgress(newProgress);
+            
+            // API 호출 간격 조절 (초당 10회 제한)
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (error) {
+            console.error('데이터 로드 중 오류:', error);
+            // 에러 발생 시 3초 대기 후 재시도
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+      };
+
+      // 데이터 로드 시작
+      await loadChunk();
       
-      if (candleSeriesRef.current) {
-        createSeriesMarkers(candleSeriesRef.current, markers);
-      }
-
-      // 백테스팅 결과 계산
-      const result = calculateBacktestResult(candleData, crossPoints);
-      setBacktestResult(result);
-
-      // 마지막 가격 표시
-      const lastPrice = candleData[candleData.length - 1].close;
-      setChartPrice(lastPrice);
-
-      // 차트 영역 맞추기
-      if (chartRef.current) {
-        chartRef.current.timeScale().fitContent();
-      }
     } catch (error) {
-      console.error('차트 데이터 로드 중 오류:', error);
+      console.error('데이터 로드 중 오류:', error);
+    } finally {
+      setIsLoading(false);
+      setProgress(100);
     }
   }, [symbol, chartType, thirtyPeriod, fortyPeriod, sixtyPeriod]);
 
+  // 차트 초기화
   useEffect(() => {
-    if (container.current) {
-      // 차트 생성
-      const chartOptions: DeepPartial<ChartOptions> = {
-        layout: {
-          textColor: '#DDD',
-          background: { type: ColorType.Solid, color: '#1E1E1E' }
-        },
-        grid: {
-          vertLines: { color: '#2B2B2B' },
-          horzLines: { color: '#2B2B2B' }
-        },
-        width: container.current.clientWidth,
-        height: 400,
-        timeScale: {
-          timeVisible: true,
-          secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
-          tickMarkFormatter: (time: number) => {
-            const date = new Date(time * 1000);
-            // 한국 시간으로 변환
-            const koreanTime = new Date(date.getTime() + (9 * 60 * 60 * 1000));
-            const hours = koreanTime.getUTCHours().toString().padStart(2, '0');
-            const minutes = koreanTime.getUTCMinutes().toString().padStart(2, '0');
-            const seconds = koreanTime.getUTCSeconds().toString().padStart(2, '0');
-            const month = (koreanTime.getUTCMonth() + 1).toString().padStart(2, '0');
-            const day = koreanTime.getUTCDate().toString().padStart(2, '0');
-            
-            if (chartType.startsWith('seconds/') || parseInt(chartType) <= 240) {
-              return `${hours}:${minutes}:${seconds}`;
-            } else if (parseInt(chartType) === 7200) { // 월봉
-              return `${month}/${day}`;
-            } else if (parseInt(chartType) === 86400) { // 년봉
-              return `${koreanTime.getUTCFullYear()}/${month}`;
-            } else {
-              return `${month}/${day} ${hours}:${minutes}`;
-            }
-          },
-        },
-      };
+    if (!container.current) return;
 
-      const chart = createChart(container.current, chartOptions);
-      chartRef.current = chart;
+    // 차트 생성
+    const chart = createChart(container.current, {
+      layout: {
+        background: { color: '#1E1E1E' },
+        textColor: '#DDD',
+      },
+      grid: {
+        vertLines: { color: '#2B2B2B' },
+        horzLines: { color: '#2B2B2B' },
+      },
+      width: container.current.clientWidth,
+      height: 400,
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
+      },
+    });
+    chartRef.current = chart;
 
-      // 캔들스틱 시리즈 생성
-      const candlestickSeries = chart.addSeries(CandlestickSeries, {
-        upColor: '#26a69a',
-        downColor: '#ef5350',
-        borderVisible: false,
-        wickUpColor: '#26a69a',
-        wickDownColor: '#ef5350',
-      });
-      candleSeriesRef.current = candlestickSeries;
+    // 캔들스틱 시리즈 생성
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+    candleSeriesRef.current = candlestickSeries;
 
-      // 거래량 시리즈 생성
-      const volumeSeries = chart.addSeries(HistogramSeries, {
-        color: '#26a69a',
-        priceFormat: {
-          type: 'volume',
-        },
-        priceScaleId: 'volume',
+    // 거래량 시리즈 생성
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      color: '#26a69a',
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: 'volume',
+      priceScale: {
         scaleMargins: {
-          top: 0.7,
+          top: 0.8,
           bottom: 0,
         },
-      } as HistogramSeriesPartialOptions);
-      volumeSeriesRef.current = volumeSeries;
+      },
+    });
+    volumeSeriesRef.current = volumeSeries;
 
-      // 이동평균선 시리즈 생성
-      const threeEMASeries = chart.addSeries(LineSeries, {
-        color: '#FF5252',
-        lineWidth: 2,
-        title: '3분 EMA',
-        priceLineVisible: false,
-      });
-      threeEMASeriesRef.current = threeEMASeries;
+    // 이동평균선 시리즈 생성
+    const threeEMASeries = chart.addSeries(LineSeries, {
+      color: '#FF5252',
+      lineWidth: 2,
+      priceLineVisible: false,
+    });
+    threeEMASeriesRef.current = threeEMASeries;
 
-      const sixEMASeries = chart.addSeries(LineSeries, {
-        color: '#FFA726',
-        lineWidth: 2,
-        title: '6분 EMA',
-        priceLineVisible: false,
-      });
-      sixEMASeriesRef.current = sixEMASeries;
+    const sixEMASeries = chart.addSeries(LineSeries, {
+      color: '#FFA726',
+      lineWidth: 2,
+      priceLineVisible: false,
+    });
+    sixEMASeriesRef.current = sixEMASeries;
 
-      // MA20 시리즈 추가
-      const twentyEMASeries = chart.addSeries(LineSeries, {
-        color: '#42A5F5',
-        lineWidth: 2,
-        title: '20분 EMA',
-        priceLineVisible: false,
-      });
-      twentyEMASeriesRef.current = twentyEMASeries;
+    const twentyEMASeries = chart.addSeries(LineSeries, {
+      color: '#2196F3',
+      lineWidth: 2,
+      priceLineVisible: false,
+    });
+    twentyEMASeriesRef.current = twentyEMASeries;
 
-      // 데이터 로드 및 설정
-      loadChartData();
+    // 윈도우 리사이즈 핸들러
+    const handleResize = () => {
+      if (container.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: container.current.clientWidth,
+        });
+      }
+    };
 
-      // 윈도우 리사이즈 핸들러
-      const handleResize = () => {
-        if (container.current && chartRef.current) {
-          chartRef.current.applyOptions({
-            width: container.current.clientWidth,
-          });
-        }
-      };
+    window.addEventListener('resize', handleResize);
 
-      window.addEventListener('resize', handleResize);
+    // 초기 데이터 로드
+    loadAllData(dateRange.startDate, dateRange.endDate);
 
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        if (chartRef.current) {
-          chartRef.current.remove();
-          chartRef.current = null;
-        }
-      };
-    }
-  }, [symbol, chartType, loadChartData]);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
+    };
+  }, [symbol, chartType]); // symbol이나 chartType이 변경될 때마다 차트 재생성
+
+  // 차트 생성 시 스크롤 이벤트 구독
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    const handleVisibleTimeRangeChange = () => {
+      const visibleRange = chartRef.current?.timeScale().getVisibleRange();
+      if (!visibleRange) return;
+
+      // 왼쪽 끝(과거)으로 스크롤이 충분히 이동했을 때 추가 데이터 로드
+      const candleData = candleSeriesRef.current?.data() as ExtendedCandlestickData[];
+      if (!candleData || candleData.length === 0) return;
+
+      const oldestVisible = visibleRange.from as number;
+      const oldestData = candleData[0].time as number;
+      
+      // 보이는 영역의 시작이 현재 데이터의 시작 부분에 가까워지면 추가 데이터 로드
+      if (oldestVisible - oldestData < 10 && !isLoadingRef.current) {
+        isLoadingRef.current = true;
+        const newStartDate = new Date(oldestData * 1000);
+        loadAllData(newStartDate, dateRange.endDate).finally(() => {
+          isLoadingRef.current = false;
+        });
+      }
+    };
+
+    chartRef.current.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
+
+    return () => {
+      chartRef.current?.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
+    };
+  }, [loadAllData]);
 
   // 실시간 가격 업데이트 처리
   useEffect(() => {
@@ -534,7 +630,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         prevVolumeRef.current = tickerData.acc_trade_volume;
         prevTradeTimeRef.current = timestamp;
         accVolumeRef.current = 0;
-        loadChartData();
+        loadAllData(dateRange.startDate, dateRange.endDate);
       } else {
         // 현재 캔들 업데이트
         const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
@@ -564,7 +660,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     }
 
     setChartPrice(currentPrice);
-  }, [currentPrice, tickerData, chartType, loadChartData]);
+  }, [currentPrice, tickerData, chartType, loadAllData]);
 
   // EMA 계산 함수
   const calculateEMA = (data: ExtendedCandlestickData[], period: number): LineData<Time>[] => {
@@ -732,6 +828,36 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
+      {/* 날짜 선택 패널 */}
+      <div className="mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
+          <input
+            type="datetime-local"
+            value={new Date(dateRange.startDate.getTime() - (9 * 60 * 60 * 1000)).toISOString().slice(0, 16)}
+            onChange={(e) => {
+              const selectedDate = new Date(e.target.value);
+              handleDateRangeChange(selectedDate);
+            }}
+            max={new Date().toISOString().slice(0, 16)}
+            className="bg-gray-700 text-white p-2 rounded w-full"
+          />
+        </div>
+      </div>
+
+      {/* 로딩 프로그레스 바 */}
+      {isLoading && (
+        <div className="mb-4">
+          <div className="text-gray-400 text-sm mb-2">데이터 로딩 중... {progress.toFixed(1)}%</div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5">
+            <div
+              className="bg-blue-600 h-2.5 rounded-full"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+
       {/* MA 설정 패널 */}
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="bg-gray-800 p-4 rounded-lg">
