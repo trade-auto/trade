@@ -205,10 +205,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const endpoint = getChartEndpoint(chartType);
       const count = getChartCount(chartType);
       
-      // 현재 시간에서 1시간 전으로 설정
+      // 현재 시간으로 설정 (2시간 전 설정 제거)
       const now = new Date();
-      now.setHours(now.getHours() - 2);
-      const toTime = now.toISOString();
+      // 한국 시간으로 변환 (UTC+9)
+      const koreanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+      const toTime = koreanTime.toISOString();
       
       const response = await fetch(`https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${toTime}`);
       const data = await response.json();
