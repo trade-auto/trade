@@ -1,7 +1,7 @@
 'use client';
 
 import { useUpbitWebSocket } from './hooks/useUpbitWebSocket';
-import { CandlestickChart } from './components/CandlestickChart1_d100p2_8';
+import { CandlestickChart } from './components/CandlestickChart5A3';
 import { useUpbitStore } from './store/useUpbitStore';
 import { useState } from 'react';
 

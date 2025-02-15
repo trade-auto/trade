@@ -1,0 +1,9 @@
+@CandlestickChart5A.tsx 초봉에서 30MA와 40MA로 기준으로 매수매도 하되 ,30MA와 40MA가  60MA아래이면 매도하게 수정해줘  
+ 초봉에서 30%성공 수익 
+@CandlestickChart5A1.tsx
+ 버튼 명칭도 ; 3분 이동평균선 기간, 용어를 MA 기준으로 바꿔줘 
+ 초봉에서 44%성공 수익 
+ @CandlestickChart5A2.tsx
+  @CandlestickChart5A3.tsx
+ chart에서 매수,매도표시와 와 거래내역간에 불일치 하는데 확인해줘 
+ 초봉에서 100%성공 수익 

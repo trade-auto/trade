@@ -84,6 +84,16 @@ interface TickerData {
   market_state: string;
 }
 
+interface BollingerBand {
+  middle: number;
+  upper: number;
+  lower: number;
+}
+
+interface ExtendedCandlestickData extends CandlestickData<Time> {
+  volume?: number;
+}
+
 export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) => {
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -180,8 +190,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       return 300; // 초 단위는 300개 데이터
     }
     const minutes = parseInt(type);
-    if (minutes <= 3) return 200;     // 분봉
-    if (minutes <= 240) return 200;   // 일봉
+    if (minutes <= 3) return 250;     // 분봉
+    if (minutes <= 240) return 250;   // 일봉
     if (minutes === 7200) return 30;  // 월봉
     return 10;                        // 년봉
   };
@@ -195,19 +205,22 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const loadChartData = useCallback(async () => {
     try {
       if (chartType === "combined") {
-        // 일봉, 분봉, 3초봉 데이터 모두 가져오기
         const minuteCount = displayedCandleCount;
         const dailyEndpoint = getChartEndpoint("240"); // 일봉
         const minuteEndpoint = getChartEndpoint("1"); // 1분봉
         const secondEndpoint = getChartEndpoint("seconds/3"); // 3초봉으로 변경
 
-        const now = new Date().toISOString();
-        const dailyResponse = await fetch(`https://api.upbit.com/v1/candles/${dailyEndpoint}?market=${symbol}&count=200&to=${now}`);
-        const minuteResponse = await fetch(`https://api.upbit.com/v1/candles/${minuteEndpoint}?market=${symbol}&count=${minuteCount}&to=${now}`);
-        const secondResponse = await fetch(`https://api.upbit.com/v1/candles/${secondEndpoint}?market=${symbol}&count=300&to=${now}`);
+        // 현재 시간에서 1시간 전으로 설정
+        const now = new Date();
+        now.setHours(now.getHours() - 1);
+        const toTime = now.toISOString();
 
-        const dailyData = await dailyResponse.json();
+        const minuteResponse = await fetch(`https://api.upbit.com/v1/candles/${minuteEndpoint}?market=${symbol}&count=${minuteCount}&to=${toTime}`);
         const minuteData = await minuteResponse.json();
+
+        const dailyResponse = await fetch(`https://api.upbit.com/v1/candles/${dailyEndpoint}?market=${symbol}&count=200&to=${toTime}`);
+        const dailyData = await dailyResponse.json();
+        const secondResponse = await fetch(`https://api.upbit.com/v1/candles/${secondEndpoint}?market=${symbol}&count=300&to=${toTime}`);
         const secondData = await secondResponse.json();
 
         // 데이터 변환 및 정렬
@@ -253,85 +266,48 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         const dailyMediumEMA = calculateEMA(sortedDailyData, mediumPeriod);
         const minuteShortEMA = calculateEMA(sortedMinuteData, shortPeriod);
         const minuteMediumEMA = calculateEMA(sortedMinuteData, mediumPeriod);
-        const secondShortEMA = calculateEMA(sortedSecondData, 5);
-        const secondMediumEMA = calculateEMA(sortedSecondData, 15);
+        const secondShortEMA = calculateEMA(sortedSecondData, shortPeriod);
+        const secondMediumEMA = calculateEMA(sortedSecondData, mediumPeriod);
 
         // 크로스 포인트 찾기
         const crossPoints: CrossPoint[] = [];
-        let inPosition = false;
 
-        // 일봉 매수 신호 찾기 (추가 조건)
+        // 일봉 매수 신호 찾기
         for (let i = 1; i < dailyShortEMA.length; i++) {
-          if (!inPosition && dailyShortEMA[i - 1].value <= dailyMediumEMA[i - 1].value && 
-              dailyShortEMA[i].value > dailyMediumEMA[i].value &&
-              // 추가 조건: 상승 추세 확인
-              sortedDailyData[i].close > sortedDailyData[i].open && // 양봉
-              sortedDailyData[i].close > dailyMediumEMA[i].value && // 중기 이평선 위
-              sortedDailyData[i].volume > sortedDailyData[i-1].volume * 1.5) { // 거래량 증가
+          if (dailyShortEMA[i - 1].value <= dailyMediumEMA[i - 1].value && 
+              dailyShortEMA[i].value > dailyMediumEMA[i].value) {
             crossPoints.push({
               time: dailyShortEMA[i].time,
               position: 'buy',
               value: dailyShortEMA[i].value,
-              reason: '일봉: 매수신호 (강세)'
+              reason: '일봉: 매수신호'
             });
-            inPosition = true;
           }
         }
 
-        // 분봉 매수 신호 찾기 (추가 조건)
+        // 분봉 매수 신호 찾기
         for (let i = 1; i < minuteShortEMA.length; i++) {
           if (minuteShortEMA[i - 1].value <= minuteMediumEMA[i - 1].value && 
-              minuteShortEMA[i].value > minuteMediumEMA[i].value &&
-              // 추가 조건
-              minuteData[i].close > minuteData[i-1].high && // 직전 고점 돌파
-              minuteData[i].volume > minuteData[i-1].volume * 1.2) { // 거래량 증가
+              minuteShortEMA[i].value > minuteMediumEMA[i].value) {
             crossPoints.push({
               time: minuteShortEMA[i].time,
               position: 'buy',
               value: minuteShortEMA[i].value,
-              reason: '분봉: 매수신호 (상승돌파)'
+              reason: '분봉: 매수신호'
             });
           }
         }
 
-        // 초봉 매도 신호 찾기 (수정)
+        // 초봉 매도 신호 찾기
         for (let i = 1; i < secondShortEMA.length; i++) {
-          if (inPosition) { // 포지션 있을 때만 매도 신호 확인
-            // 이익 실현 조건
-            const lastBuy = crossPoints.findLast(p => p.position === 'buy');
-            const currentProfit = lastBuy ? (secondData[i].close - lastBuy.value) / lastBuy.value : 0;
-            
-            if (currentProfit >= 0.015) { // 1.5% 이상 이익
-              crossPoints.push({
-                time: secondShortEMA[i].time,
-                position: 'sell',
-                value: secondShortEMA[i].value,
-                reason: '이익실현 (1.5%)'
-              });
-              inPosition = false;
-            }
-            // 데드크로스 매도
-            else if (secondShortEMA[i - 1].value >= secondMediumEMA[i - 1].value && 
-                secondShortEMA[i].value < secondMediumEMA[i].value &&
-                secondData[i].close < secondData[i].open) { // 음봉 확인
-              crossPoints.push({
-                time: secondShortEMA[i].time,
-                position: 'sell',
-                value: secondShortEMA[i].value,
-                reason: '3초봉: 매도신호 (하락반전)'
-              });
-              inPosition = false;
-            }
-            // 손절 조건 최적화
-            else if (currentProfit < -0.01) { // 1% 손실로 조정
-              crossPoints.push({
-                time: secondShortEMA[i].time,
-                position: 'sell',
-                value: secondShortEMA[i].value,
-                reason: '손절 (1% 손실)'
-              });
-              inPosition = false;
-            }
+          if (secondShortEMA[i - 1].value >= secondMediumEMA[i - 1].value && 
+              secondShortEMA[i].value < secondMediumEMA[i].value) {
+            crossPoints.push({
+              time: secondShortEMA[i].time,
+              position: 'sell',
+              value: secondShortEMA[i].value,
+              reason: '3초봉: 매도신호'
+            });
           }
         }
 
@@ -356,8 +332,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         if (chartRef.current) {
           chartRef.current.timeScale().fitContent();
         }
-
-        console.log('Second Data:', secondData);
       } else {
         const endpoint = getChartEndpoint(chartType);
         const count = getChartCount(chartType);
@@ -493,6 +467,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         if (chartRef.current) {
           chartRef.current.timeScale().fitContent();
         }
+
+        // 예시: 데이터 로드 직후 로그 출력
+        console.log('Daily Data:', candleData);
+        console.log('Minute Data:', volumeData);
+        console.log('Second Data:', data);
+        console.log('Combined Signals:', crossPoints);
+        console.log('Backtest Result:', result);
+        console.log('Loaded Minute Data:', minuteData);
+        console.log('Loaded Second Data:', secondData);
+        console.log('Cross Points:', crossPointsRef.current);
+        console.log('Backtest Result:', backtestResult);
       }
     } catch (error) {
       console.error('차트 데이터 로드 중 오류:', error);
@@ -502,26 +487,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   useEffect(() => {
     if (!container.current) return;
 
-    // 이전 차트 정리
-    if (chartRef.current) {
-      // 모든 시리즈 참조 초기화
-      candleSeriesRef.current = null;
-      shortEMASeriesRef.current = null;
-      mediumEMASeriesRef.current = null;
-      longEMASeriesRef.current = null;
-      volumeSeriesRef.current = null;
-      secondSeriesRef.current = null;
-      
-      // 차트 제거
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
-
-    // 새 차트 생성
     const chart = createChart(container.current, {
       layout: {
         textColor: '#DDD',
-        background: { type: ColorType.Solid, color: '#1e1e1e' },
+        background: { type: ColorType.Solid, color: '#1E1E1E' }
       },
       grid: {
         vertLines: { color: '#2B2B2B' },
@@ -554,7 +523,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         },
       },
     });
-    
     chartRef.current = chart;
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
@@ -592,36 +560,38 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     } as HistogramSeriesPartialOptions);
     volumeSeriesRef.current = volumeSeries;
 
-    // EMA 시리즈 추가
+    // 이동평균선 시리즈 생성
     const shortEMASeries = chart.addSeries(LineSeries, {
-      color: '#2196F3',
+      color: '#FF5252',
       lineWidth: 2,
+      title: '5분 EMA',
+      priceLineVisible: false,
     });
     shortEMASeriesRef.current = shortEMASeries;
 
     const mediumEMASeries = chart.addSeries(LineSeries, {
-      color: '#FF9800',
+      color: '#FFA726',
       lineWidth: 2,
+      title: '20분 EMA',
+      priceLineVisible: false,
     });
     mediumEMASeriesRef.current = mediumEMASeries;
 
     const longEMASeries = chart.addSeries(LineSeries, {
-      color: '#E91E63',
+      color: '#2196F3',
       lineWidth: 2,
+      title: '10분 EMA',
+      priceLineVisible: false,
     });
     longEMASeriesRef.current = longEMASeries;
 
-    // 데이터 로드
+    // 데이터 로드 및 설정
     loadChartData();
 
-    // 컴포넌트 언마운트 시 정리
     return () => {
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
+      chart.remove();
     };
-  }, [symbol, chartType]);
+  }, [chartType]);
 
   // 실시간 가격 업데이트 처리
   useEffect(() => {
@@ -783,7 +753,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   };
 
   // RSI 계산 함수
-  const calculateRSI = (data: CandlestickData<Time>[], period: number = 14) => {
+  const calculateRSI = (data: CandlestickData<Time>[], period: number): number[] => {
     const rsi: number[] = [];
     let gains = 0;
     let losses = 0;
@@ -831,88 +801,110 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
   // 크로스 포인트 찾기 함수 수정
   const findCrossPoints = (
-    minuteData: CandlestickData<Time>[],
-    secondData: CandlestickData<Time>[],
+    minuteData: ExtendedCandlestickData[],
+    secondData: ExtendedCandlestickData[],
     shortEMA: LineData<Time>[],
     mediumEMA: LineData<Time>[],
     longEMA: LineData<Time>[]
   ): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
     let inPosition = false;
+    let lastTradeTime = 0;
+    const TRADE_COOLDOWN = 3600; // 1시간 쿨다운
 
-    // RSI 계산
-    const rsiValues = calculateRSI(minuteData);
+    // RSI 계산 (과매수/과매도 판단)
+    const rsiValues = calculateRSI(minuteData, 14);
+    
+    // 볼린저 밴드 계산 (20일, 2표준편차)
+    const bollingerBands = calculateBollingerBands(minuteData, 20, 2);
 
-    // 매매 로직
     for (let i = 1; i < shortEMA.length; i++) {
-      // RSI 과매도 상태 확인 (RSI < 30)
-      const isOversold = rsiValues[i] && rsiValues[i] < 30;
-
-      // 1. 매수 신호
-      if (!inPosition) {
-        // 일봉 골든크로스
-        if (shortEMA[i-1].value <= mediumEMA[i-1].value && 
-            shortEMA[i].value > mediumEMA[i].value &&
-            isOversold) {
+      const currentTime = minuteData[i].time as number;
+      
+      // 1. 매수 신호 (더 엄격한 조건)
+      if (!inPosition && (currentTime - lastTradeTime) > TRADE_COOLDOWN) {
+        // 기본 조건
+        const isGoldenCross = shortEMA[i-1].value <= mediumEMA[i-1].value && 
+                             shortEMA[i].value > mediumEMA[i].value;
+        
+        // 강력한 상승추세 확인
+        const isStrongUptrend = mediumEMA[i].value > longEMA[i].value && 
+                               minuteData[i].close > mediumEMA[i].value &&
+                               mediumEMA[i].value > mediumEMA[i-1].value;
+        
+        // RSI 과매도 상태에서 반등
+        const isOversoldBounce = rsiValues[i-1] < 30 && rsiValues[i] > rsiValues[i-1];
+        
+        // 볼린저 밴드 하단 반등 + 양봉
+        const isBouncing = minuteData[i].close > minuteData[i].open && 
+                              minuteData[i].close > bollingerBands[i].lower &&
+                              minuteData[i].close > minuteData[i-1].high;
+        
+        // 거래량 급증 (3배 이상)
+        const volumeIncrease = (minuteData[i]?.volume ?? 0) > 
+                              (minuteData[i-1]?.volume ?? 0) * 3;
+        
+        // 모든 조건이 충족될 때만 매수
+        if (isGoldenCross && isStrongUptrend && isOversoldBounce && 
+            isBouncing && volumeIncrease) {
           crossPoints.push({
             time: shortEMA[i].time,
             position: 'buy',
-            value: shortEMA[i].value,
-            reason: '일봉 골든크로스 (과매도)'
+            value: minuteData[i].close,
+            reason: '강력매수신호 (상승추세+과매도반등+거래량급증)'
           });
           inPosition = true;
-        }
-        // 분봉 골든크로스
-        else if (shortEMA[i-1].value <= mediumEMA[i-1].value && 
-                 shortEMA[i].value > mediumEMA[i].value) {
-          crossPoints.push({
-            time: shortEMA[i].time,
-            position: 'buy',
-            value: shortEMA[i].value,
-            reason: '분봉 골든크로스'
-          });
-          inPosition = true;
+          lastTradeTime = currentTime;
         }
       }
       
-      // 2. 매도 신호
+      // 2. 매도 신호 (수익 실현 개선)
       else if (inPosition) {
-        // 데드크로스
-        if (shortEMA[i-1].value >= mediumEMA[i-1].value && 
-            shortEMA[i].value < mediumEMA[i].value) {
+        const lastBuy = crossPoints.findLast(p => p.position === 'buy');
+        if (!lastBuy) continue;
+
+        const profit = (minuteData[i].close - lastBuy.value) / lastBuy.value;
+        
+        // 이익실현 조건 강화 (3% 이상 + RSI 과매수)
+        if (profit >= 0.03 && rsiValues[i] > 70) {
           crossPoints.push({
             time: shortEMA[i].time,
             position: 'sell',
-            value: shortEMA[i].value,
-            reason: '데드크로스'
+            value: minuteData[i].close,
+            reason: '이익실현 (3%+과매수)'
           });
           inPosition = false;
+          lastTradeTime = currentTime;
         }
-        // 이익실현 (1.5% 이상)
-        else {
-          const lastBuy = crossPoints.findLast(p => p.position === 'buy');
-          if (lastBuy) {
-            const profit = (shortEMA[i].value - lastBuy.value) / lastBuy.value;
-            if (profit >= 0.015) {
-              crossPoints.push({
-                time: shortEMA[i].time,
-                position: 'sell',
-                value: shortEMA[i].value,
-                reason: '이익실현 (1.5%)'
-              });
-              inPosition = false;
-            }
-            // 손절 (-1% 이하)
-            else if (profit <= -0.01) {
-              crossPoints.push({
-                time: shortEMA[i].time,
-                position: 'sell',
-                value: shortEMA[i].value,
-                reason: '손절 (-1%)'
-              });
-              inPosition = false;
-            }
-          }
+        
+        // 데드크로스 + 강력한 하락추세
+        else if (shortEMA[i-1].value >= mediumEMA[i-1].value && 
+                 shortEMA[i].value < mediumEMA[i].value &&
+                 mediumEMA[i].value < longEMA[i].value &&
+                 minuteData[i].close < minuteData[i].open &&
+                 minuteData[i].close < minuteData[i-1].low) {
+          crossPoints.push({
+            time: shortEMA[i].time,
+            position: 'sell',
+            value: minuteData[i].close,
+            reason: '추세반전 (강력한하락+데드크로스)'
+          });
+          inPosition = false;
+          lastTradeTime = currentTime;
+        }
+        
+        // 손절 조건 강화 (-2% 이하 + 거래량 급증 + 하락추세)
+        else if (profit <= -0.02 && 
+                 (minuteData[i]?.volume ?? 0) > (minuteData[i-1]?.volume ?? 0) * 2 &&
+                 minuteData[i].close < mediumEMA[i].value) {
+          crossPoints.push({
+            time: shortEMA[i].time,
+            position: 'sell',
+            value: minuteData[i].close,
+            reason: '손절 (-2%+거래량급증+하락추세)'
+          });
+          inPosition = false;
+          lastTradeTime = currentTime;
         }
       }
     }
@@ -988,10 +980,26 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     ? (priceDiff / chartPrice) * 100
     : 0;
 
-  // MA 기간 변경 시 차트 업데이트
-  useEffect(() => {
-    loadChartData();
-  }, [shortPeriod, mediumPeriod, longPeriod]);
+  // 볼린저 밴드 계산 함수
+  const calculateBollingerBands = (data: CandlestickData<Time>[], period: number, multiplier: number): BollingerBand[] => {
+    const bands: BollingerBand[] = [];
+    for (let i = period - 1; i < data.length; i++) {
+      const slice = data.slice(i - period + 1, i + 1);
+      const sum = slice.reduce((acc, curr) => acc + curr.close, 0);
+      const sma = sum / period;
+      
+      const squaredDiffs = slice.map(candle => Math.pow(candle.close - sma, 2));
+      const variance = squaredDiffs.reduce((acc, curr) => acc + curr, 0) / period;
+      const stdDev = Math.sqrt(variance);
+      
+      bands.push({
+        middle: sma,
+        upper: sma + (stdDev * multiplier),
+        lower: sma - (stdDev * multiplier)
+      });
+    }
+    return bands;
+  };
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
