@@ -109,6 +109,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const sellMarkerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const crossPointsRef = useRef<CrossPoint[]>([]);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const prevVolumeRef = useRef<number>(0); // 이전 거래량을 저장하기 위한 ref 추가
+  const prevTradeTimeRef = useRef<number>(0); // 이전 거래 시간을 저장하기 위한 ref 추가
+  const accVolumeRef = useRef<number>(0); // 현재 캔들의 누적 거래량을 저장하기 위한 ref 추가
   
   const { prices, tickers } = useUpbitStore();
   const [chartPrice, setChartPrice] = useState<number>(0);
@@ -140,12 +143,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const sixEMAData = calculateEMA(candleData, type === 'forty' ? value : fortyPeriod);
       const twentyEMAData = calculateEMA(candleData, type === 'sixty' ? value : sixtyPeriod);
       
-      // 기존 마커 초기화
-      if (candleSeriesRef.current) {
-        createSeriesMarkers(candleSeriesRef.current, []);
-      }
-      
-      // EMA 데이터 업데이트
       threeEMASeriesRef.current.setData(threeEMAData);
       sixEMASeriesRef.current.setData(sixEMAData);
       twentyEMASeriesRef.current.setData(twentyEMAData);
@@ -154,7 +151,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
       crossPointsRef.current = crossPoints;
       
-      // 새로운 매수/매도 마커 생성
+      // 매수/매도 마커 업데이트
       const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
         time: point.time,
         position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
@@ -176,8 +173,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // 차트 타입에 따른 API 엔드포인트 결정
   const getChartEndpoint = (type: string) => {
     if (type.startsWith('seconds/')) {
-      const seconds = type.split('/')[1];
-      return `minutes/1`; // 초 단위는 1분봉으로 요청
+      return 'seconds'; // 초봉 API 엔드포인트
     }
     const minutes = parseInt(type);
     if (minutes <= 240) { // 1분봉, 3분봉, 일봉(240분)
@@ -192,7 +188,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // 차트 타입에 따른 데이터 개수 결정
   const getChartCount = (type: string) => {
     if (type.startsWith('seconds/')) {
-      return 330; // 초 단위는 330개 데이터 (기존 300개에서 30개 추가)
+      return 200; // 초봉은 최대 200개까지 요청 가능
     }
     const minutes = parseInt(type);
     if (minutes <= 3) return 430;     // 분봉 (기존 200개에서 30개 추가)
@@ -217,76 +213,43 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const response = await fetch(`https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${toTime}`);
       const data = await response.json();
       
+      if (!Array.isArray(data) || data.length === 0) {
+        console.error('유효하지 않은 데이터 형식:', data);
+        return;
+      }
+
       let candleData: ExtendedCandlestickData[] = [];
       let volumeData: HistogramData<Time>[] = [];
 
-      if (chartType.startsWith('seconds/')) {
-        // 초 단위 캔들 생성
-        const secondsInterval = parseInt(chartType.split('/')[1]);
-        const baseData = data.map((item: UpbitCandle) => {
-          const timestamp = new Date(item.candle_date_time_kst);
-          const trades = [];
-          // 1분을 초 단위로 나누기
-          for (let i = 0; i < 60; i += secondsInterval) {
-            const candleTime = new Date(timestamp);
-            candleTime.setSeconds(candleTime.getSeconds() + i);
-            
-            // 각 초 단위 캔들의 가격 계산
-            const ratio = i / 60; // 0 ~ 1 사이의 값
-            const currentPrice = item.opening_price + (item.trade_price - item.opening_price) * ratio;
-            const prevPrice: number = i === 0 ? item.opening_price : trades[trades.length - 1]?.close || item.opening_price;
-            
-            trades.push({
-              time: Math.floor(candleTime.getTime() / 1000) as Time,
-              open: prevPrice,
-              high: Math.max(prevPrice, currentPrice),
-              low: Math.min(prevPrice, currentPrice),
-              close: currentPrice,
-              volume: item.candle_acc_trade_volume / (60 / secondsInterval)
-            });
-          }
-          return trades;
-        }).flat();
+      // 모든 타입의 캔들에 대해 동일한 데이터 처리 방식 사용
+      candleData = data.map((item: UpbitCandle) => {
+        if (!item || !item.candle_date_time_kst) {
+          console.error('유효하지 않은 캔들 데이터:', item);
+          return null;
+        }
+        const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
+        return {
+          time: timestamp as Time,
+          open: item.opening_price,
+          high: item.high_price,
+          low: item.low_price,
+          close: item.trade_price,
+          volume: item.candle_acc_trade_volume
+        };
+      })
+      .filter((item): item is ExtendedCandlestickData => item !== null)
+      .reverse();
 
-        // 최근 데이터부터 표시하기 위해 역순으로 정렬
-        candleData = baseData.map((item: any) => ({
-          time: item.time,
-          open: item.open,
-          high: item.high,
-          low: item.low,
-          close: item.close
-        }));
-
-        volumeData = baseData.map((item: any) => ({
-          time: item.time,
-          value: item.volume,
-          color: item.close > item.open ? '#26a69a80' : '#ef535080'
-        }));
-
-        // 최신 데이터가 오른쪽에 오도록 정렬
-        candleData = candleData.sort((a, b) => (a.time as number) - (b.time as number));
-        volumeData = volumeData.sort((a, b) => (a.time as number) - (b.time as number));
-      } else {
-        candleData = data.map((item: UpbitCandle) => {
-          const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
-          return {
-            time: timestamp as Time,
-            open: item.opening_price,
-            high: item.high_price,
-            low: item.low_price,
-            close: item.trade_price,
-          };
-        }).reverse();
-
-        volumeData = data.map((item: UpbitCandle) => {
-          const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
-          return {
-            time: timestamp as Time,
-            value: item.candle_acc_trade_volume,
-            color: item.trade_price >= item.opening_price ? '#26a69a80' : '#ef535080',
-          };
-        }).reverse();
+      if (candleData.length === 0) {
+        console.error('캔들 데이터가 비어있습니다.');
+        return;
       }
+
+      volumeData = candleData.map(item => ({
+        time: item.time,
+        value: item.volume || 0,
+        color: item.close >= item.open ? '#26a69a80' : '#ef535080',
+      }));
 
       // 마지막 캔들 저장
       lastCandleRef.current = candleData[candleData.length - 1];
@@ -299,10 +262,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       // 크로스 포인트 찾기
       const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
       crossPointsRef.current = crossPoints;
-
-      // 백테스팅 결과 계산
-      const result = calculateBacktestResult(candleData, crossPoints);
-      setBacktestResult(result);
 
       // 데이터 설정
       if (candleSeriesRef.current) {
@@ -334,6 +293,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         createSeriesMarkers(candleSeriesRef.current, markers);
       }
 
+      // 백테스팅 결과 계산
+      const result = calculateBacktestResult(candleData, crossPoints);
+      setBacktestResult(result);
+
       // 마지막 가격 표시
       const lastPrice = candleData[candleData.length - 1].close;
       setChartPrice(lastPrice);
@@ -345,7 +308,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     } catch (error) {
       console.error('차트 데이터 로드 중 오류:', error);
     }
-  }, [symbol, chartType]);
+  }, [symbol, chartType, thirtyPeriod, fortyPeriod, sixtyPeriod]);
 
   useEffect(() => {
     if (container.current) {
@@ -476,14 +439,21 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     const candleSeries = candleSeriesRef.current;
     const volumeSeries = volumeSeriesRef.current;
     
-    // 거래량 계산 함수 개선
-    const calculateVolume = (currentVolume: number, prevVolume: number) => {
-      if (!currentVolume || !prevVolume || isNaN(currentVolume) || isNaN(prevVolume)) return 0;
-      const volume = currentVolume - prevVolume;
-      return Math.max(volume, 0);  // 음수 거래량 방지
+    // 거래량 계산 함수 수정
+    const calculateVolume = (currentAccVolume: number, tradeTimestamp: number) => {
+      if (!currentAccVolume || isNaN(currentAccVolume)) return 0;
+      
+      // 이전 거래 시간과 현재 거래 시간이 다르면 새로운 거래로 간주
+      if (tradeTimestamp !== prevTradeTimeRef.current) {
+        const volume = currentAccVolume - prevVolumeRef.current;
+        prevVolumeRef.current = currentAccVolume;
+        prevTradeTimeRef.current = tradeTimestamp;
+        accVolumeRef.current += volume;
+        return accVolumeRef.current;
+      }
+      
+      return accVolumeRef.current;
     };
-
-    let prevVolume = tickerData.acc_trade_volume_24h - tickerData.acc_trade_volume;
     
     // 차트 타입에 따른 캔들 간격 계산
     let interval: number;
@@ -499,6 +469,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       }
 
       if (currentSecond !== lastCandleSecond) {
+        // 새로운 캔들 생성시 거래량 초기화
+        prevVolumeRef.current = tickerData.acc_trade_volume;
+        prevTradeTimeRef.current = timestamp;
+        accVolumeRef.current = 0;
+        
         // 새로운 캔들 생성
         const newCandle: ExtendedCandlestickData = {
           time: timestamp as Time,
@@ -506,7 +481,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           high: currentPrice,
           low: currentPrice,
           close: currentPrice,
-          volume: calculateVolume(tickerData.acc_trade_volume, prevVolume)
+          volume: 0 // 새 캔들의 초기 거래량은 0
         };
         
         if (candleSeries) {
@@ -516,22 +491,22 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
         // 거래량 업데이트
         if (volumeSeries) {
-          const volume = calculateVolume(tickerData.acc_trade_volume, prevVolume);
           const newVolume: HistogramData<Time> = {
             time: timestamp as Time,
-            value: volume,
+            value: 0,
             color: currentPrice >= lastCandle.close ? '#26a69a80' : '#ef535080'
           };
           volumeSeries.update(newVolume);
         }
       } else {
         // 현재 캔들 업데이트
+        const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
         const updatedCandle: ExtendedCandlestickData = {
           ...lastCandle,
           high: Math.max(lastCandle.high, currentPrice),
           low: Math.min(lastCandle.low, currentPrice),
           close: currentPrice,
-          volume: calculateVolume(tickerData.acc_trade_volume, prevVolume)
+          volume: volume
         };
 
         if (candleSeries) {
@@ -541,7 +516,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
         // 거래량 업데이트
         if (volumeSeries) {
-          const volume = calculateVolume(tickerData.acc_trade_volume, prevVolume);
           const updatedVolume: HistogramData<Time> = {
             time: lastCandle.time,
             value: volume,
@@ -555,15 +529,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       
       // 현재 시간이 마지막 캔들의 시간 + 간격을 넘었다면 새로운 캔들 생성
       if (timestamp >= (lastCandle.time as number) + interval) {
+        // 새로운 캔들 생성시 거래량 초기화
+        prevVolumeRef.current = tickerData.acc_trade_volume;
+        prevTradeTimeRef.current = timestamp;
+        accVolumeRef.current = 0;
         loadChartData();
       } else {
         // 현재 캔들 업데이트
+        const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
         const updatedCandle: ExtendedCandlestickData = {
           ...lastCandle,
           high: Math.max(lastCandle.high, currentPrice),
           low: Math.min(lastCandle.low, currentPrice),
           close: currentPrice,
-          volume: calculateVolume(tickerData.acc_trade_volume, prevVolume)
+          volume: volume
         };
 
         if (candleSeries) {
@@ -573,7 +552,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
         // 거래량 업데이트
         if (volumeSeries) {
-          const volume = calculateVolume(tickerData.acc_trade_volume, prevVolume);
           const updatedVolume: HistogramData<Time> = {
             time: lastCandle.time,
             value: volume,
