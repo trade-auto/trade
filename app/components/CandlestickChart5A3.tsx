@@ -140,6 +140,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const sixEMAData = calculateEMA(candleData, type === 'forty' ? value : fortyPeriod);
       const twentyEMAData = calculateEMA(candleData, type === 'sixty' ? value : sixtyPeriod);
       
+      // 기존 마커 초기화
+      if (candleSeriesRef.current) {
+        createSeriesMarkers(candleSeriesRef.current, []);
+      }
+      
+      // EMA 데이터 업데이트
       threeEMASeriesRef.current.setData(threeEMAData);
       sixEMASeriesRef.current.setData(sixEMAData);
       twentyEMASeriesRef.current.setData(twentyEMAData);
@@ -148,7 +154,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
       crossPointsRef.current = crossPoints;
       
-      // 매수/매도 마커 업데이트
+      // 새로운 매수/매도 마커 생성
       const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
         time: point.time,
         position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
@@ -470,11 +476,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     const candleSeries = candleSeriesRef.current;
     const volumeSeries = volumeSeriesRef.current;
     
-    // 거래량 계산 함수
-    const calculateVolume = (volume: number) => {
-      if (!volume || isNaN(volume)) return 0;
-      return Math.min(Math.max(volume, 0), 90071992547409);  // 거래량 범위 제한
+    // 거래량 계산 함수 개선
+    const calculateVolume = (currentVolume: number, prevVolume: number) => {
+      if (!currentVolume || !prevVolume || isNaN(currentVolume) || isNaN(prevVolume)) return 0;
+      const volume = currentVolume - prevVolume;
+      return Math.max(volume, 0);  // 음수 거래량 방지
     };
+
+    let prevVolume = tickerData.acc_trade_volume_24h - tickerData.acc_trade_volume;
     
     // 차트 타입에 따른 캔들 간격 계산
     let interval: number;
@@ -496,7 +505,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           open: lastCandle.close,
           high: currentPrice,
           low: currentPrice,
-          close: currentPrice
+          close: currentPrice,
+          volume: calculateVolume(tickerData.acc_trade_volume, prevVolume)
         };
         
         if (candleSeries) {
@@ -506,7 +516,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
         // 거래량 업데이트
         if (volumeSeries) {
-          const volume = calculateVolume(tickerData.acc_trade_volume);
+          const volume = calculateVolume(tickerData.acc_trade_volume, prevVolume);
           const newVolume: HistogramData<Time> = {
             time: timestamp as Time,
             value: volume,
@@ -520,7 +530,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           ...lastCandle,
           high: Math.max(lastCandle.high, currentPrice),
           low: Math.min(lastCandle.low, currentPrice),
-          close: currentPrice
+          close: currentPrice,
+          volume: calculateVolume(tickerData.acc_trade_volume, prevVolume)
         };
 
         if (candleSeries) {
@@ -530,7 +541,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
         // 거래량 업데이트
         if (volumeSeries) {
-          const volume = calculateVolume(tickerData.acc_trade_volume);
+          const volume = calculateVolume(tickerData.acc_trade_volume, prevVolume);
           const updatedVolume: HistogramData<Time> = {
             time: lastCandle.time,
             value: volume,
@@ -551,7 +562,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           ...lastCandle,
           high: Math.max(lastCandle.high, currentPrice),
           low: Math.min(lastCandle.low, currentPrice),
-          close: currentPrice
+          close: currentPrice,
+          volume: calculateVolume(tickerData.acc_trade_volume, prevVolume)
         };
 
         if (candleSeries) {
@@ -561,7 +573,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
         // 거래량 업데이트
         if (volumeSeries) {
-          const volume = calculateVolume(tickerData.acc_trade_volume);
+          const volume = calculateVolume(tickerData.acc_trade_volume, prevVolume);
           const updatedVolume: HistogramData<Time> = {
             time: lastCandle.time,
             value: volume,
