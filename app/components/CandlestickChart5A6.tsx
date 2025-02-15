@@ -179,7 +179,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       }));
       
       if (candleSeriesRef.current) {
-        candleSeriesRef.current.setMarkers(markers);
+        createSeriesMarkers(candleSeriesRef.current, markers);
       }
       
       // 백테스팅 결과 업데이트
@@ -306,7 +306,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           }));
           
           if (candleSeriesRef.current) {
-            candleSeriesRef.current.setMarkers(markers);
+            createSeriesMarkers(candleSeriesRef.current, markers);
           }
         }
 
@@ -451,6 +451,25 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       priceScaleId: 'volume',
     });
     volumeSeriesRef.current = volumeSeries;
+
+    // 추가: 이동평균선 시리즈 생성
+    const threeEMASeries = chart.addSeries(LineSeries, {
+      color: '#FF0000', // 3EMA 색상
+      lineWidth: 2,
+    });
+    threeEMASeriesRef.current = threeEMASeries;
+
+    const sixEMASeries = chart.addSeries(LineSeries, {
+      color: '#00FF00', // 6EMA 색상
+      lineWidth: 2,
+    });
+    sixEMASeriesRef.current = sixEMASeries;
+
+    const twentyEMASeries = chart.addSeries(LineSeries, {
+      color: '#0000FF', // 20EMA 색상
+      lineWidth: 2,
+    });
+    twentyEMASeriesRef.current = twentyEMASeries;
 
     // Load initial data
     loadAllData(dateRange.startDate, dateRange.endDate);
