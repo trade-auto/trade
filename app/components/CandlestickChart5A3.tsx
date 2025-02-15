@@ -284,25 +284,25 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           const sixEMAData = calculateEMA(uniqueData, fortyPeriod);
           const twentyEMAData = calculateEMA(uniqueData, sixtyPeriod);
           
-          threeEMASeriesRef.current.setData(threeEMAData);
-          sixEMASeriesRef.current.setData(sixEMAData);
-          twentyEMASeriesRef.current.setData(twentyEMAData);
+        threeEMASeriesRef.current.setData(threeEMAData);
+        sixEMASeriesRef.current.setData(sixEMAData);
+        twentyEMASeriesRef.current.setData(twentyEMAData);
           
           // 크로스 포인트 업데이트
           const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
           crossPointsRef.current = crossPoints;
           
           // 매수/매도 마커 업데이트
-          const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
-            time: point.time,
-            position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
-            color: point.position === 'buy' ? '#26a69a' : '#ef5350',
-            shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: point.position === 'buy' ? '매수' : '매도',
-          }));
-          
-          if (candleSeriesRef.current) {
-            createSeriesMarkers(candleSeriesRef.current, markers);
+      const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
+        time: point.time,
+        position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
+        color: point.position === 'buy' ? '#26a69a' : '#ef5350',
+        shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
+        text: point.position === 'buy' ? '매수' : '매도',
+      }));
+      
+      if (candleSeriesRef.current) {
+        createSeriesMarkers(candleSeriesRef.current, markers);
           }
         }
 
@@ -380,7 +380,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
             
             // API 호출 간격 조절 (초당 10회 제한)
             await new Promise(resolve => setTimeout(resolve, 100));
-          } catch (error) {
+    } catch (error) {
             console.error('데이터 로드 중 오류:', error);
             // 에러 발생 시 3초 대기 후 재시도
             await new Promise(resolve => setTimeout(resolve, 3000));
@@ -401,96 +401,104 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
   // 차트 초기화
   useEffect(() => {
-    if (!container.current) return;
-
-    // 차트 생성
-    const chart = createChart(container.current, {
-      layout: {
-        background: { color: '#1E1E1E' },
-        textColor: '#DDD',
-      },
-      grid: {
-        vertLines: { color: '#2B2B2B' },
-        horzLines: { color: '#2B2B2B' },
-      },
-      width: container.current.clientWidth,
-      height: 400,
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
-      },
-    });
-    chartRef.current = chart;
-
-    // 캔들스틱 시리즈 생성
-    const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-    });
-    candleSeriesRef.current = candlestickSeries;
-
-    // 거래량 시리즈 생성
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#26a69a',
-      priceFormat: {
-        type: 'volume',
-      },
-      priceScaleId: 'volume',
-      priceScale: {
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
-      },
-    });
-    volumeSeriesRef.current = volumeSeries;
-
-    // 이동평균선 시리즈 생성
-    const threeEMASeries = chart.addSeries(LineSeries, {
-      color: '#FF5252',
-      lineWidth: 2,
-      priceLineVisible: false,
-    });
-    threeEMASeriesRef.current = threeEMASeries;
-
-    const sixEMASeries = chart.addSeries(LineSeries, {
-      color: '#FFA726',
-      lineWidth: 2,
-      priceLineVisible: false,
-    });
-    sixEMASeriesRef.current = sixEMASeries;
-
-    const twentyEMASeries = chart.addSeries(LineSeries, {
-      color: '#2196F3',
-      lineWidth: 2,
-      priceLineVisible: false,
-    });
-    twentyEMASeriesRef.current = twentyEMASeries;
-
-    // 윈도우 리사이즈 핸들러
-    const handleResize = () => {
-      if (container.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: container.current.clientWidth,
-        });
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    // 초기 데이터 로드
-    loadAllData(dateRange.startDate, dateRange.endDate);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
+    // Chart initialization
+    if (container.current) {
+      // Cleanup previous chart instance if it exists
       if (chartRef.current) {
         chartRef.current.remove();
+        chartRef.current = null;
       }
-    };
-  }, [symbol, chartType]); // symbol이나 chartType이 변경될 때마다 차트 재생성
+
+      const chart = createChart(container.current, {
+        layout: {
+          background: { color: '#1E1E1E' },
+          textColor: '#DDD',
+        },
+        grid: {
+          vertLines: { color: '#2B2B2B' },
+          horzLines: { color: '#2B2B2B' },
+        },
+        width: container.current.clientWidth,
+        height: 400,
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
+        },
+      });
+      
+      chartRef.current = chart;
+
+      // Create series
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350',
+      });
+      candleSeriesRef.current = candleSeries;
+
+      const volumeSeries = chart.addSeries(HistogramSeries, {
+        color: '#26a69a',
+        priceFormat: {
+          type: 'volume',
+        },
+        priceScaleId: 'volume',
+        priceScale: {
+        scaleMargins: {
+            top: 0.8,
+          bottom: 0,
+        },
+        },
+      });
+      volumeSeriesRef.current = volumeSeries;
+
+      // 이동평균선 시리즈 생성
+      const threeEMASeries = chart.addSeries(LineSeries, {
+        color: '#FF5252',
+        lineWidth: 2,
+        priceLineVisible: false,
+      });
+      threeEMASeriesRef.current = threeEMASeries;
+
+      const sixEMASeries = chart.addSeries(LineSeries, {
+        color: '#FFA726',
+        lineWidth: 2,
+        priceLineVisible: false,
+      });
+      sixEMASeriesRef.current = sixEMASeries;
+
+      const twentyEMASeries = chart.addSeries(LineSeries, {
+        color: '#2196F3',
+        lineWidth: 2,
+        priceLineVisible: false,
+      });
+      twentyEMASeriesRef.current = twentyEMASeries;
+
+      // 윈도우 리사이즈 핸들러
+      const handleResize = () => {
+        if (container.current && chartRef.current) {
+          chartRef.current.applyOptions({
+            width: container.current.clientWidth,
+          });
+        }
+      };
+
+      window.addEventListener('resize', handleResize);
+
+      // 초기 데이터 로드
+      loadAllData(dateRange.startDate, dateRange.endDate);
+
+      // Cleanup function
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        if (chartRef.current) {
+          chartRef.current.remove();
+          chartRef.current = null;
+        }
+      };
+    }
+  }, [container.current]); // Only re-run if container changes
 
   // 차트 생성 시 스크롤 이벤트 구독
   useEffect(() => {
@@ -677,7 +685,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null; // 마지막 액션을 추적
-
+    
     for (let i = 1; i < thirtyEMA.length; i++) {
       const prevThirty = thirtyEMA[i - 1].value;
       const prevForty = fortyEMA[i - 1].value;
@@ -685,7 +693,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const currThirty = thirtyEMA[i].value;
       const currForty = fortyEMA[i].value;
       const currSixty = sixtyEMA[i].value;
-
+      
       // 30MA와 40MA가 60MA 이상일 때만 매수
       if (currThirty > currSixty && currForty > currSixty) {
         // 골든크로스 (30MA가 40MA를 상향돌파)
@@ -701,16 +709,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       // 30MA와 40MA가 60MA를 명확히 하방 돌파한 경우에만 매도
       else if (currThirty < currSixty && currForty < currSixty && lastAction !== 'sell') {
         if (prevThirty >= prevSixty && currThirty < currSixty) {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'sell',
-            value: currThirty,
-          });
-          lastAction = 'sell'; // 마지막 액션을 매도로 설정
+        crossPoints.push({
+          time: thirtyEMA[i].time,
+          position: 'sell',
+          value: currThirty,
+        });
+        lastAction = 'sell'; // 마지막 액션을 매도로 설정
         }
       }
     }
-
+    
     return crossPoints;
   };
 

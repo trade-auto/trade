@@ -138,8 +138,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   
   // 날짜 선택을 위한 인터페이스 추가
   const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: new Date(Date.now() - 10 * 60 * 1000), // 10분 전
-    endDate: new Date() // 현재 시간
+    
+    startDate: new Date(Date.now() - 1*60 * 60 * 1000), // 현재 시간에서 10분 전
+    endDate: new Date() // 항상 현재 시간
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
@@ -179,7 +180,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       }));
       
       if (candleSeriesRef.current) {
-        candleSeriesRef.current.setMarkers(markers);
+        createSeriesMarkers(candleSeriesRef.current, markers);
       }
       
       // 백테스팅 결과 업데이트
@@ -225,10 +226,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       endDate: new Date() // 항상 현재 시간으로 설정
     });
     loadAllData(koreanTime, new Date());
-
-    // 디버깅을 위해 콘솔에 시간 출력
-    console.log('Start Date:', new Date(dateRange.startDate).toLocaleString());
-    console.log('End Date:', new Date(dateRange.endDate).toLocaleString());
   };
 
   // 전체 데이터 로드 함수
@@ -256,8 +253,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         const logicalRange = timeScale.getVisibleLogicalRange();
         const scrollPosition = timeScale.scrollPosition();
 
-        // 기존 데이터와 새 데이터를 모두 Map에 추가
+        // 중복 제거를 위해 Map 사용
         const uniqueDataMap = new Map<number, ExtendedCandlestickData>();
+        
+        // 기존 데이터와 새 데이터를 모두 Map에 추가
         [...allCandleData, ...newData].forEach(item => {
           uniqueDataMap.set(item.time as number, item);
         });
@@ -306,7 +305,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           }));
           
           if (candleSeriesRef.current) {
-            candleSeriesRef.current.setMarkers(markers);
+            createSeriesMarkers(candleSeriesRef.current, markers);
           }
         }
 
@@ -407,13 +406,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   useEffect(() => {
     if (!container.current) return;
 
-    // Cleanup previous chart instance if it exists
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
-
-    // Create chart
+    // 차트 생성
     const chart = createChart(container.current, {
       layout: {
         background: { color: '#1E1E1E' },
@@ -432,7 +425,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     });
     chartRef.current = chart;
 
-    // Create series using addSeries method
+    // 캔들스틱 시리즈 생성
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -442,20 +435,36 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     });
     candleSeriesRef.current = candlestickSeries;
 
-    // Create volume series using addSeries method
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#26a69a',
-      priceFormat: {
-        type: 'volume',
-      },
+    // 거래량 시리즈 생성
+    const volumeSeriesOptions: DeepPartial<HistogramStyleOptions & SeriesOptionsCommon> = {
       priceScaleId: 'volume',
-    });
+    };
+    const volumeSeries = chart.addSeries(HistogramSeries, volumeSeriesOptions);
     volumeSeriesRef.current = volumeSeries;
 
-    // Load initial data
-    loadAllData(dateRange.startDate, dateRange.endDate);
+    // 이동평균선 시리즈 생성
+    const threeEMASeries = chart.addSeries(LineSeries, {
+      color: '#FF5252',
+      lineWidth: 2,
+      priceLineVisible: false,
+    });
+    threeEMASeriesRef.current = threeEMASeries;
 
-    // Handle window resize
+    const sixEMASeries = chart.addSeries(LineSeries, {
+      color: '#FFA726',
+      lineWidth: 2,
+      priceLineVisible: false,
+    });
+    sixEMASeriesRef.current = sixEMASeries;
+
+    const twentyEMASeries = chart.addSeries(LineSeries, {
+      color: '#2196F3',
+      lineWidth: 2,
+      priceLineVisible: false,
+    });
+    twentyEMASeriesRef.current = twentyEMASeries;
+
+    // 윈도우 리사이즈 핸들러
     const handleResize = () => {
       if (container.current && chartRef.current) {
         chartRef.current.applyOptions({
@@ -466,15 +475,19 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
     window.addEventListener('resize', handleResize);
 
-    // Cleanup function
+    // 초기 데이터 로드
+    loadAllData(dateRange.startDate, dateRange.endDate);
+
+    console.log('Start Date:', new Date(Date.now() - 10 * 60 * 1000).toLocaleString());
+    console.log('End Date:', new Date().toLocaleString());
+
     return () => {
       window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
         chartRef.current.remove();
-        chartRef.current = null;
       }
     };
-  }, [symbol, chartType]); // Re-run if symbol or chartType changes
+  }, [symbol, chartType]); // symbol이나 chartType이 변경될 때마다 차트 재생성
 
   // 차트 생성 시 스크롤 이벤트 구독
   useEffect(() => {

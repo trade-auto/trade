@@ -179,7 +179,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       }));
       
       if (candleSeriesRef.current) {
-        candleSeriesRef.current.setMarkers(markers);
+        createSeriesMarkers(candleSeriesRef.current, markers);
       }
       
       // 백테스팅 결과 업데이트
@@ -225,10 +225,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       endDate: new Date() // 항상 현재 시간으로 설정
     });
     loadAllData(koreanTime, new Date());
-
-    // 디버깅을 위해 콘솔에 시간 출력
-    console.log('Start Date:', new Date(dateRange.startDate).toLocaleString());
-    console.log('End Date:', new Date(dateRange.endDate).toLocaleString());
   };
 
   // 전체 데이터 로드 함수
@@ -256,8 +252,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         const logicalRange = timeScale.getVisibleLogicalRange();
         const scrollPosition = timeScale.scrollPosition();
 
-        // 기존 데이터와 새 데이터를 모두 Map에 추가
+        // 중복 제거를 위해 Map 사용
         const uniqueDataMap = new Map<number, ExtendedCandlestickData>();
+        
+        // 기존 데이터와 새 데이터를 모두 Map에 추가
         [...allCandleData, ...newData].forEach(item => {
           uniqueDataMap.set(item.time as number, item);
         });
@@ -306,7 +304,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           }));
           
           if (candleSeriesRef.current) {
-            candleSeriesRef.current.setMarkers(markers);
+            createSeriesMarkers(candleSeriesRef.current, markers);
           }
         }
 
