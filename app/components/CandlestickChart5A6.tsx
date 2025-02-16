@@ -138,7 +138,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   
   // 날짜 선택을 위한 인터페이스 추가
   const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: new Date(Date.now() - 10 * 60 * 1000), // 10분 전
+    startDate: new Date(Date.now() - 30 * 60 * 1000), // 10분 전
     endDate: new Date() // 현재 시간
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
