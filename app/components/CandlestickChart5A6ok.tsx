@@ -20,6 +20,8 @@ import {
   HistogramStyleOptions,
   SeriesOptionsCommon,
 } from 'lightweight-charts';
+import DatePicker from 'react-datepicker';
+import "react-datepicker/dist/react-datepicker.css";
 
 interface ChartProps {
   symbol: string;
@@ -144,6 +146,118 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   
+  // tradeId를 컴포넌트 레벨 변수로 선언
+  const tradeIdRef = useRef<number>(1);
+
+  // 매수/매도 신호 생성 로직 수정
+  const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
+    const crossPoints: CrossPoint[] = [];
+    let inPosition = false;
+    let lastCrossTime = 0;
+    const minTimeBetweenSignals = 5; // 10에서 5로 줄임
+
+    // 추세 강도 판단 함수 수정
+    const getTrendStrength = (i: number, lookback: number) => {
+      let upCount = 0;
+      for (let j = 0; j < lookback; j++) {
+        if (i - j < 1) continue;
+        if (sixtyEMA[i - j].value > sixtyEMA[i - j - 1].value) upCount++;
+      }
+      return upCount / lookback;
+    };
+
+    for (let i = 3; i < thirtyEMA.length; i++) { // trendLookback을 3으로 줄임
+      const currentTime = thirtyEMA[i].time as number;
+      const timeSinceLastCross = currentTime - lastCrossTime;
+      
+      const prevThirty = thirtyEMA[i - 1].value;
+      const prevForty = fortyEMA[i - 1].value;
+      const prevSixty = sixtyEMA[i - 1].value;
+      const currThirty = thirtyEMA[i].value;
+      const currForty = fortyEMA[i].value;
+      const currSixty = sixtyEMA[i].value;
+
+      const trendStrength = getTrendStrength(i, 3); // lookback을 3으로 설정
+
+      // 매수 조건 완화
+      if (!inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
+        const buyConditions = [
+          currThirty > currSixty, // 퍼센트 조건 제거
+          currForty > currSixty,
+          prevThirty <= prevForty && currThirty > currForty, // 골든크로스
+          trendStrength >= 0.5, // 50% 이상으로 완화
+        ];
+
+        if (buyConditions.every(condition => condition)) {
+          crossPoints.push({
+            time: thirtyEMA[i].time,
+            position: 'buy',
+            value: currThirty,
+          });
+          inPosition = true;
+          lastCrossTime = currentTime;
+        }
+      }
+      // 매도 조건 완화
+      else if (inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
+        const sellConditions = [
+          currThirty < currSixty, // 퍼센트 조건 제거
+          currForty < currSixty,
+          prevThirty >= prevSixty && currThirty < currSixty, // 데드크로스
+          trendStrength <= 0.5, // 50% 이하로 완화
+        ];
+
+        if (sellConditions.every(condition => condition)) {
+          crossPoints.push({
+            time: thirtyEMA[i].time,
+            position: 'sell',
+            value: currThirty,
+          });
+          inPosition = false;
+          lastCrossTime = currentTime;
+        }
+      }
+    }
+
+    return crossPoints;
+  };
+
+  // 마커 생성 함수 수정
+  const createTradeMarkers = (crossPoints: CrossPoint[]): SeriesMarker<Time>[] => {
+    const markers: SeriesMarker<Time>[] = [];
+    
+    for (let i = 0; i < crossPoints.length - 1; i++) {
+      const current = crossPoints[i];
+      const next = crossPoints[i + 1];
+
+      // 매수-매도 쌍만 처리
+      if (current.position === 'buy' && next.position === 'sell') {
+        markers.push({
+          time: current.time,
+          position: 'belowBar',
+          color: '#26a69a',
+          shape: 'circle',
+          text: `▲ ${tradeIdRef.current}`,
+          size: 3
+        });
+
+        markers.push({
+          time: next.time,
+          position: 'aboveBar',
+          color: '#ef5350',
+          shape: 'circle',
+          text: `▼ ${tradeIdRef.current}`,
+          size: 3
+        });
+
+        tradeIdRef.current++;
+        i++; // 다음 매도 신호는 건너뛰기
+      }
+    }
+    
+    return markers;
+  };
+
   // MA 기간 변경 핸들러
   const handleMAChange = (type: 'thirty' | 'forty' | 'sixty', value: number) => {
     if (type === 'thirty') {
@@ -170,14 +284,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       crossPointsRef.current = crossPoints;
       
       // 매수/매도 마커 업데이트
-      const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
-        time: point.time,
-        position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
-        color: point.position === 'buy' ? '#26a69a' : '#ef5350',
-        shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
-        text: point.position === 'buy' ? '매수' : '매도',
-      }));
-      
+      const markers = createTradeMarkers(crossPoints);
       if (candleSeriesRef.current) {
         createSeriesMarkers(candleSeriesRef.current, markers);
       }
@@ -217,18 +324,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
   // 날짜 범위 변경 핸들러
   const handleDateRangeChange = (start: Date) => {
-    // 입력받은 시간을 한국 시간으로 변환
-    const koreanTime = new Date(start.getTime() + (9 * 60 * 60 * 1000));
-    
-    setDateRange({ 
-      startDate: koreanTime,
-      endDate: new Date() // 항상 현재 시간으로 설정
-    });
-    loadAllData(koreanTime, new Date());
+    // 선택한 시간을 그대로 사용
+    const endTime = new Date(start.getTime() + 30 * 60 * 1000); // 30분 후
 
-    // 디버깅을 위해 콘솔에 시간 출력
-    console.log('Start Date:', new Date(dateRange.startDate).toLocaleString());
-    console.log('End Date:', new Date(dateRange.endDate).toLocaleString());
+    setDateRange({ 
+      startDate: start,
+      endDate: endTime
+    });
+    
+    // API 호출 시에도 선택한 시간을 그대로 사용
+    loadAllData(start, endTime);
   };
 
   // 전체 데이터 로드 함수
@@ -297,14 +402,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           crossPointsRef.current = crossPoints;
           
           // 매수/매도 마커 업데이트
-          const markers: SeriesMarker<Time>[] = crossPoints.map(point => ({
-            time: point.time,
-            position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
-            color: point.position === 'buy' ? '#26a69a' : '#ef5350',
-            shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: point.position === 'buy' ? '매수' : '매도',
-          }));
-          
+          const markers = createTradeMarkers(crossPoints);
           if (candleSeriesRef.current) {
             createSeriesMarkers(candleSeriesRef.current, markers);
           }
@@ -418,6 +516,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       layout: {
         background: { color: '#1E1E1E' },
         textColor: '#DDD',
+        fontFamily: 'Roboto, Ubuntu, Arial, sans-serif',
+        fontSize: 50,
       },
       grid: {
         vertLines: { color: '#2B2B2B' },
@@ -428,6 +528,26 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       timeScale: {
         timeVisible: true,
         secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
+      },
+      rightPriceScale: {
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.2,
+        },
+        borderVisible: false,
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          width: 2,
+          color: '#555',
+          style: 0,
+        },
+        horzLine: {
+          width: 2,
+          color: '#555',
+          style: 0,
+        },
       },
     });
     chartRef.current = chart;
@@ -676,47 +796,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     }));
   };
 
-  // 매수/매도 신호 생성 및 거래 내역 기록 로직
-  const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
-    const crossPoints: CrossPoint[] = [];
-    let lastAction: 'buy' | 'sell' | null = null; // 마지막 액션을 추적
-
-    for (let i = 1; i < thirtyEMA.length; i++) {
-      const prevThirty = thirtyEMA[i - 1].value;
-      const prevForty = fortyEMA[i - 1].value;
-      const prevSixty = sixtyEMA[i - 1].value;
-      const currThirty = thirtyEMA[i].value;
-      const currForty = fortyEMA[i].value;
-      const currSixty = sixtyEMA[i].value;
-
-      // 30MA와 40MA가 60MA 이상일 때만 매수
-      if (currThirty > currSixty && currForty > currSixty) {
-        // 골든크로스 (30MA가 40MA를 상향돌파)
-        if (prevThirty <= prevForty && currThirty > currForty && lastAction !== 'buy') {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'buy',
-            value: currThirty,
-          });
-          lastAction = 'buy'; // 마지막 액션을 매수로 설정
-        }
-      }
-      // 30MA와 40MA가 60MA를 명확히 하방 돌파한 경우에만 매도
-      else if (currThirty < currSixty && currForty < currSixty && lastAction !== 'sell') {
-        if (prevThirty >= prevSixty && currThirty < currSixty) {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'sell',
-            value: currThirty,
-          });
-          lastAction = 'sell'; // 마지막 액션을 매도로 설정
-        }
-      }
-    }
-
-    return crossPoints;
-  };
-
   // 백테스팅 결과 계산 함수
   const calculateBacktestResult = (data: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
     const trades: Trade[] = []; // Explicitly type the trades array
@@ -829,21 +908,70 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     // 추가적인 로직을 통해 신호를 차트에 표시하거나 백테스팅에 활용할 수 있습니다.
   }, [candleSeriesRef.current, volumeSeriesRef.current]);
 
+  // 컴포넌트 내부에 상태 추가
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  // 전체화면 토글 함수 추가
+  const toggleFullscreen = () => {
+    if (!chartContainerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      chartContainerRef.current.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  // 전체화면 변경 이벤트 감지
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // 상태 추가
+  const [chartHeight, setChartHeight] = useState<number>(400);
+
+  // 차트 높이 조절 핸들러 추가
+  const handleHeightChange = (height: number) => {
+    setChartHeight(height);
+    if (chartRef.current) {
+      chartRef.current.applyOptions({
+        height: height
+      });
+    }
+  };
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 날짜 선택 패널 */}
       <div className="mb-4">
         <div className="bg-gray-800 p-4 rounded-lg">
           <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
-          <input
-            type="datetime-local"
-            value={new Date(dateRange.startDate.getTime() - (9 * 60 * 60 * 1000)).toISOString().slice(0, 16)}
-            onChange={(e) => {
-              const selectedDate = new Date(e.target.value);
-              handleDateRangeChange(selectedDate);
+          <DatePicker
+            selected={dateRange.startDate}
+            onChange={(date: Date | null) => {
+              if (date) handleDateRangeChange(date);
             }}
-            max={new Date().toISOString().slice(0, 16)}
+            showTimeSelect
+            timeFormat="HH:mm"
+            timeIntervals={1}
+            timeCaption="시간"
+            dateFormat="yyyy-MM-dd HH:mm"
+            maxDate={new Date()}
             className="bg-gray-700 text-white p-2 rounded w-full"
+            popperClassName="react-datepicker-popper"
+            customInput={
+              <input
+                className="bg-gray-700 text-white p-2 rounded w-full"
+              />
+            }
           />
         </div>
       </div>
@@ -938,10 +1066,35 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         </div>
       </div>
 
-      <div className="text-white text-lg font-bold mb-4">
-        {symbol} {chartType} 차트
+      {/* 차트 제목과 전체화면 버튼 */}
+      <div className="flex justify-between items-center mb-4">
+        <div className="text-white text-lg font-bold">
+          {symbol} {chartType} 차트
+        </div>
+        <button
+          onClick={toggleFullscreen}
+          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded flex items-center"
+        >
+          {isFullscreen ? (
+            <span>⊖ 축소</span>
+          ) : (
+            <span>⊕ 전체화면</span>
+          )}
+        </button>
       </div>
-      <div ref={container} id="chart" className="w-full" />
+
+      {/* 차트 컨테이너 */}
+      <div 
+        ref={chartContainerRef}
+        className={`relative ${isFullscreen ? 'bg-[#1e1e1e] p-4' : ''}`}
+      >
+        <div 
+          ref={container} 
+          id="chart" 
+          className="w-full"
+          style={{ height: isFullscreen ? '90vh' : `${chartHeight}px` }}
+        />
+      </div>
 
       {/* 백테스팅 결과 표시 */}
       {backtestResult && (
@@ -1015,6 +1168,22 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           </div>
         </div>
       )}
+
+      {/* 차트 높이 조절 패널 */}
+      <div className="bg-gray-800 p-4 rounded-lg mb-4">
+        <div className="text-gray-400 text-sm mb-2">차트 높이 조절</div>
+        <div className="flex items-center space-x-4">
+          <input
+            type="range"
+            min="200"
+            max="1000"
+            value={chartHeight}
+            onChange={(e) => handleHeightChange(parseInt(e.target.value))}
+            className="flex-1"
+          />
+          <div className="text-white font-bold w-20 text-center">{chartHeight}px</div>
+        </div>
+      </div>
     </div>
   );
 }; 

@@ -134,9 +134,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const tickerData = tickers[symbol];
 
   // MA 기간 설정을 위한 상태 추가
-  const [thirtyPeriod, setThirtyPeriod] = useState<number>(30);
-  const [fortyPeriod, setFortyPeriod] = useState<number>(40);
-  const [sixtyPeriod, setSixtyPeriod] = useState<number>(60);
+  const [thirtyPeriod, setThirtyPeriod] = useState<number>(30);  // 단기
+  const [fortyPeriod, setFortyPeriod] = useState<number>(40);    // 중기
+  const [sixtyPeriod, setSixtyPeriod] = useState<number>(60);    // 장기
   
   // 날짜 선택을 위한 인터페이스 추가
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -149,47 +149,109 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // tradeId를 컴포넌트 레벨 변수로 선언
   const tradeIdRef = useRef<number>(1);
 
-  // 마커 생성을 위한 공통 함수 수정
+  // 매수/매도 신호 생성 로직 수정
+  const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
+    const crossPoints: CrossPoint[] = [];
+    let inPosition = false;
+    let lastCrossTime = 0;
+    const minTimeBetweenSignals = 5; // 10에서 5로 줄임
+
+    // 추세 강도 판단 함수 수정
+    const getTrendStrength = (i: number, lookback: number) => {
+      let upCount = 0;
+      for (let j = 0; j < lookback; j++) {
+        if (i - j < 1) continue;
+        if (sixtyEMA[i - j].value > sixtyEMA[i - j - 1].value) upCount++;
+      }
+      return upCount / lookback;
+    };
+
+    for (let i = 3; i < thirtyEMA.length; i++) { // trendLookback을 3으로 줄임
+      const currentTime = thirtyEMA[i].time as number;
+      const timeSinceLastCross = currentTime - lastCrossTime;
+      
+      const prevThirty = thirtyEMA[i - 1].value;
+      const prevForty = fortyEMA[i - 1].value;
+      const prevSixty = sixtyEMA[i - 1].value;
+      const currThirty = thirtyEMA[i].value;
+      const currForty = fortyEMA[i].value;
+      const currSixty = sixtyEMA[i].value;
+
+      const trendStrength = getTrendStrength(i, 3); // lookback을 3으로 설정
+
+      // 매수 조건 완화
+      if (!inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
+        const buyConditions = [
+          currThirty > currSixty, // 퍼센트 조건 제거
+          currForty > currSixty,
+          prevThirty <= prevForty && currThirty > currForty, // 골든크로스
+          trendStrength >= 0.5, // 50% 이상으로 완화
+        ];
+
+        if (buyConditions.every(condition => condition)) {
+          crossPoints.push({
+            time: thirtyEMA[i].time,
+            position: 'buy',
+            value: currThirty,
+          });
+          inPosition = true;
+          lastCrossTime = currentTime;
+        }
+      }
+      // 매도 조건 완화
+      else if (inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
+        const sellConditions = [
+          currThirty < currSixty, // 퍼센트 조건 제거
+          currForty < currSixty,
+          prevThirty >= prevSixty && currThirty < currSixty, // 데드크로스
+          trendStrength <= 0.5, // 50% 이하로 완화
+        ];
+
+        if (sellConditions.every(condition => condition)) {
+          crossPoints.push({
+            time: thirtyEMA[i].time,
+            position: 'sell',
+            value: currThirty,
+          });
+          inPosition = false;
+          lastCrossTime = currentTime;
+        }
+      }
+    }
+
+    return crossPoints;
+  };
+
+  // 마커 생성 함수 수정
   const createTradeMarkers = (crossPoints: CrossPoint[]): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
-    const markerGroups = new Map<number, number>(); // 같은 시간대의 마커 개수를 추적
     
-    for (let i = 0; i < crossPoints.length; i++) {
-      const point = crossPoints[i];
-      if (point.position === 'buy') {
-        const timeKey = point.time as number;
-        const offset = markerGroups.get(timeKey) || 0;
-        
-        // 매수 마커
+    for (let i = 0; i < crossPoints.length - 1; i++) {
+      const current = crossPoints[i];
+      const next = crossPoints[i + 1];
+
+      // 매수-매도 쌍만 처리
+      if (current.position === 'buy' && next.position === 'sell') {
         markers.push({
-          time: point.time,
+          time: current.time,
           position: 'belowBar',
           color: '#26a69a',
           shape: 'circle',
           text: `▲ ${tradeIdRef.current}`,
-          size: 3,
-          yOffset: offset * 25  // 마커 간 수직 간격
+          size: 3
         });
-        markerGroups.set(timeKey, offset + 1);
 
-        // 매도 마커 찾기
-        const nextSell = crossPoints.slice(i + 1).find(p => p.position === 'sell');
-        if (nextSell) {
-          const sellTimeKey = nextSell.time as number;
-          const sellOffset = markerGroups.get(sellTimeKey) || 0;
-          
-          markers.push({
-            time: nextSell.time,
-            position: 'aboveBar',
-            color: '#ef5350',
-            shape: 'circle',
-            text: `▼ ${tradeIdRef.current}`,
-            size: 3,
-            yOffset: sellOffset * 25  // 마커 간 수직 간격
-          });
-          markerGroups.set(sellTimeKey, sellOffset + 1);
-          tradeIdRef.current++;
-        }
+        markers.push({
+          time: next.time,
+          position: 'aboveBar',
+          color: '#ef5350',
+          shape: 'circle',
+          text: `▼ ${tradeIdRef.current}`,
+          size: 3
+        });
+
+        tradeIdRef.current++;
+        i++; // 다음 매도 신호는 건너뛰기
       }
     }
     
@@ -263,7 +325,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // 날짜 범위 변경 핸들러
   const handleDateRangeChange = (start: Date) => {
     // 선택한 시간을 그대로 사용
-    const endTime = new Date(start.getTime() + 30 * 60 * 1000); // 30분 후
+    const endTime = new Date(start.getTime() + 6*60 * 60 * 1000); // 30분 후
 
     setDateRange({ 
       startDate: start,
@@ -466,6 +528,15 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       timeScale: {
         timeVisible: true,
         secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
+        tickMarkFormatter: (time: number) => {
+          const date = new Date(time * 1000);
+          return date.toLocaleTimeString('ko-KR', {
+            timeZone: 'Asia/Seoul',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          });
+        }
       },
       rightPriceScale: {
         scaleMargins: {
@@ -732,49 +803,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       time: candle.time,
       value: (ema = candle.close * k + ema * (1 - k)),
     }));
-  };
-
-  // 매수/매도 신호 생성 및 거래 내역 기록 로직
-  const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
-    const crossPoints: CrossPoint[] = [];
-    let lastAction: 'buy' | 'sell' | null = null;
-    let openTrade = false; // 현재 열린 거래가 있는지 추적
-
-    for (let i = 1; i < thirtyEMA.length; i++) {
-      const prevThirty = thirtyEMA[i - 1].value;
-      const prevForty = fortyEMA[i - 1].value;
-      const prevSixty = sixtyEMA[i - 1].value;
-      const currThirty = thirtyEMA[i].value;
-      const currForty = fortyEMA[i].value;
-      const currSixty = sixtyEMA[i].value;
-
-      // 30MA와 40MA가 60MA 이상일 때만 매수
-      if (!openTrade && currThirty > currSixty && currForty > currSixty) {
-        if (prevThirty <= prevForty && currThirty > currForty && lastAction !== 'buy') {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'buy',
-            value: currThirty,
-          });
-          lastAction = 'buy';
-          openTrade = true; // 거래 시작
-        }
-      }
-      // 30MA와 40MA가 60MA를 하방 돌파한 경우에만 매도
-      else if (openTrade && currThirty < currSixty && currForty < currSixty) {
-        if (prevThirty >= prevSixty && currThirty < currSixty && lastAction !== 'sell') {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'sell',
-            value: currThirty,
-          });
-          lastAction = 'sell';
-          openTrade = false; // 거래 종료
-        }
-      }
-    }
-
-    return crossPoints;
   };
 
   // 백테스팅 결과 계산 함수
