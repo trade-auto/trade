@@ -138,7 +138,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   
   // 날짜 선택을 위한 인터페이스 추가
   const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: new Date(Date.now() - 30 * 60 * 1000), // 10분 전
+    startDate: new Date(Date.now() - 10 * 60 * 1000), // 10분 전
     endDate: new Date() // 현재 시간
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -225,10 +225,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       endDate: new Date() // 항상 현재 시간으로 설정
     });
     loadAllData(koreanTime, new Date());
-
-    // 디버깅을 위해 콘솔에 시간 출력
-    console.log('Start Date:', new Date(dateRange.startDate).toLocaleString());
-    console.log('End Date:', new Date(dateRange.endDate).toLocaleString());
   };
 
   // 전체 데이터 로드 함수
@@ -256,8 +252,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         const logicalRange = timeScale.getVisibleLogicalRange();
         const scrollPosition = timeScale.scrollPosition();
 
-        // 기존 데이터와 새 데이터를 모두 Map에 추가
+        // 중복 제거를 위해 Map 사용
         const uniqueDataMap = new Map<number, ExtendedCandlestickData>();
+        
+        // 기존 데이터와 새 데이터를 모두 Map에 추가
         [...allCandleData, ...newData].forEach(item => {
           uniqueDataMap.set(item.time as number, item);
         });
@@ -451,25 +449,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       priceScaleId: 'volume',
     });
     volumeSeriesRef.current = volumeSeries;
-
-    // 추가: 이동평균선 시리즈 생성
-    const threeEMASeries = chart.addSeries(LineSeries, {
-      color: '#FF0000', // 3EMA 색상
-      lineWidth: 2,
-    });
-    threeEMASeriesRef.current = threeEMASeries;
-
-    const sixEMASeries = chart.addSeries(LineSeries, {
-      color: '#00FF00', // 6EMA 색상
-      lineWidth: 2,
-    });
-    sixEMASeriesRef.current = sixEMASeries;
-
-    const twentyEMASeries = chart.addSeries(LineSeries, {
-      color: '#0000FF', // 20EMA 색상
-      lineWidth: 2,
-    });
-    twentyEMASeriesRef.current = twentyEMASeries;
 
     // Load initial data
     loadAllData(dateRange.startDate, dateRange.endDate);

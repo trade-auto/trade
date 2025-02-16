@@ -20,6 +20,8 @@ import {
   HistogramStyleOptions,
   SeriesOptionsCommon,
 } from 'lightweight-charts';
+import DatePicker from 'react-datepicker';
+import "react-datepicker/dist/react-datepicker.css";
 
 interface ChartProps {
   symbol: string;
@@ -217,18 +219,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
   // 날짜 범위 변경 핸들러
   const handleDateRangeChange = (start: Date) => {
-    // 입력받은 시간을 한국 시간으로 변환
-    const koreanTime = new Date(start.getTime() + (9 * 60 * 60 * 1000));
-    
-    setDateRange({ 
-      startDate: koreanTime,
-      endDate: new Date() // 항상 현재 시간으로 설정
-    });
-    loadAllData(koreanTime, new Date());
+    // 선택한 시간을 그대로 사용
+    const endTime = new Date(start.getTime() + 30 * 60 * 1000); // 30분 후
 
-    // 디버깅을 위해 콘솔에 시간 출력
-    console.log('Start Date:', new Date(dateRange.startDate).toLocaleString());
-    console.log('End Date:', new Date(dateRange.endDate).toLocaleString());
+    setDateRange({ 
+      startDate: start,
+      endDate: endTime
+    });
+    
+    // API 호출 시에도 선택한 시간을 그대로 사용
+    loadAllData(start, endTime);
   };
 
   // 전체 데이터 로드 함수
@@ -835,15 +835,24 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       <div className="mb-4">
         <div className="bg-gray-800 p-4 rounded-lg">
           <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
-          <input
-            type="datetime-local"
-            value={new Date(dateRange.startDate.getTime() - (9 * 60 * 60 * 1000)).toISOString().slice(0, 16)}
-            onChange={(e) => {
-              const selectedDate = new Date(e.target.value);
-              handleDateRangeChange(selectedDate);
+          <DatePicker
+            selected={dateRange.startDate}
+            onChange={(date: Date | null) => {
+              if (date) handleDateRangeChange(date);
             }}
-            max={new Date().toISOString().slice(0, 16)}
+            showTimeSelect
+            timeFormat="HH:mm"
+            timeIntervals={1}
+            timeCaption="시간"
+            dateFormat="yyyy-MM-dd HH:mm"
+            maxDate={new Date()}
             className="bg-gray-700 text-white p-2 rounded w-full"
+            popperClassName="react-datepicker-popper"
+            customInput={
+              <input
+                className="bg-gray-700 text-white p-2 rounded w-full"
+              />
+            }
           />
         </div>
       </div>
