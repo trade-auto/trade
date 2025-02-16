@@ -152,29 +152,42 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // 마커 생성을 위한 공통 함수 수정
   const createTradeMarkers = (crossPoints: CrossPoint[]): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
+    const markerGroups = new Map<number, number>(); // 같은 시간대의 마커 개수를 추적
     
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
       if (point.position === 'buy') {
+        const timeKey = point.time as number;
+        const offset = markerGroups.get(timeKey) || 0;
+        
+        // 매수 마커
         markers.push({
           time: point.time,
           position: 'belowBar',
           color: '#26a69a',
           shape: 'circle',
-          text: `▲ ${tradeIdRef.current}`, // 큰 유니코드 화살표 사용
-          size: 3
+          text: `▲ ${tradeIdRef.current}`,
+          size: 3,
+          yOffset: offset * 25  // 마커 간 수직 간격
         });
+        markerGroups.set(timeKey, offset + 1);
 
+        // 매도 마커 찾기
         const nextSell = crossPoints.slice(i + 1).find(p => p.position === 'sell');
         if (nextSell) {
+          const sellTimeKey = nextSell.time as number;
+          const sellOffset = markerGroups.get(sellTimeKey) || 0;
+          
           markers.push({
             time: nextSell.time,
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'circle',
-            text: `▼ ${tradeIdRef.current}`, // 큰 유니코드 화살표 사용
-            size: 3
+            text: `▼ ${tradeIdRef.current}`,
+            size: 3,
+            yOffset: sellOffset * 25  // 마커 간 수직 간격
           });
+          markerGroups.set(sellTimeKey, sellOffset + 1);
           tradeIdRef.current++;
         }
       }
@@ -441,7 +454,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       layout: {
         background: { color: '#1E1E1E' },
         textColor: '#DDD',
-        fontSize: 16,  // 기본 폰트 크기 증가
+        fontFamily: 'Roboto, Ubuntu, Arial, sans-serif',
+        fontSize: 50,
       },
       grid: {
         vertLines: { color: '#2B2B2B' },
@@ -452,14 +466,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       timeScale: {
         timeVisible: true,
         secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
-        fontSize: 16,  // 시간축 폰트 크기
       },
       rightPriceScale: {
-        fontSize: 16,  // 가격축 폰트 크기
         scaleMargins: {
           top: 0.1,
           bottom: 0.2,
         },
+        borderVisible: false,
       },
       crosshair: {
         mode: 1,
@@ -467,13 +480,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           width: 2,
           color: '#555',
           style: 0,
-          labelFontSize: 16,  // 크로스헤어 라벨 폰트 크기
         },
         horzLine: {
           width: 2,
           color: '#555',
           style: 0,
-          labelFontSize: 16,  // 크로스헤어 라벨 폰트 크기
         },
       },
     });
