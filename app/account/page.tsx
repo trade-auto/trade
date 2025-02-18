@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { getAccountBalance } from '../api/upbitAccount';
 import { OrderChanceInfo } from '../components/OrderChanceInfo';
 import { NavigationHeader } from '../components/NavigationHeader';
+import { OrderLimitSettings } from '../components/OrderLimitSettings';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -46,6 +47,11 @@ export default function AccountPage() {
     <main className="min-h-screen p-8 bg-gray-900">
       <div className="max-w-7xl mx-auto">
         <NavigationHeader currentPage="account" />
+
+        <h1 className="text-2xl font-bold text-white mb-8">계정 설정</h1>
+        
+        {/* 주문 제한 설정 */}
+        <OrderLimitSettings />
 
         {/* 심볼 선택 */}
         <div className="mb-8">

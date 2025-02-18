@@ -5,6 +5,12 @@ interface NavigationHeaderProps {
 }
 
 export function NavigationHeader({ currentPage }: NavigationHeaderProps) {
+  const navigation = [
+    { name: '모니터링', href: '/', current: currentPage === 'monitor' },
+    { name: '주문', href: '/order', current: currentPage === 'orders' },
+    { name: '계정', href: '/account', current: currentPage === 'account' },
+  ];
+
   return (
     <div className="flex flex-col space-y-4 mb-8">
       <h1 className="text-3xl font-bold text-white text-center">

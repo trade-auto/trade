@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { getAccountBalance } from './api/upbitAccount';
 import { OrderChanceInfo } from './components/OrderChanceInfo';
 import { NavigationHeader } from './components/NavigationHeader';
+import { OrderLimitSettings } from './components/OrderLimitSettings';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -154,6 +155,8 @@ export default function Home() {
             ))}
           </div>
         )}
+
+        <OrderLimitSettings />
       </div>
     </main>
   );
