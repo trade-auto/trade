@@ -5,10 +5,11 @@ import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 
 interface CreateOrderProps {
   market: string;
+  mode: 'live' | 'test';
   onOrderCreated?: () => void;
 }
 
-export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
+export function CreateOrder({ market, mode, onOrderCreated }: CreateOrderProps) {
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
   const [price, setPrice] = useState('');
@@ -102,11 +103,33 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
     }
   };
 
+  // 활성화된 퍼센트 상태 추가
+  const [activePercent, setActivePercent] = useState(25);
+
+  // 25% 금액에 해당하는 수량 계산 함수
+  const calculatePercentVolume = () => {
+    if (ma3Price && orderLimits.maxOrderPrice) {
+      const quarterAmount = orderLimits.maxOrderPrice * 0.25; // 최대 주문 금액의 25%
+      return (quarterAmount / ma3Price).toFixed(4);
+    }
+    return '0';
+  };
+
+  // 컴포넌트 마운트 시 25% 수량 자동 설정
+  useEffect(() => {
+    if (ma3Price) {
+      setVolume(calculatePercentVolume());
+    }
+  }, [ma3Price, orderLimits.maxOrderPrice]);
+
+  // 퍼센트 버튼 핸들러 수정
   const handlePercentage = (percent: number) => {
-    // 현재는 임의의 최대 수량을 사용. 실제로는 계좌 잔고에 따라 계산해야 함
-    const maxAmount = 1.0; // 예시 값
-    const calculatedVolume = (maxAmount * percent / 100).toFixed(4);
-    setVolume(calculatedVolume);
+    setActivePercent(percent);
+    if (ma3Price && orderLimits.maxOrderPrice) {
+      const amount = orderLimits.maxOrderPrice * (percent / 100);
+      const calculatedVolume = (amount / ma3Price).toFixed(4);
+      setVolume(calculatedVolume);
+    }
   };
 
   const handleReset = () => {
@@ -180,7 +203,19 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
 
   return (
     <div className="mb-8">
-      <h2 className="text-xl font-bold text-white mb-4">주문하기</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="text-xl font-bold text-white">주문하기</h2>
+        {mode === 'test' && (
+          <span className="px-2 py-1 bg-blue-500 text-white text-sm rounded-full">
+            테스트 모드
+          </span>
+        )}
+        {mode === 'live' && (
+          <span className="px-2 py-1 bg-red-500 text-white text-sm rounded-full">
+            실전 모드
+          </span>
+        )}
+      </div>
       
       <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-lg">
         <div className="grid grid-cols-2 gap-4 mb-4">
@@ -319,7 +354,10 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
             <input
               type="number"
               value={volume}
-              onChange={(e) => setVolume(e.target.value)}
+              onChange={(e) => {
+                setVolume(e.target.value);
+                setActivePercent(0); // 수동 입력 시 활성 퍼센트 초기화
+              }}
               placeholder="수량을 입력하세요"
               className="flex-1 px-4 py-2 bg-gray-700 text-white rounded"
               min="0"
@@ -327,48 +365,54 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
             />
             <button
               type="button"
-              onClick={() => {
-                if (currentPrice && price) {
-                  const suggestedVolume = (1000000 / Number(price)).toFixed(4);
-                  setVolume(suggestedVolume);
-                }
-              }}
-              className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded whitespace-nowrap"
-              disabled={!currentPrice || !price}
-            >
-              100만원
-            </button>
-            <button
-              type="button"
               onClick={() => handlePercentage(100)}
-              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+              className={`px-3 py-2 ${
+                activePercent === 100 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white rounded`}
             >
               최대
             </button>
             <button
               type="button"
               onClick={() => handlePercentage(50)}
-              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+              className={`px-3 py-2 ${
+                activePercent === 50 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white rounded`}
             >
               50%
             </button>
             <button
               type="button"
               onClick={() => handlePercentage(25)}
-              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+              className={`px-3 py-2 ${
+                activePercent === 25 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white rounded`}
             >
               25%
             </button>
             <button
               type="button"
               onClick={() => handlePercentage(10)}
-              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+              className={`px-3 py-2 ${
+                activePercent === 10 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white rounded`}
             >
               10%
             </button>
             <button
               type="button"
-              onClick={handleReset}
+              onClick={() => {
+                handleReset();
+                setActivePercent(0);
+              }}
               className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
             >
               초기화

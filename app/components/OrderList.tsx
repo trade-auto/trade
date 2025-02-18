@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { getOrderList } from '../api/upbitOrder';
 
 interface OrderListProps {
-  onSelectOrder: (uuid: string) => void;
+  mode: 'live' | 'test';
+  onSelectOrder?: (uuid: string) => void;
 }
 
-export function OrderList({ onSelectOrder }: OrderListProps) {
+export function OrderList({ mode, onSelectOrder = () => {} }: OrderListProps) {
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +35,11 @@ export function OrderList({ onSelectOrder }: OrderListProps) {
   };
 
   return (
-    <div className="mb-8">
+    <div className="bg-gray-800 p-4 rounded-lg">
+      <h2 className="text-xl font-bold text-white mb-4">
+        주문 목록 {mode === 'test' && <span className="text-blue-500 ml-2">(테스트 모드)</span>}
+      </h2>
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-white">주문 목록 조회</h2>
         <button
           onClick={() => setIsInputVisible(!isInputVisible)}
           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
