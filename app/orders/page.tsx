@@ -9,6 +9,7 @@ import { OrderListById } from '../components/OrderListById';
 import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
+import { CandlestickChart } from '../components/CandlestickChart5A8ok6';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -102,6 +103,12 @@ export default function OrdersPage() {
           mode={mode}
           onOrderCreated={handleOrderCreated}
         />
+
+        {/* 초봉 차트 섹션 */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-white mb-4">실시간 초봉 차트</h2>
+          <CandlestickChart symbol={selectedSymbol} chartType="seconds/60" />
+        </div>
 
         {/* 주문 목록 조회 섹션 */}
         <OrderList mode={mode} onSelectOrder={setSelectedOrderUuid} />
