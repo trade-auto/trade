@@ -140,7 +140,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   
   // 날짜 선택을 위한 인터페이스 추가
   const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: new Date(Date.now() - 60 * 60 * 1000), // 10분 전
+    startDate: new Date(Date.now() - 2*60 * 60 * 1000), // 10분 전
     endDate: new Date() // 현재 시간
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -152,68 +152,48 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // 매수/매도 신호 생성 로직 수정
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
-    let inPosition = false;
     let lastCrossTime = 0;
-    const minTimeBetweenSignals = 5; // 10에서 5로 줄임
+    let lastPosition: 'buy' | 'sell' | null = null;  // 마지막 포지션 추적
+    const minTimeBetweenSignals = 2;
 
-    // 추세 강도 판단 함수 수정
-    const getTrendStrength = (i: number, lookback: number) => {
-      let upCount = 0;
-      for (let j = 0; j < lookback; j++) {
-        if (i - j < 1) continue;
-        if (sixtyEMA[i - j].value > sixtyEMA[i - j - 1].value) upCount++;
-      }
-      return upCount / lookback;
-    };
-
-    for (let i = 3; i < thirtyEMA.length; i++) { // trendLookback을 3으로 줄임
+    for (let i = 3; i < thirtyEMA.length; i++) {
       const currentTime = thirtyEMA[i].time as number;
       const timeSinceLastCross = currentTime - lastCrossTime;
       
-      const prevThirty = thirtyEMA[i - 1].value;
-      const prevForty = fortyEMA[i - 1].value;
-      const prevSixty = sixtyEMA[i - 1].value;
-      const currThirty = thirtyEMA[i].value;
-      const currForty = fortyEMA[i].value;
-      const currSixty = sixtyEMA[i].value;
+      if (timeSinceLastCross >= minTimeBetweenSignals) {
+        const prevThirty = thirtyEMA[i - 1].value;
+        const prevForty = fortyEMA[i - 1].value;
+        const prevSixty = sixtyEMA[i - 1].value;
+        const currThirty = thirtyEMA[i].value;
+        const currForty = fortyEMA[i].value;
+        const currSixty = sixtyEMA[i].value;
 
-      const trendStrength = getTrendStrength(i, 3); // lookback을 3으로 설정
-
-      // 매수 조건 완화
-      if (!inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
-        const buyConditions = [
-          currThirty > currSixty, // 퍼센트 조건 제거
-          currForty > currSixty,
-          prevThirty <= prevForty && currThirty > currForty, // 골든크로스
-          trendStrength >= 0.5, // 50% 이상으로 완화
-        ];
-
-        if (buyConditions.every(condition => condition)) {
+        // 매수 조건 (이전 포지션이 매도이거나 없을 때만)
+        if ((lastPosition === 'sell' || lastPosition === null) &&
+            currThirty > currSixty && 
+            currForty > currSixty && 
+            prevThirty <= prevForty && 
+            currThirty > currForty) {
           crossPoints.push({
             time: thirtyEMA[i].time,
             position: 'buy',
             value: currThirty,
           });
-          inPosition = true;
+          lastPosition = 'buy';
           lastCrossTime = currentTime;
         }
-      }
-      // 매도 조건 완화
-      else if (inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
-        const sellConditions = [
-          currThirty < currSixty, // 퍼센트 조건 제거
-          currForty < currSixty,
-          prevThirty >= prevSixty && currThirty < currSixty, // 데드크로스
-          trendStrength <= 0.5, // 50% 이하로 완화
-        ];
-
-        if (sellConditions.every(condition => condition)) {
+        // 매도 조건 (이전 포지션이 매수일 때만)
+        else if (lastPosition === 'buy' &&
+                 currThirty < currSixty && 
+                 currForty < currSixty && 
+                 prevThirty >= prevSixty && 
+                 currThirty < currSixty) {
           crossPoints.push({
             time: thirtyEMA[i].time,
             position: 'sell',
             value: currThirty,
           });
-          inPosition = false;
+          lastPosition = 'sell';
           lastCrossTime = currentTime;
         }
       }
@@ -222,36 +202,44 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     return crossPoints;
   };
 
-  // 마커 생성 함수 수정
+  // 마커 생성 함수도 수정
   const createTradeMarkers = (crossPoints: CrossPoint[]): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
+    let tradeId = 1;
+    let inTrade = false;
+    let buyPoint: CrossPoint | null = null;
     
-    for (let i = 0; i < crossPoints.length - 1; i++) {
-      const current = crossPoints[i];
-      const next = crossPoints[i + 1];
-
-      // 매수-매도 쌍만 처리
-      if (current.position === 'buy' && next.position === 'sell') {
+    for (let i = 0; i < crossPoints.length; i++) {
+      const point = crossPoints[i];
+      
+      if (!inTrade && point.position === 'buy') {
+        // 매수 시작
+        buyPoint = point;
+        inTrade = true;
+        
         markers.push({
-          time: current.time,
+          time: point.time,
           position: 'belowBar',
           color: '#26a69a',
-          shape: 'circle',
-          text: `▲ ${tradeIdRef.current}`,
-          size: 3
+          shape: 'arrowUp',
+          text: `매수 ${tradeId}`,
+          size: 4
         });
-
+      }
+      else if (inTrade && point.position === 'sell' && buyPoint) {
+        // 매도로 거래 종료
         markers.push({
-          time: next.time,
+          time: point.time,
           position: 'aboveBar',
           color: '#ef5350',
-          shape: 'circle',
-          text: `▼ ${tradeIdRef.current}`,
-          size: 3
+          shape: 'arrowDown',
+          text: `매도 ${tradeId}`,
+          size: 4
         });
-
-        tradeIdRef.current++;
-        i++; // 다음 매도 신호는 건너뛰기
+        
+        inTrade = false;
+        buyPoint = null;
+        tradeId++;
       }
     }
     
@@ -517,7 +505,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         background: { color: '#1E1E1E' },
         textColor: '#DDD',
         fontFamily: 'Roboto, Ubuntu, Arial, sans-serif',
-        fontSize: 50,
+        fontSize: 14,
       },
       grid: {
         vertLines: { color: '#2B2B2B' },
@@ -525,18 +513,29 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       },
       width: container.current.clientWidth,
       height: 400,
+      localization: {
+        timeFormatter: (time: number) => {
+          const date = new Date(time * 1000);
+          const kstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+          return kstDate.toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          });
+        },
+      },
       timeScale: {
         timeVisible: true,
         secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
         tickMarkFormatter: (time: number) => {
           const date = new Date(time * 1000);
-          return date.toLocaleTimeString('ko-KR', {
-            timeZone: 'Asia/Seoul',
+          const kstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+          return kstDate.toLocaleTimeString('ko-KR', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false
           });
-        }
+        },
       },
       rightPriceScale: {
         scaleMargins: {
@@ -551,6 +550,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           width: 2,
           color: '#555',
           style: 0,
+          visible: true,
         },
         horzLine: {
           width: 2,

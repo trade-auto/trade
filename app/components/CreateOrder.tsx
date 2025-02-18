@@ -1,0 +1,391 @@
+import { useState, useEffect } from 'react';
+import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
+
+interface CreateOrderProps {
+  market: string;
+  onOrderCreated?: () => void;
+}
+
+export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
+  const [side, setSide] = useState<'bid' | 'ask'>('bid');
+  const [volume, setVolume] = useState('');
+  const [price, setPrice] = useState('');
+  const [ordType, setOrdType] = useState<'limit' | 'price' | 'market'>('limit');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [ma3Price, setMa3Price] = useState<number | null>(null);
+  const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
+  const [priceHistory, setPriceHistory] = useState<number[]>([]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!volume || !price) {
+      setError('수량과 가격을 입력해주세요.');
+      return;
+    }
+
+    // 주문 금액 계산
+    const orderAmount = Number(price) * Number(volume);
+
+    // 주문 제한 설정 확인
+    const savedSettings = localStorage.getItem('orderLimitSettings');
+    if (savedSettings) {
+      const { minOrderPrice, maxOrderPrice } = JSON.parse(savedSettings);
+      
+      if (orderAmount < minOrderPrice) {
+        setError(`최소 주문 금액(${minOrderPrice.toLocaleString()} KRW)보다 작습니다.`);
+        return;
+      }
+
+      if (orderAmount > maxOrderPrice) {
+        setError(`최대 주문 금액(${maxOrderPrice.toLocaleString()} KRW)을 초과했습니다.`);
+        return;
+      }
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      await createOrder({
+        market,
+        side,
+        volume,
+        price,
+        ord_type: ordType,
+      });
+
+      // 입력 필드 초기화
+      setVolume('');
+      setPrice('');
+      
+      // 주문 생성 후 콜백 실행
+      if (onOrderCreated) {
+        onOrderCreated();
+      }
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePercentage = (percent: number) => {
+    // 현재는 임의의 최대 수량을 사용. 실제로는 계좌 잔고에 따라 계산해야 함
+    const maxAmount = 1.0; // 예시 값
+    const calculatedVolume = (maxAmount * percent / 100).toFixed(4);
+    setVolume(calculatedVolume);
+  };
+
+  const handleReset = () => {
+    setVolume('');
+  };
+
+  // 가격 정보 업데이트 함수
+  const updatePrices = async () => {
+    try {
+      setPriceUpdateError(null);
+      const [current, ma3] = await Promise.all([
+        getCurrentPrice(market),
+        get3SecMA(market)
+      ]);
+      setCurrentPrice(current);
+      setMa3Price(ma3);
+
+      // 가격 히스토리 업데이트
+      setPriceHistory(prev => {
+        const newHistory = [...prev, current].slice(-3); // 최근 3개 가격만 유지
+        return newHistory;
+      });
+
+      // 지정가 주문이 아닐 때는 현재가로 자동 업데이트
+      if (ordType !== 'limit' && current) {
+        setPrice(current.toString());
+      }
+    } catch (error: any) {
+      setPriceUpdateError('가격 정보 업데이트 실패');
+      console.error('가격 업데이트 중 오류:', error);
+    }
+  };
+
+  // 3초 MA 가격 변경 시 현재가도 업데이트
+  const handleMa3PriceClick = () => {
+    if (ma3Price) {
+      setPrice(ma3Price.toString());
+      setCurrentPrice(ma3Price); // 현재가도 3초 MA 가격으로 업데이트
+    }
+  };
+
+  // 주기적으로 가격 업데이트 (1초마다)
+  useEffect(() => {
+    updatePrices();
+    const interval = setInterval(updatePrices, 1000); // 1초마다 업데이트
+    
+    return () => clearInterval(interval);
+  }, [market, ordType]); // ordType이 변경될 때도 다시 설정
+
+  // 주문 방식이 변경될 때 가격 자동 설정
+  useEffect(() => {
+    if (ordType !== 'limit' && currentPrice) {
+      setPrice(currentPrice.toString());
+    }
+  }, [ordType, currentPrice]);
+
+  // 가격 변화 표시 함수
+  const getPriceChangeStyle = (currentPrice: number, prevPrice: number | null) => {
+    if (!prevPrice) return 'text-white';
+    return currentPrice > prevPrice ? 'text-green-500' : currentPrice < prevPrice ? 'text-red-500' : 'text-white';
+  };
+
+  // 실시간 주문 금액 계산을 위한 state 추가
+  const [orderAmount, setOrderAmount] = useState<number>(0);
+
+  // 가격이나 수량이 변경될 때마다 주문 금액 업데이트
+  useEffect(() => {
+    const calculatedAmount = Number(price) * Number(volume);
+    setOrderAmount(calculatedAmount);
+  }, [price, volume]);
+
+  return (
+    <div className="mb-8">
+      <h2 className="text-xl font-bold text-white mb-4">주문하기</h2>
+      
+      <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-lg">
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          {/* 주문 종류 선택 */}
+          <div>
+            <label className="block text-gray-400 mb-2">주문 종류</label>
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={() => setSide('bid')}
+                className={`flex-1 px-4 py-2 rounded ${
+                  side === 'bid' 
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                매수
+              </button>
+              <button
+                type="button"
+                onClick={() => setSide('ask')}
+                className={`flex-1 px-4 py-2 rounded ${
+                  side === 'ask' 
+                    ? 'bg-red-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                매도
+              </button>
+            </div>
+          </div>
+
+          {/* 주문 방식 선택 */}
+          <div>
+            <label className="block text-gray-400 mb-2">주문 방식</label>
+            <select
+              value={ordType}
+              onChange={(e) => setOrdType(e.target.value as 'limit' | 'price' | 'market')}
+              className="w-full px-4 py-2 bg-gray-700 text-white rounded"
+            >
+              <option value="limit">지정가</option>
+              <option value="price">시장가(매수)</option>
+              <option value="market">시장가(매도)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 가격 입력 */}
+        <div className="mb-4">
+          <label className="block text-gray-400 mb-2">가격 (KRW)</label>
+          <div className="space-y-2">
+            <div className="flex space-x-2">
+              <input
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="가격을 입력하세요"
+                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded"
+                min="0"
+                step="1"
+                disabled={ordType !== 'limit'}
+              />
+              {currentPrice && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setPrice(currentPrice.toString())}
+                    className={`px-4 py-2 ${
+                      ordType !== 'limit' 
+                        ? 'bg-gray-600 cursor-not-allowed' 
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    } text-white rounded whitespace-nowrap`}
+                    disabled={ordType !== 'limit'}
+                  >
+                    현재가: {currentPrice.toLocaleString()} KRW
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrice('')}
+                    className={`px-4 py-2 ${
+                      ordType !== 'limit'
+                        ? 'bg-gray-600 cursor-not-allowed'
+                        : 'bg-gray-600 hover:bg-gray-700'
+                    } text-white rounded`}
+                    disabled={ordType !== 'limit'}
+                  >
+                    초기화
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* 가격 히스토리 표시 */}
+            {priceHistory.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 bg-gray-700 p-2 rounded">
+                <div className="text-center">
+                  <div className="text-xs text-gray-400">이전가</div>
+                  <div className={getPriceChangeStyle(priceHistory[0], null)}>
+                    {priceHistory[0]?.toLocaleString() || '-'}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-400">현재가</div>
+                  <div className={getPriceChangeStyle(priceHistory[1], priceHistory[0])}>
+                    {priceHistory[1]?.toLocaleString() || '-'}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-400">이후가</div>
+                  <div className={getPriceChangeStyle(priceHistory[2], priceHistory[1])}>
+                    {priceHistory[2]?.toLocaleString() || '-'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {ma3Price && ordType === 'limit' && (
+              <button
+                type="button"
+                onClick={handleMa3PriceClick}
+                className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded"
+              >
+                3초 중간가: {ma3Price.toLocaleString()} KRW
+              </button>
+            )}
+            {priceUpdateError && (
+              <div className="text-red-500 text-sm">{priceUpdateError}</div>
+            )}
+          </div>
+        </div>
+
+        {/* 수량 입력 및 퍼센트 버튼 */}
+        <div className="mb-4">
+          <label className="block text-gray-400 mb-2">수량</label>
+          <div className="flex space-x-2">
+            <input
+              type="number"
+              value={volume}
+              onChange={(e) => setVolume(e.target.value)}
+              placeholder="수량을 입력하세요"
+              className="flex-1 px-4 py-2 bg-gray-700 text-white rounded"
+              min="0"
+              step="0.0001"
+            />
+            <button
+              type="button"
+              onClick={() => handlePercentage(100)}
+              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+            >
+              최대
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePercentage(50)}
+              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+            >
+              50%
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePercentage(25)}
+              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+            >
+              25%
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePercentage(10)}
+              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+            >
+              10%
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+            >
+              초기화
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-600 text-white rounded">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          className={`w-full py-2 rounded font-bold ${
+            isLoading 
+              ? 'bg-gray-600' 
+              : side === 'bid'
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-red-600 hover:bg-red-700'
+          } text-white`}
+          disabled={isLoading}
+        >
+          {isLoading ? '주문 처리 중...' : side === 'bid' ? '매수하기' : '매도하기'}
+        </button>
+      </form>
+
+      {/* 주문 금액 표시 */}
+      {orderAmount > 0 && (
+        <div className="mt-4 p-4 bg-gray-700 rounded">
+          <div className="text-gray-400">예상 주문 금액</div>
+          <div className="text-xl font-bold text-white">
+            {orderAmount.toLocaleString()} KRW
+          </div>
+          
+          {/* 주문 제한 표시 */}
+          {(() => {
+            const savedSettings = localStorage.getItem('orderLimitSettings');
+            if (savedSettings) {
+              const { minOrderPrice, maxOrderPrice } = JSON.parse(savedSettings);
+              if (orderAmount < minOrderPrice) {
+                return (
+                  <div className="text-red-500 text-sm mt-2">
+                    최소 주문 금액({minOrderPrice.toLocaleString()} KRW)보다 작습니다.
+                  </div>
+                );
+              }
+              if (orderAmount > maxOrderPrice) {
+                return (
+                  <div className="text-red-500 text-sm mt-2">
+                    최대 주문 금액({maxOrderPrice.toLocaleString()} KRW)을 초과했습니다.
+                  </div>
+                );
+              }
+            }
+            return null;
+          })()}
+        </div>
+      )}
+    </div>
+  );
+} 

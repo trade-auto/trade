@@ -5,9 +5,6 @@ import { useUpbitWebSocket } from './hooks/useUpbitWebSocket';
 import { CandlestickChart } from './components/CandlestickChart5A8ok6';
 import { useUpbitStore } from './store/useUpbitStore';
 import { useState } from 'react';
-import { getAccountBalance } from './api/upbitAccount';
-import { OrderChanceInfo } from './components/OrderChanceInfo';
-import { NavigationHeader } from './components/NavigationHeader';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -30,24 +27,11 @@ const CHART_TYPES = [
 // 추가: 차트 모드 상태 (combined vs non-combined)
 type ChartMode = "combined" | "non-combined";
 
-// 계좌 정보 인터페이스 추가
-interface AccountInfo {
-  currency: string;
-  balance: number;
-  avgBuyPrice: number;
-  unitCurrency: string;
-}
-
 export default function Home() {
   const [selectedSymbol, setSelectedSymbol] = useState('KRW-BTC');
   const [selectedChartType, setSelectedChartType] = useState('minutes/1');
   // 추가: 차트 모드 상태 변수 (기본은 non-combined)
   const [chartMode, setChartMode] = useState<ChartMode>("non-combined");
-  
-  // 계좌 정보 상태 추가
-  const [accounts, setAccounts] = useState<AccountInfo[]>([]);
-  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
-  const [accountError, setAccountError] = useState<string | null>(null);
   
   // 선택된 심볼에 대해서만 WebSocket 연결
   useUpbitWebSocket(selectedSymbol);
@@ -55,26 +39,12 @@ export default function Home() {
   const { isConnected, prices } = useUpbitStore();
   const lastUpdated = prices[selectedSymbol]?.lastUpdated ?? '-';
   
-  // 계좌 정보 로드 함수
-  const loadAccountInfo = async () => {
-    try {
-      setIsLoadingAccounts(true);
-      setAccountError(null);
-      const accountData = await getAccountBalance();
-      setAccounts(accountData);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      setAccountError(`계좌 정보 로딩 실패: ${errorMsg}`);
-      console.error('계좌 정보 로딩 오류:', error);
-    } finally {
-      setIsLoadingAccounts(false);
-    }
-  };
-
   return (
     <main className="min-h-screen p-8 bg-gray-900">
       <div className="max-w-7xl mx-auto">
-        <NavigationHeader currentPage="monitor" />
+        <h1 className="text-3xl font-bold text-white mb-8">
+          Upbit 실시간 모니터링
+        </h1>
         
         {/* 심볼 선택 */}
         <div className="mb-8">

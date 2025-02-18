@@ -104,8 +104,93 @@ interface Trade {
 // 날짜 선택을 위한 인터페이스 추가
 interface DateRange {
   startDate: Date;
-  endDate: Date;
+  endDate: Date | null;
 }
+
+// BusinessDay 타입 정의 (일봉, 월봉, 년봉 데이터가 이 형식으로 올 경우)
+interface BusinessDay {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/**
+ * chartType에 따라 초기 날짜 범위를 반환한다.
+ * chartType이 "seconds/"이면 최근 10분, "일봉", "월봉", "년봉" 문자열 포함 여부로 처리
+ */
+const getInitialDateRange = (type: string): DateRange => {
+  const now = new Date();
+  let startDate: Date;
+  
+  if (type.startsWith('seconds/')) {
+    startDate = new Date(now.getTime() - 30 * 60 * 1000);
+  } else if (type === 'minutes/1') {
+    startDate = new Date(now.getTime() - 60 * 60 * 1000);
+  } else {
+    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  }
+  
+  return {
+    startDate,
+    endDate: null
+  };
+};
+
+/**
+ * chartType에 따라 x축의 tick 표시 형식을 반환한다.
+ * - 초봉: HH:mm:ss  
+ * - 일봉: YYYY.MM.DD HH:mm  
+ * - 월봉: YYYY년 M월  
+ * - 년봉: YYYY년  
+ * - 기본 분봉: HH:mm  
+ *
+ * 데이터의 시간 값은 timestamp(number) 또는 BusinessDay 객체일 수 있으므로
+ * 이를 구분하여 Date 객체로 변환한 후 포맷팅한다.
+ */
+const getTickMarkFormatter = (chartType: string): ((time: number | BusinessDay, tickMarkType?: any) => string) => {
+  return (time: number | BusinessDay): string => {
+    let date: Date;
+    if (typeof time === "number") {
+      // timestamp (초 단위)인 경우
+      date = new Date(time * 1000);
+    } else {
+      // BusinessDay 객체인 경우
+      date = new Date(time.year, time.month - 1, time.day);
+    }
+    if (chartType.indexOf("일봉") !== -1) {
+      // 일봉: 날짜와 시간 모두 표시 (예, "2023.10.12 09:30")
+      const datePart = date.toLocaleDateString("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const timePart = date.toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      return `${datePart} ${timePart}`;
+    } else if (chartType.indexOf("월봉") !== -1) {
+      // 월봉: 연도와 월 (예, "2023년 10월")
+      return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
+    } else if (chartType.indexOf("년봉") !== -1) {
+      // 년봉: 연도만 (예, "2023년")
+      return `${date.getFullYear()}년`;
+    } else if (chartType.indexOf("seconds") !== -1) {
+      // 초봉: HH:mm:ss
+      return date.toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } else {
+      // 기본적으로 분봉 등: HH:mm
+      return date.toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+  };
+};
 
 export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) => {
   const container = useRef<HTMLDivElement>(null);
@@ -138,120 +223,103 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const [fortyPeriod, setFortyPeriod] = useState<number>(40);    // 중기
   const [sixtyPeriod, setSixtyPeriod] = useState<number>(60);    // 장기
   
-  // 날짜 선택을 위한 인터페이스 추가
-  const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: new Date(Date.now() - 60 * 60 * 1000), // 10분 전
-    endDate: new Date() // 현재 시간
-  });
+  // 초기 날짜 범위 상태를 chartType에 따라 설정
+  const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   
   // tradeId를 컴포넌트 레벨 변수로 선언
   const tradeIdRef = useRef<number>(1);
 
+  // 상태 추가
+  const [isDataLoadingEnabled, setIsDataLoadingEnabled] = useState<boolean>(false);
+
   // 매수/매도 신호 생성 로직 수정
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
-    let inPosition = false;
-    let lastCrossTime = 0;
-    const minTimeBetweenSignals = 5; // 10에서 5로 줄임
-
-    // 추세 강도 판단 함수 수정
-    const getTrendStrength = (i: number, lookback: number) => {
-      let upCount = 0;
-      for (let j = 0; j < lookback; j++) {
-        if (i - j < 1) continue;
-        if (sixtyEMA[i - j].value > sixtyEMA[i - j - 1].value) upCount++;
-      }
-      return upCount / lookback;
-    };
-
-    for (let i = 3; i < thirtyEMA.length; i++) { // trendLookback을 3으로 줄임
-      const currentTime = thirtyEMA[i].time as number;
-      const timeSinceLastCross = currentTime - lastCrossTime;
-      
+    let lastAction: 'buy' | 'sell' | null = null;
+    let lastActionTime: number = 0; // 마지막 거래 시간 추적
+    
+    // 데이터 안정화를 위한 시작 시간 설정 (첫 데이터 + 30초)
+    const stabilizationTime = (thirtyEMA[0].time as number) + 30;
+    
+    // 첫 번째 데이터는 건너뛰고 시작
+    for (let i = 1; i < thirtyEMA.length; i++) {
       const prevThirty = thirtyEMA[i - 1].value;
-      const prevForty = fortyEMA[i - 1].value;
-      const prevSixty = sixtyEMA[i - 1].value;
       const currThirty = thirtyEMA[i].value;
-      const currForty = fortyEMA[i].value;
       const currSixty = sixtyEMA[i].value;
-
-      const trendStrength = getTrendStrength(i, 3); // lookback을 3으로 설정
-
-      // 매수 조건 완화
-      if (!inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
-        const buyConditions = [
-          currThirty > currSixty, // 퍼센트 조건 제거
-          currForty > currSixty,
-          prevThirty <= prevForty && currThirty > currForty, // 골든크로스
-          trendStrength >= 0.5, // 50% 이상으로 완화
-        ];
-
-        if (buyConditions.every(condition => condition)) {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'buy',
-            value: currThirty,
-          });
-          inPosition = true;
-          lastCrossTime = currentTime;
-        }
+      const prevSixty = sixtyEMA[i - 1].value;
+      const currentTime = thirtyEMA[i].time as number;
+      
+      // 안정화 시간 이전이면 스킵
+      if (currentTime < stabilizationTime) continue;
+      
+      // 마지막 거래 후 30초가 지나지 않았으면 스킵
+      if (currentTime - lastActionTime < 30) continue;
+      
+      // 매수 조건: 30MA가 60MA를 상향돌파
+      if (prevThirty <= prevSixty && currThirty > currSixty && lastAction !== 'buy') {
+        crossPoints.push({
+          time: thirtyEMA[i].time,
+          position: 'buy',
+          value: currThirty,
+        });
+        lastAction = 'buy';
+        lastActionTime = currentTime;
       }
-      // 매도 조건 완화
-      else if (inPosition && timeSinceLastCross >= minTimeBetweenSignals) {
-        const sellConditions = [
-          currThirty < currSixty, // 퍼센트 조건 제거
-          currForty < currSixty,
-          prevThirty >= prevSixty && currThirty < currSixty, // 데드크로스
-          trendStrength <= 0.5, // 50% 이하로 완화
-        ];
-
-        if (sellConditions.every(condition => condition)) {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'sell',
-            value: currThirty,
-          });
-          inPosition = false;
-          lastCrossTime = currentTime;
-        }
+      // 매도 조건: 30MA가 60MA를 하향돌파
+      else if (prevThirty >= prevSixty && currThirty < currSixty && lastAction !== 'sell') {
+        crossPoints.push({
+          time: thirtyEMA[i].time,
+          position: 'sell',
+          value: currThirty,
+        });
+        lastAction = 'sell';
+        lastActionTime = currentTime;
       }
     }
-
+    
     return crossPoints;
   };
 
   // 마커 생성 함수 수정
   const createTradeMarkers = (crossPoints: CrossPoint[]): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
+    let tradeId = 1;
+    let inTrade = false;
+    let buyPoint: CrossPoint | null = null;
     
-    for (let i = 0; i < crossPoints.length - 1; i++) {
-      const current = crossPoints[i];
-      const next = crossPoints[i + 1];
-
-      // 매수-매도 쌍만 처리
-      if (current.position === 'buy' && next.position === 'sell') {
+    for (let i = 0; i < crossPoints.length; i++) {
+      const point = crossPoints[i];
+      
+      if (!inTrade && point.position === 'buy') {
+        // 매수 시작
+        buyPoint = point;
+        inTrade = true;
+        
         markers.push({
-          time: current.time,
+          time: point.time,
           position: 'belowBar',
           color: '#26a69a',
-          shape: 'circle',
-          text: `▲ ${tradeIdRef.current}`,
-          size: 3
+          shape: 'arrowUp',
+          text: `매수 ${tradeId}`,
+          size: 4
         });
-
+      }
+      else if (inTrade && point.position === 'sell' && buyPoint) {
+        // 매도로 거래 종료
         markers.push({
-          time: next.time,
+          time: point.time,
           position: 'aboveBar',
           color: '#ef5350',
-          shape: 'circle',
-          text: `▼ ${tradeIdRef.current}`,
-          size: 3
+          shape: 'arrowDown',
+          text: `매도 ${tradeId}`,
+          size: 4
         });
-
-        tradeIdRef.current++;
-        i++; // 다음 매도 신호는 건너뛰기
+        
+        inTrade = false;
+        buyPoint = null;
+        tradeId++;
       }
     }
     
@@ -313,30 +381,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   // 차트 타입에 따른 데이터 개수 결정
   const getChartCount = (type: string) => {
     if (type.startsWith('seconds/')) {
-      return 200; // 초봉은 최대 200개까지 요청 가능
+      return 1500; // 초봉 데이터 개수 증가 (330 -> 500)
     }
     const minutes = parseInt(type);
-    if (minutes <= 3) return 430;     // 분봉 (기존 200개에서 30개 추가)
-    if (minutes <= 240) return 430;   // 일봉 (기존 200개에서 30개 추가)
-    if (minutes === 7200) return 60;  // 월봉 (기존 30개에서 30개 추가)
-    return 40;                        // 년봉 (기존 10개에서 30개 추가)
+    if (minutes <= 3) return 430;     // 분봉
+    if (minutes === 240) return 200;  // 일봉 (200일)
+    if (minutes === 7200) return 200; // 월봉 (200개월)
+    return 30;                        // 년봉 (30년)
   };
 
-  // 날짜 범위 변경 핸들러
-  const handleDateRangeChange = (start: Date) => {
-    // 선택한 시간을 그대로 사용
-    const endTime = new Date(start.getTime() + 6*60 * 60 * 1000); // 30분 후
-
-    setDateRange({ 
-      startDate: start,
-      endDate: endTime
-    });
-    
-    // API 호출 시에도 선택한 시간을 그대로 사용
-    loadAllData(start, endTime);
-  };
-
-  // 전체 데이터 로드 함수
+  // 전체 데이터 로드 함수를 먼저 선언
   const loadAllData = useCallback(async (startDate: Date, endDate: Date) => {
     if (!candleSeriesRef.current) return;
     
@@ -501,6 +555,29 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     }
   }, [symbol, chartType, thirtyPeriod, fortyPeriod, sixtyPeriod]);
 
+  // 그 다음에 resetAndLoadData 함수 선언
+  const resetAndLoadData = useCallback(async (start: Date, end: Date) => {
+    // 차트 초기화
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.setData([]);
+    }
+    if (volumeSeriesRef.current) {
+      volumeSeriesRef.current.setData([]);
+    }
+    if (threeEMASeriesRef.current) {
+      threeEMASeriesRef.current.setData([]);
+    }
+    if (sixEMASeriesRef.current) {
+      sixEMASeriesRef.current.setData([]);
+    }
+    if (twentyEMASeriesRef.current) {
+      twentyEMASeriesRef.current.setData([]);
+    }
+
+    // 데이터 새로 로드
+    await loadAllData(start, end);
+  }, [loadAllData]);
+
   // 차트 초기화
   useEffect(() => {
     if (!container.current) return;
@@ -527,16 +604,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       height: 400,
       timeScale: {
         timeVisible: true,
-        secondsVisible: chartType.startsWith('seconds/') || parseInt(chartType) <= 240,
-        tickMarkFormatter: (time: number) => {
-          const date = new Date(time * 1000);
-          return date.toLocaleTimeString('ko-KR', {
-            timeZone: 'Asia/Seoul',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          });
-        }
+        secondsVisible: false,
+        tickMarkFormatter: getTickMarkFormatter(chartType),
       },
       rightPriceScale: {
         scaleMargins: {
@@ -601,7 +670,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     twentyEMASeriesRef.current = twentyEMASeries;
 
     // Load initial data
-    loadAllData(dateRange.startDate, dateRange.endDate);
+    if (dateRange.startDate && dateRange.endDate) {
+      // 자동 로드 대신 사용자가 선택한 날짜로 데이터 로드
+      loadAllData(dateRange.startDate, dateRange.endDate);
+    }
 
     // Handle window resize
     const handleResize = () => {
@@ -622,7 +694,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         chartRef.current = null;
       }
     };
-  }, [symbol, chartType]); // Re-run if symbol or chartType changes
+  }, [loadAllData]);
 
   // 차트 생성 시 스크롤 이벤트 구독
   useEffect(() => {
@@ -640,7 +712,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       const oldestData = candleData[0].time as number;
       
       // 보이는 영역의 시작이 현재 데이터의 시작 부분에 가까워지면 추가 데이터 로드
-      if (oldestVisible - oldestData < 10 && !isLoadingRef.current) {
+      if (oldestVisible - oldestData < 10 && !isLoadingRef.current && dateRange.endDate) {
         isLoadingRef.current = true;
         const newStartDate = new Date(oldestData * 1000);
         loadAllData(newStartDate, dateRange.endDate).finally(() => {
@@ -762,7 +834,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         prevVolumeRef.current = tickerData.acc_trade_volume;
         prevTradeTimeRef.current = timestamp;
         accVolumeRef.current = 0;
-        loadAllData(dateRange.startDate, dateRange.endDate);
+        if (dateRange.endDate) {
+          loadAllData(dateRange.startDate, dateRange.endDate);
+        }
       } else {
         // 현재 캔들 업데이트
         const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
@@ -807,14 +881,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
   // 백테스팅 결과 계산 함수
   const calculateBacktestResult = (data: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
-    const trades: Trade[] = []; // Explicitly type the trades array
+    const trades: Trade[] = [];
     let currentPosition: { entryTime: Time; entryPrice: number; } | null = null;
 
     crossPoints.forEach(point => {
       if (point.position === 'buy' && !currentPosition) {
-        currentPosition = { entryTime: point.time, entryPrice: point.value };
+        currentPosition = { entryTime: point.time, entryPrice: point.value }; // MA 값 사용
       } else if (point.position === 'sell' && currentPosition) {
-        const exitPrice = point.value;
+        const exitPrice = point.value; // MA 값 사용
         const entryPrice = currentPosition.entryPrice;
         const tradeReturn = (exitPrice - entryPrice) / entryPrice;
         trades.push({
@@ -829,15 +903,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
       }
     });
 
-    const successfulTrades = trades.filter(t => t.isSuccess).length;
-    const totalReturn = trades.reduce((sum, t) => sum + t.return, 0);
-
     return {
       totalTrades: trades.length,
-      successfulTrades,
-      totalReturn,
-      successRate: trades.length > 0 ? (successfulTrades / trades.length) * 100 : 0,
-      averageReturn: trades.length > 0 ? totalReturn / trades.length : 0,
+      successfulTrades: trades.filter(t => t.isSuccess).length,
+      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
+      successRate: trades.length > 0 ? (trades.filter(t => t.isSuccess).length / trades.length) * 100 : 0,
+      averageReturn: trades.length > 0 ? trades.reduce((sum, t) => sum + t.return, 0) / trades.length : 0,
       trades
     };
   };
@@ -957,9 +1028,308 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
     }
   };
 
+  // useEffect에서 데이터 로딩 상태 체크 추가
+  useEffect(() => {
+    if (!isDataLoadingEnabled) return; // 비활성화 상태면 데이터 로딩 중지
+
+    // 기존의 데이터 로딩 로직...
+  }, [chartType, symbol, isDataLoadingEnabled]); // isDataLoadingEnabled 의존성 추가
+
+  const loadChartData = useCallback(async () => {
+    if (!chartRef.current || !candleSeriesRef.current) return;
+
+    try {
+      const endpoint = getChartEndpoint(chartType);
+      const count = getChartCount(chartType);
+      
+      // 현재 시간에서 2시간 후로 설정
+      const now = new Date();
+      now.setHours(now.getHours() + 2);
+      const toTime = now.toISOString();
+      
+      const response = await fetch(`https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${toTime}`);
+      const data = await response.json();
+      
+      let candleData: ExtendedCandlestickData[] = [];
+      let volumeData: HistogramData<Time>[] = [];
+
+      if (chartType.startsWith('seconds/')) {
+        // 초봉 처리 로직 (기존 코드 유지)
+        // ...
+      } else {
+        // 분봉, 일봉, 월봉, 년봉 데이터 처리
+        candleData = data.map((item: UpbitCandle) => {
+          let timestamp: number;
+          const date = new Date(item.candle_date_time_kst);
+          
+          if (parseInt(chartType) === 240) { // 일봉
+            date.setHours(9, 0, 0, 0); // 한국 시장 시작 시간으로 설정
+            timestamp = Math.floor(date.getTime() / 1000);
+          } else if (parseInt(chartType) === 7200) { // 월봉
+            date.setDate(1);
+            date.setHours(9, 0, 0, 0);
+            timestamp = Math.floor(date.getTime() / 1000);
+          } else if (parseInt(chartType) === 86400) { // 년봉
+            date.setMonth(0, 1);
+            date.setHours(9, 0, 0, 0);
+            timestamp = Math.floor(date.getTime() / 1000);
+          } else { // 분봉
+            timestamp = Math.floor(date.getTime() / 1000) + (2 * 60 * 60);
+          }
+
+          return {
+            time: timestamp as Time,
+            open: item.opening_price,
+            high: item.high_price,
+            low: item.low_price,
+            close: item.trade_price,
+            volume: item.candle_acc_trade_volume
+          };
+        }).reverse();
+
+        // volumeData도 동일한 시간 처리 적용
+        volumeData = data.map((item: UpbitCandle) => {
+          let timestamp: number;
+          const date = new Date(item.candle_date_time_kst);
+          
+          if (parseInt(chartType) === 240) { // 일봉
+            date.setHours(9, 0, 0, 0);
+            timestamp = Math.floor(date.getTime() / 1000);
+          } else if (parseInt(chartType) === 7200) { // 월봉
+            date.setDate(1);
+            date.setHours(9, 0, 0, 0);
+            timestamp = Math.floor(date.getTime() / 1000);
+          } else if (parseInt(chartType) === 86400) { // 년봉
+            date.setMonth(0, 1);
+            date.setHours(9, 0, 0, 0);
+            timestamp = Math.floor(date.getTime() / 1000);
+          } else { // 분봉
+            timestamp = Math.floor(date.getTime() / 1000) + (2 * 60 * 60);
+          }
+
+          return {
+            time: timestamp as Time,
+            value: item.candle_acc_trade_volume,
+            color: item.trade_price >= item.opening_price ? '#26a69a80' : '#ef535080'
+          };
+        }).reverse();
+      }
+
+      // 마지막 캔들 저장
+      lastCandleRef.current = candleData[candleData.length - 1];
+
+      // 이동평균 계산
+      const threeEMAData = calculateEMA(candleData, thirtyPeriod);
+      const sixEMAData = calculateEMA(candleData, fortyPeriod);
+      const twentyEMAData = calculateEMA(candleData, sixtyPeriod);
+
+      // 크로스 포인트 찾기
+      const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+      crossPointsRef.current = crossPoints;
+
+      // 데이터 설정
+      candleSeriesRef.current.setData(candleData);
+      if (volumeSeriesRef.current) {
+        volumeSeriesRef.current.setData(volumeData);
+      }
+      if (threeEMASeriesRef.current) {
+        threeEMASeriesRef.current.setData(threeEMAData);
+      }
+      if (sixEMASeriesRef.current) {
+        sixEMASeriesRef.current.setData(sixEMAData);
+      }
+      if (twentyEMASeriesRef.current) {
+        twentyEMASeriesRef.current.setData(twentyEMAData);
+      }
+
+      // 매수/매도 마커 업데이트
+      const markers = createTradeMarkers(crossPoints);
+      if (candleSeriesRef.current) {
+        createSeriesMarkers(candleSeriesRef.current, markers);
+      }
+
+      // 백테스팅 결과 업데이트
+      const result = calculateBacktestResult(candleData, crossPoints);
+      setBacktestResult(result);
+
+      // 마지막 가격 설정
+      setChartPrice(candleData[candleData.length - 1].close);
+
+    } catch (error) {
+      console.error('Error loading chart data:', error);
+    }
+  }, [chartType, symbol, thirtyPeriod, fortyPeriod, sixtyPeriod]);
+
+  // chartType이 변경될 때 날짜 범위도 함께 갱신
+  useEffect(() => {
+    setDateRange(getInitialDateRange(chartType));
+  }, [chartType]);
+
+  // CSV 다운로드를 위한 날짜 선택 상태 추가
+  const [csvDateRange, setCsvDateRange] = useState<{
+    startDate: Date | null;
+    endDate: Date | null;
+  }>({
+    startDate: null,
+    endDate: null
+  });
+
+  // CSV 다운로드 관련 상태 추가
+  const [csvLoading, setCsvLoading] = useState<boolean>(false);
+  const [csvProgress, setCsvProgress] = useState<number>(0);
+
+  // CSV 저장 함수 수정
+  const saveToCSV = async () => {
+    if (!csvDateRange.startDate || !csvDateRange.endDate) {
+      alert('날짜를 선택해주세요');
+      return;
+    }
+
+    try {
+      setCsvLoading(true);
+      setCsvProgress(0);
+      setAllData([]); // 데이터 초기화
+
+      // KST 시간을 UTC로 변환하여 API 요청 (10시간(36000000ms) 땡겨줌)
+      const kstStart = new Date(csvDateRange.startDate.getTime() + 9 * 60 * 60 * 1000);
+      const kstEnd = new Date(csvDateRange.endDate.getTime() + 9 * 60 * 60 * 1000);
+      const utcStart = new Date(kstStart.getTime() );//- 10 * 60 * 60 * 1000);
+      const utcEnd = new Date(kstEnd.getTime() );//- 10 * 60 * 60 * 1000);
+
+      // 데이터 로딩 시작
+      setCsvProgress(20);
+      
+      // API 요청 준비
+      const count = 200;
+      let tempData: any[] = [];
+      let currentDate = utcEnd;
+      
+      while (currentDate >= utcStart) {
+        setCsvProgress(Math.min(90, (tempData.length / 1000) * 100));
+        
+        const apiUrl = `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&to=${currentDate.toISOString()}&count=${count}`;
+        
+        try {
+          const response = await fetch(apiUrl);
+          
+          if (!response.ok) {
+            throw new Error(`API 요청 실패: ${response.status}`);
+          }
+
+          const data = await response.json();
+          if (!data || data.length === 0) break;
+
+          tempData = [...tempData, ...data];
+          currentDate = new Date(data[data.length - 1].candle_date_time_kst);
+          
+          setAllData(tempData);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (apiError) {
+          console.error('API 호출 오류:', apiError);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+      }
+
+      // 데이터 필터링 (KST 기준)
+      const filteredData = tempData
+        .sort((a, b) => new Date(a.candle_date_time_kst).getTime() - new Date(b.candle_date_time_kst).getTime())
+        .filter(candle => {
+          const candleTime = new Date(candle.candle_date_time_kst);
+          return candleTime >= kstStart && candleTime <= kstEnd;
+        });
+
+      if (filteredData.length === 0) {
+        throw new Error('선택한 기간의 데이터가 없습니다.');
+      }
+
+      setAllData(filteredData);
+      setCsvProgress(100);
+
+    } catch (error: any) {
+      console.error('CSV 다운로드 중 오류:', error);
+      alert(`데이터 다운로드 중 오류: ${error?.message || '알 수 없는 오류가 발생했습니다.'}`);
+    } finally {
+      setCsvLoading(false);
+      setCsvProgress(0);
+    }
+  };
+
+  // 컴포넌트 상단에 상태 추가
+  const [allData, setAllData] = useState<any[]>([]);
+
+  // 상태 추가
+  const [autoUpdate, setAutoUpdate] = useState<boolean>(false);
+
+  // 초기 데이터 로드 useEffect 수정
+  useEffect(() => {
+    if (!container.current) return;
+
+    // 차트 생성 코드...
+
+    // 초기 데이터 로드
+    if (dateRange.startDate && dateRange.endDate) {
+      loadAllData(dateRange.startDate, dateRange.endDate);
+    }
+
+    // 자동 업데이트 설정
+    let intervalId: NodeJS.Timeout;
+    if (autoUpdate) {
+      intervalId = setInterval(() => {
+        const now = new Date();
+        const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+        loadAllData(thirtyMinutesAgo, now);
+      }, 1000); // 1초마다 업데이트
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      // ... 나머지 cleanup 코드
+    };
+  }, [loadAllData, autoUpdate]);
+
+  // 날짜 범위 변경 핸들러 추가
+  const handleDateRangeChange = (start: Date) => {
+    const endTime = new Date(start.getTime() + 30 * 60 * 1000);
+    setDateRange({ 
+      startDate: start,
+      endDate: endTime
+    });
+    resetAndLoadData(start, endTime);
+  };
+
+  // 종료 날짜 변경 핸들러 추가
+  const handleEndDateChange = (end: Date) => {
+    if (!dateRange.startDate) return;
+    setDateRange({
+      startDate: dateRange.startDate,
+      endDate: end
+    });
+    resetAndLoadData(dateRange.startDate, end);
+  };
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
-      {/* 날짜 선택 패널 */}
+      {/* 데이터 로딩 제어 버튼 */}
+      <div className="mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
+          <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
+          <button
+            onClick={() => setAutoUpdate(!autoUpdate)}
+            className={`px-4 py-2 rounded-lg font-bold ${
+              autoUpdate 
+                ? 'bg-green-600 hover:bg-green-700' 
+                : 'bg-red-600 hover:bg-red-700'
+            } text-white`}
+          >
+            {autoUpdate ? '활성화됨' : '비활성화됨'}
+          </button>
+        </div>
+      </div>
+
+      {/* 시작 날짜 설정 패널 */}
       <div className="mb-4">
         <div className="bg-gray-800 p-4 rounded-lg">
           <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
@@ -976,11 +1346,41 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
             maxDate={new Date()}
             className="bg-gray-700 text-white p-2 rounded w-full"
             popperClassName="react-datepicker-popper"
-            customInput={
-              <input
-                className="bg-gray-700 text-white p-2 rounded w-full"
-              />
+            popperPlacement="right-start"
+            withPortal
+            portalId="datepicker-portal"
+          />
+        </div>
+      </div>
+
+      {/* 종료 날짜 설정 패널 */}
+      <div className="mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">종료 날짜</div>
+          <DatePicker
+            selected={
+              dateRange.endDate && dateRange.startDate &&
+              dateRange.endDate.getTime() === new Date(dateRange.startDate.getTime() + 30 * 60 * 1000).getTime()
+                ? null
+                : dateRange.endDate
             }
+            onChange={(date: Date | null) => {
+              if (date) {
+                handleEndDateChange(date);
+              }
+            }}
+            showTimeSelect
+            timeFormat="HH:mm"
+            timeIntervals={1}
+            timeCaption="시간"
+            dateFormat="yyyy-MM-dd HH:mm"
+            maxDate={new Date()}
+            className="bg-gray-700 text-white p-2 rounded w-full"
+            popperClassName="react-datepicker-popper"
+            popperPlacement="right-start"
+            withPortal
+            portalId="datepicker-portal"
+            placeholderText="종료 날짜 선택"
           />
         </div>
       </div>
@@ -1142,10 +1542,18 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
               {(backtestResult.averageReturn * 100).toFixed(2)}%
             </div>
           </div>
+          <div className="bg-gray-800 p-4 rounded-lg col-span-5">
+            <div className="text-gray-400 text-sm">100만원 투자 시 누적 수익</div>
+            <div className={`text-lg font-bold ${
+              backtestResult.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {((1000000 * (1 + backtestResult.totalReturn)) - 1000000).toLocaleString()}원
+            </div>
+          </div>
         </div>
       )}
       
-      {/* 개별 거래 내역 */}
+      {/* 거래 내역 테이블 수정 */}
       {backtestResult && backtestResult.trades.length > 0 && (
         <div className="mt-4 bg-gray-800 p-4 rounded-lg">
           <div className="text-white text-lg font-bold mb-4">거래 내역</div>
@@ -1155,23 +1563,34 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
                 <tr className="text-gray-400">
                   <th className="px-4 py-2">진입 시간</th>
                   <th className="px-4 py-2">청산 시간</th>
-                  <th className="px-4 py-2">진입 가격</th>
-                  <th className="px-4 py-2">청산 가격</th>
+                  <th className="px-4 py-2">진입 가격 (3MA)</th>
+                  <th className="px-4 py-2">매수 가격</th>
+                  <th className="px-4 py-2">청산 가격 (3MA)</th>
+                  <th className="px-4 py-2">매도 가격</th>
                   <th className="px-4 py-2">수익률</th>
+                  <th className="px-4 py-2">100만원 투자시 수익</th>
                 </tr>
               </thead>
               <tbody>
-                {backtestResult.trades.map((trade, index) => (
-                  <tr key={index} className="border-t border-gray-700">
-                    <td className="px-4 py-2">{new Date((trade.entryTime as number) * 1000).toLocaleString()}</td>
-                    <td className="px-4 py-2">{new Date((trade.exitTime as number) * 1000).toLocaleString()}</td>
-                    <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
-                    <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
-                    <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {(trade.return * 100).toFixed(2)}%
-                    </td>
-                  </tr>
-                ))}
+                {backtestResult.trades.map((trade, index) => {
+                  const profitAmount = 1000000 * trade.return;
+                  return (
+                    <tr key={index} className="border-t border-gray-700">
+                      <td className="px-4 py-2">{new Date((trade.entryTime as number) * 1000).toLocaleString()}</td>
+                      <td className="px-4 py-2">{new Date((trade.exitTime as number) * 1000).toLocaleString()}</td>
+                      <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
+                      <td className="px-4 py-2">{(trade.entryPrice * 1.0).toLocaleString()}</td>
+                      <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
+                      <td className="px-4 py-2">{(trade.exitPrice * 1.0).toLocaleString()}</td>
+                      <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {(trade.return * 100).toFixed(2)}%
+                      </td>
+                      <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {profitAmount.toLocaleString()}원
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1191,6 +1610,123 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
             className="flex-1"
           />
           <div className="text-white font-bold w-20 text-center">{chartHeight}px</div>
+        </div>
+      </div>
+
+      {/* CSV 다운로드 패널 */}
+      <div className="mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="text-gray-400 text-sm">CSV 다운로드 기간 설정</div>
+            <div className="flex space-x-4">
+              <div>
+                <DatePicker
+                  selected={csvDateRange.startDate}
+                  onChange={(date: Date | null) => {
+                    setCsvDateRange(prev => ({
+                      ...prev,
+                      startDate: date
+                    }));
+                  }}
+                  showTimeSelect
+                  timeFormat="HH:mm"
+                  timeIntervals={1}
+                  timeCaption="시간"
+                  dateFormat="yyyy-MM-dd HH:mm"
+                  maxDate={new Date()}
+                  className="bg-gray-700 text-white p-2 rounded"
+                  popperClassName="react-datepicker-popper"
+                  popperPlacement="right-start"
+                  withPortal
+                  placeholderText="시작 날짜 선택"
+                />
+              </div>
+              <div>
+                <DatePicker
+                  selected={csvDateRange.endDate}
+                  onChange={(date: Date | null) => {
+                    setCsvDateRange(prev => ({
+                      ...prev,
+                      endDate: date
+                    }));
+                  }}
+                  showTimeSelect
+                  timeFormat="HH:mm"
+                  timeIntervals={1}
+                  timeCaption="시간"
+                  dateFormat="yyyy-MM-dd HH:mm"
+                  maxDate={new Date()}
+                  minDate={csvDateRange.startDate || undefined}
+                  className="bg-gray-700 text-white p-2 rounded"
+                  popperClassName="react-datepicker-popper"
+                  popperPlacement="right-start"
+                  withPortal
+                  placeholderText="종료 날짜 선택"
+                />
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={saveToCSV}
+                  disabled={csvLoading}
+                  className={`px-4 py-2 rounded-lg font-bold ${
+                    csvLoading 
+                      ? 'bg-gray-600 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  } text-white`}
+                >
+                  {csvLoading ? `데이터 가져오는 중... ${csvProgress}%` : '데이터 가져오기'}
+                </button>
+                <button
+                  onClick={() => {
+                    if (allData.length > 0) {
+                      const header = 'timestamp,open,high,low,close,volume\n';
+                      const csvContent = allData
+                        .map(candle => {
+                          const kstDate = new Date(candle.candle_date_time_kst);
+                          const formattedDate = kstDate.toISOString().replace('T', ' ').slice(0, 19);
+                          return `${formattedDate},${candle.opening_price},${candle.high_price},${candle.low_price},${candle.trade_price},${candle.candle_acc_trade_volume}`;
+                        })
+                        .join('\n');
+                      
+                      const fullContent = header + csvContent;
+                      const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
+                      const url = URL.createObjectURL(blob);
+                      const fileName = `${symbol}_${chartType}_${csvDateRange.startDate?.toISOString().slice(0,19)}_${csvDateRange.endDate?.toISOString().slice(0,19)}.csv`;
+                      
+                      const link = document.createElement('a');
+                      link.setAttribute('href', url);
+                      link.setAttribute('download', fileName);
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                    } else {
+                      alert('먼저 데이터를 가져와주세요.');
+                    }
+                  }}
+                  disabled={csvLoading || allData.length === 0}
+                  className={`px-4 py-2 rounded-lg font-bold ${
+                    csvLoading || allData.length === 0
+                      ? 'bg-gray-600 cursor-not-allowed'
+                      : 'bg-green-600 hover:bg-green-700'
+                  } text-white`}
+                >
+                  CSV 다운로드
+                </button>
+              </div>
+            </div>
+          </div>
+          {/* 로딩 프로그레스 바 */}
+          {csvLoading && (
+            <div className="mt-4">
+              <div className="w-full bg-gray-700 rounded-full h-2.5">
+                <div
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${csvProgress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
