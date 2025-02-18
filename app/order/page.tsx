@@ -20,10 +20,16 @@ export default function OrderPage() {
     const saved = localStorage.getItem('selectedSymbol');
     return saved || 'KRW-BTC';
   });
+  const [currentPrice, setCurrentPrice] = useState(0);
+  const [orderQuantity, setOrderQuantity] = useState(0);
 
   const handleSymbolChange = (symbol: string) => {
     setSelectedSymbol(symbol);
     localStorage.setItem('selectedSymbol', symbol);
+  };
+
+  const handleOrderCreated = () => {
+    // 주문 생성 후 필요한 작업
   };
 
   return (
@@ -48,7 +54,13 @@ export default function OrderPage() {
         </div>
 
         {/* 주문하기 */}
-        <CreateOrder market={selectedSymbol} mode={mode} />
+        <CreateOrder 
+          market={selectedSymbol} 
+          mode={mode} 
+          onOrderCreated={handleOrderCreated}
+          onPriceUpdate={setCurrentPrice}
+          onQuantityUpdate={setOrderQuantity}
+        />
         
         {/* 실전/테스트 모드 토글 */}
         <div className="mb-8 bg-gray-800 p-4 rounded-lg">

@@ -6,10 +6,12 @@ import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 interface CreateOrderProps {
   market: string;
   mode: 'live' | 'test';
-  onOrderCreated?: () => void;
+  onOrderCreated: () => void;
+  onPriceUpdate: (price: number) => void;
+  onQuantityUpdate: (quantity: number) => void;
 }
 
-export function CreateOrder({ market, mode, onOrderCreated }: CreateOrderProps) {
+export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }: CreateOrderProps) {
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
   const [price, setPrice] = useState('');
@@ -200,6 +202,15 @@ export function CreateOrder({ market, mode, onOrderCreated }: CreateOrderProps) 
     const calculatedAmount = Number(price) * Number(volume);
     setOrderAmount(calculatedAmount);
   }, [price, volume]);
+
+  useEffect(() => {
+    onPriceUpdate(currentPrice ?? 0);
+  }, [currentPrice, onPriceUpdate]);
+
+  useEffect(() => {
+    // 수량 변경시 부모에게 전달
+    onQuantityUpdate(Number(volume));
+  }, [volume, onQuantityUpdate]);
 
   return (
     <div className="mb-8">

@@ -26,6 +26,8 @@ import "react-datepicker/dist/react-datepicker.css";
 interface ChartProps {
   symbol: string;
   chartType: string;
+  initialAutoUpdate?: boolean;  // 초기 자동 업데이트 상태를 위한 prop 추가
+  mode: 'live' | 'test';  // 추가
 }
 
 interface UpbitCandle {
@@ -192,7 +194,12 @@ const getTickMarkFormatter = (chartType: string): ((time: number | BusinessDay, 
   };
 };
 
-export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) => {
+export const CandlestickChart: React.FC<ChartProps> = ({ 
+  symbol, 
+  chartType,
+  initialAutoUpdate = false,
+  mode  // 추가
+}) => {
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -235,7 +242,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const [isDataLoadingEnabled, setIsDataLoadingEnabled] = useState<boolean>(false);
 
   // 자동 업데이트 상태 추가
-  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(true);
+  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
 
   // 매수/매도 신호 생성 로직 수정
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
@@ -1533,6 +1540,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
                   <th className="px-4 py-2">수익률</th>
                   <th className="px-4 py-2">100만원 투자시 수익</th>
                   <th className="px-4 py-2">체결 상태</th>
+                  <th className="px-4 py-2">거래 모드</th>
                 </tr>
               </thead>
               <tbody>
@@ -1540,7 +1548,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
                   const profitAmount = 1000000 * trade.return;
                   const currentTime = new Date().getTime() / 1000;
                   const exitTime = trade.exitTime as number;
-                  const showStatus = exitTime > currentTime; // 현재 시간 이후의 거래만 체결 상태 표시
+                  const showStatus = exitTime > currentTime;
                   
                   return (
                     <tr key={index} className="border-t border-gray-700">
@@ -1570,6 +1578,15 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
                         ) : ''
                       }`}>
                         {showStatus ? (!exitTime ? '미체결' : '체결완료') : ''}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          mode === 'test' 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-red-500 text-white'
+                        }`}>
+                          {mode === 'test' ? '테스트' : '실전'}
+                        </span>
                       </td>
                     </tr>
                   );

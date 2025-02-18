@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { NavigationHeader } from '../components/NavigationHeader';
 import { OrderList } from '../components/OrderList';
 import { OrderHistory } from '../components/OrderHistory';
@@ -10,6 +10,7 @@ import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
 import { CandlestickChart } from '../components/CandlestickChart5A8ok6';
+import { getAccountBalance } from '../api/upbitAccount';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -27,6 +28,68 @@ export default function OrdersPage() {
   });
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
   const openOrdersRef = useRef<{ loadOpenOrders?: () => void }>({});
+  const [currentPrice, setCurrentPrice] = useState<number>(3850);
+  const [orderQuantity, setOrderQuantity] = useState<number>(12.9870);
+  const [balance, setBalance] = useState<{
+    coin: {
+      currency: string;
+      balance: number;
+      avgBuyPrice: number;
+      unitCurrency: string;
+    } | null;
+    krw: {
+      currency: string;
+      balance: number;
+      unitCurrency: string;
+    } | null;
+  }>({ coin: null, krw: null });
+
+  // WebSocket을 통해 실시간 가격 업데이트
+  useEffect(() => {
+    const ws = new WebSocket('wss://api.upbit.com/websocket/v1');
+    
+    ws.onopen = () => {
+      const message = JSON.stringify([
+        { ticket: "trade" },
+        { type: "trade", codes: [selectedSymbol] }
+      ]);
+      ws.send(message);
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'trade') {
+        setCurrentPrice(data.trade_price);
+      }
+    };
+
+    return () => ws.close();
+  }, [selectedSymbol]);
+
+  // 잔고 정보 로드
+  const loadBalance = async () => {
+    try {
+      const accounts = await getAccountBalance();
+      const coinBalance = accounts.find(
+        account => `KRW-${account.currency}` === selectedSymbol
+      );
+      const krwBalance = accounts.find(
+        account => account.currency === 'KRW'
+      );
+      
+      setBalance({
+        coin: coinBalance || null,
+        krw: krwBalance || null
+      });
+    } catch (error) {
+      console.error('잔고 조회 실패:', error);
+    }
+  };
+
+  // 심볼이 변경될 때마다 잔고 정보 업데이트
+  useEffect(() => {
+    loadBalance();
+  }, [selectedSymbol]);
 
   const handleOrderCreated = () => {
     // OpenOrders 컴포넌트의 새로고침 함수 호출
@@ -38,6 +101,14 @@ export default function OrdersPage() {
   const handleSymbolChange = (symbol: string) => {
     setSelectedSymbol(symbol);
     localStorage.setItem('selectedSymbol', symbol);
+  };
+
+  const handlePriceUpdate = (price: number) => {
+    if (price) setCurrentPrice(price);
+  };
+
+  const handleQuantityUpdate = (quantity: number) => {
+    if (quantity) setOrderQuantity(quantity);
   };
 
   return (
@@ -102,12 +173,101 @@ export default function OrdersPage() {
           market={selectedSymbol}
           mode={mode}
           onOrderCreated={handleOrderCreated}
+          onPriceUpdate={handlePriceUpdate}
+          onQuantityUpdate={handleQuantityUpdate}
         />
+
+        {/* 거래 예정 금액 섹션 */}
+        <div className="mb-8 bg-gray-800 p-4 rounded-lg">
+          <h2 className="text-xl font-bold text-white mb-4">거래 예정 정보</h2>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <div className="text-gray-400 text-sm">3초 중간가</div>
+              <div className="text-white text-lg font-bold">
+                {(currentPrice || 0).toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-sm">수량</div>
+              <div className="text-white text-lg font-bold">
+                {(orderQuantity || 0).toFixed(4)}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-sm">예상 거래 금액</div>
+              <div className="text-white text-lg font-bold">
+                {((currentPrice || 0) * (orderQuantity || 0)).toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 잔고 정보 섹션 수정 */}
+        <div className="mb-8 space-y-4">
+          {/* 코인 잔고 정보 */}
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-white">매매코인 잔고</h2>
+              <button
+                onClick={loadBalance}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+              >
+                새로고침
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <div className="text-gray-400 text-sm">보유 수량</div>
+                <div className="text-white text-lg font-bold">
+                  {balance.coin ? balance.coin.balance.toFixed(4) : '0.0000'} {balance.coin?.currency}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-400 text-sm">평균 매수가</div>
+                <div className="text-white text-lg font-bold">
+                  {balance.coin ? balance.coin.avgBuyPrice.toLocaleString() : '0'} {balance.coin?.unitCurrency}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-400 text-sm">평가 금액</div>
+                <div className="text-white text-lg font-bold">
+                  {balance.coin 
+                    ? (balance.coin.balance * currentPrice).toLocaleString() 
+                    : '0'} {balance.coin?.unitCurrency}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 현금 잔고 정보 */}
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <h2 className="text-xl font-bold text-white mb-4">현금 보유 잔고</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-gray-400 text-sm">보유 현금</div>
+                <div className="text-white text-lg font-bold">
+                  {balance.krw ? balance.krw.balance.toLocaleString() : '0'} KRW
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-400 text-sm">주문 가능</div>
+                <div className="text-white text-lg font-bold">
+                  {balance.krw ? (balance.krw.balance * 0.9995).toLocaleString() : '0'} KRW
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* 초봉 차트 섹션 */}
         <div className="mb-8">
           <h2 className="text-xl font-bold text-white mb-4">실시간 초봉 차트</h2>
-          <CandlestickChart symbol={selectedSymbol} chartType="seconds/60" />
+          <CandlestickChart 
+            symbol={selectedSymbol} 
+            chartType="seconds/60"
+            initialAutoUpdate={true}
+            mode={mode}
+          />
         </div>
 
         {/* 주문 목록 조회 섹션 */}

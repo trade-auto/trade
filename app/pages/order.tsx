@@ -6,6 +6,12 @@ import { OrderList } from '../components/OrderList';
 
 export default function OrderPage() {
   const [mode, setMode] = useState<'live' | 'test'>('test');
+  const [currentPrice, setCurrentPrice] = useState(0);
+  const [orderQuantity, setOrderQuantity] = useState(0);
+
+  const handleOrderCreated = () => {
+    // 주문 생성 후 필요한 작업
+  };
 
   return (
     <main className="min-h-screen p-8 bg-gray-900">
@@ -13,7 +19,13 @@ export default function OrderPage() {
         <NavigationHeader currentPage="order" />
         
         {/* 주문하기 */}
-        <CreateOrder market="KRW-BTC" mode={mode} />
+        <CreateOrder 
+          market="KRW-BTC" 
+          mode={mode}
+          onOrderCreated={handleOrderCreated}
+          onPriceUpdate={setCurrentPrice}
+          onQuantityUpdate={setOrderQuantity}
+        />
         
         {/* 실전/테스트 모드 토글 */}
         <div className="mb-8 bg-gray-800 p-4 rounded-lg">
