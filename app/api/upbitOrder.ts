@@ -239,7 +239,7 @@ interface CreateOrderParams {
   volume: string;
   price: string;
   ord_type: 'limit' | 'price' | 'market';
-  mode?: 'test' | 'test-auto' | 'live';
+  mode?: 'test' | 'test-auto' | 'live-auto';
   isAutomatic?: boolean;
 }
 

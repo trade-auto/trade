@@ -23,6 +23,8 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
   const [autoTrading, setAutoTrading] = useState(false);
+  const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
+  const [isTradeComplete, setIsTradeComplete] = useState(false);
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
@@ -89,7 +91,7 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
         volume,
         price,
         ord_type: ordType,
-        mode: mode === 'test' ? 'test' : 'live'
+        mode: mode === 'test' ? 'test' : 'live-auto'
       });
 
       // 입력 필드 초기화
@@ -214,19 +216,31 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
     onQuantityUpdate(Number(volume));
   }, [volume, onQuantityUpdate]);
 
-  // 매매 조건 체크 및 자동 거래 실행
+  // 매매 조건 체크 및 자동 거래 실행 수정
   useEffect(() => {
     if (mode === 'test' && autoTrading && currentPrice && ma3Price) {
       const currentTime = new Date().getTime() / 1000;
       
-      // 매매 조건 체크 (예: 3초 MA를 기준으로 매수/매도 판단)
+      // 매매 조건 체크
       if (currentPrice > ma3Price * 1.001) { // 0.1% 상승 시 매도
-        handleAutomaticTrade('ask', currentPrice);
+        if (lastTradeType === 'bid' || !lastTradeType) { // 이전 거래가 매수이거나 첫 거래일 때만
+          handleAutomaticTrade('ask', currentPrice);
+          setLastTradeType('ask');
+          if (lastTradeType === 'bid') {
+            setIsTradeComplete(true); // 매수-매도 쌍이 완료됨
+          }
+        }
       } else if (currentPrice < ma3Price * 0.999) { // 0.1% 하락 시 매수
-        handleAutomaticTrade('bid', currentPrice);
+        if (lastTradeType === 'ask' || !lastTradeType) { // 이전 거래가 매도이거나 첫 거래일 때만
+          handleAutomaticTrade('bid', currentPrice);
+          setLastTradeType('bid');
+          if (lastTradeType === 'ask') {
+            setIsTradeComplete(true); // 매도-매수 쌍이 완료됨
+          }
+        }
       }
     }
-  }, [currentPrice, ma3Price, mode, autoTrading]);
+  }, [currentPrice, ma3Price, mode, autoTrading, lastTradeType]);
 
   const handleAutomaticTrade = async (tradeSide: 'bid' | 'ask', tradePrice: number) => {
     if (isLoading) return;
@@ -239,7 +253,7 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
         volume: volume,
         price: tradePrice.toString(),
         ord_type: 'limit',
-        mode: mode === 'test' ? 'test-auto' : 'live',
+        mode: mode === 'test' ? 'test-auto' : 'live-auto',
         isAutomatic: true
       });
       
@@ -251,6 +265,16 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // 자동 거래 토글 버튼 클릭 핸들러 수정
+  const handleAutoTradingToggle = () => {
+    if (!autoTrading) {
+      // 자동 거래 시작 시 상태 초기화
+      setLastTradeType(null);
+      setIsTradeComplete(false);
+    }
+    setAutoTrading(!autoTrading);
   };
 
   return (
@@ -522,18 +546,24 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
         </div>
       )}
 
-      {/* 자동 거래 토글 버튼 추가 */}
+      {/* 자동 거래 토글 버튼 수정 */}
       {mode === 'test' && (
         <div className="mt-4">
           <button
-            onClick={() => setAutoTrading(!autoTrading)}
+            onClick={handleAutoTradingToggle}
             className={`w-full py-2 rounded font-bold ${
               autoTrading 
-                ? 'bg-green-600 hover:bg-green-700' 
+                ? isTradeComplete
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-yellow-600 hover:bg-yellow-700'
                 : 'bg-gray-600 hover:bg-gray-700'
             } text-white`}
           >
-            {autoTrading ? '자동 거래 실행 중' : '자동 거래 시작'}
+            {autoTrading 
+              ? isTradeComplete
+                ? '자동 거래 완료'
+                : '매매 쌍 대기 중...'
+              : '자동 거래 시작'}
           </button>
         </div>
       )}

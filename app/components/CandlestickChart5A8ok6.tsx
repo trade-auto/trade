@@ -95,7 +95,7 @@ interface Trade {
   return: number;
   isSuccess: boolean;
   isAutomatic?: boolean;
-  mode: 'test' | 'test-auto' | 'live';  // 모드 타입 수정
+  mode: 'test' | 'test-auto' | 'live-auto';  // 'live'를 'live-auto'로 변경
 }
 
 // 날짜 선택을 위한 인터페이스 추가
@@ -1576,14 +1576,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                       </td>
                       <td className="px-4 py-2">
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          trade.mode === 'live' 
+                          trade.mode === 'live-auto' 
                             ? 'bg-red-500 text-white'
                             : trade.mode === 'test-auto'
                               ? 'bg-green-500 text-white'
                               : 'bg-blue-500 text-white'
                         }`}>
-                          {trade.mode === 'live' 
-                            ? '실전' 
+                          {trade.mode === 'live-auto' 
+                            ? '실전자동' 
                             : trade.mode === 'test-auto'
                               ? '테스트 자동'
                               : '테스트'}
