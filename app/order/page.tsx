@@ -2,16 +2,53 @@
 
 import { useState } from 'react';
 import { CreateOrder } from '../components/CreateOrder';
+import { OrderLimitSettings } from '../components/OrderLimitSettings';
 import { NavigationHeader } from '../components/NavigationHeader';
 import { OrderList } from '../components/OrderList';
 
+const SYMBOLS = [
+  { symbol: 'KRW-BTC', name: '비트코인' },
+  { symbol: 'KRW-ETH', name: '이더리움' },
+  { symbol: 'KRW-XRP', name: '리플' },
+  { symbol: 'KRW-STORJ', name: '스토리지' },
+  { symbol: 'KRW-ONDO', name: '온도' }
+];
+
 export default function OrderPage() {
-  const [mode, setMode] = useState<'live' | 'test'>('test'); // 기본값은 테스트 모드
+  const [mode, setMode] = useState<'live' | 'test'>('test');
+  const [selectedSymbol, setSelectedSymbol] = useState(() => {
+    const saved = localStorage.getItem('selectedSymbol');
+    return saved || 'KRW-BTC';
+  });
+
+  const handleSymbolChange = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    localStorage.setItem('selectedSymbol', symbol);
+  };
 
   return (
     <main className="min-h-screen p-8 bg-gray-900">
       <div className="max-w-7xl mx-auto">
-        <NavigationHeader currentPage="orders" />
+        <NavigationHeader currentPage="order" />
+        
+        {/* 심볼 선택 */}
+        <div className="mb-8">
+          <label className="text-gray-400 block mb-2">코인 선택</label>
+          <select 
+            value={selectedSymbol}
+            onChange={(e) => handleSymbolChange(e.target.value)}
+            className="bg-gray-800 text-white p-2 rounded-lg w-48"
+          >
+            {SYMBOLS.map(({ symbol, name }) => (
+              <option key={symbol} value={symbol}>
+                {name} ({symbol.replace('KRW-', '')})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 주문하기 */}
+        <CreateOrder market={selectedSymbol} mode={mode} />
         
         {/* 실전/테스트 모드 토글 */}
         <div className="mb-8 bg-gray-800 p-4 rounded-lg">
@@ -46,10 +83,10 @@ export default function OrderPage() {
             </div>
           )}
         </div>
-
-        {/* 주문하기 */}
-        <CreateOrder market="KRW-BTC" mode={mode} />
-
+        
+        {/* 주문 제한 설정 */}
+        <OrderLimitSettings />
+        
         {/* 주문 목록 */}
         <OrderList mode={mode} />
       </div>

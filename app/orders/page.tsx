@@ -20,7 +20,10 @@ const SYMBOLS = [
 
 export default function OrdersPage() {
   const [mode, setMode] = useState<'live' | 'test'>('test');
-  const [selectedSymbol, setSelectedSymbol] = useState('KRW-BTC');
+  const [selectedSymbol, setSelectedSymbol] = useState(() => {
+    const saved = localStorage.getItem('selectedSymbol');
+    return saved || 'KRW-BTC';
+  });
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
   const openOrdersRef = useRef<{ loadOpenOrders?: () => void }>({});
 
@@ -29,6 +32,11 @@ export default function OrdersPage() {
     if (openOrdersRef.current.loadOpenOrders) {
       openOrdersRef.current.loadOpenOrders();
     }
+  };
+
+  const handleSymbolChange = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    localStorage.setItem('selectedSymbol', symbol);
   };
 
   return (
@@ -77,7 +85,7 @@ export default function OrdersPage() {
           <label className="text-gray-400 block mb-2">코인 선택</label>
           <select 
             value={selectedSymbol}
-            onChange={(e) => setSelectedSymbol(e.target.value)}
+            onChange={(e) => handleSymbolChange(e.target.value)}
             className="bg-gray-800 text-white p-2 rounded-lg w-48"
           >
             {SYMBOLS.map(({ symbol, name }) => (

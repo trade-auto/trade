@@ -22,7 +22,10 @@ interface AccountInfo {
 }
 
 export default function AccountPage() {
-  const [selectedSymbol, setSelectedSymbol] = useState('KRW-BTC');
+  const [selectedSymbol, setSelectedSymbol] = useState(() => {
+    const saved = localStorage.getItem('selectedSymbol');
+    return saved || 'KRW-BTC';
+  });
   const [accounts, setAccounts] = useState<AccountInfo[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -43,6 +46,11 @@ export default function AccountPage() {
     }
   };
 
+  const handleSymbolChange = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    localStorage.setItem('selectedSymbol', symbol);
+  };
+
   return (
     <main className="min-h-screen p-8 bg-gray-900">
       <div className="max-w-7xl mx-auto">
@@ -58,7 +66,7 @@ export default function AccountPage() {
           <label className="text-gray-400 block mb-2">코인 선택</label>
           <select 
             value={selectedSymbol}
-            onChange={(e) => setSelectedSymbol(e.target.value)}
+            onChange={(e) => handleSymbolChange(e.target.value)}
             className="bg-gray-800 text-white p-2 rounded-lg w-48"
           >
             {SYMBOLS.map(({ symbol, name }) => (
