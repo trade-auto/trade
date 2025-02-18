@@ -235,7 +235,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
   const [isDataLoadingEnabled, setIsDataLoadingEnabled] = useState<boolean>(false);
 
   // 자동 업데이트 상태 추가
-  const [autoUpdate, setAutoUpdate] = useState<boolean>(false);
+  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(true);
 
   // 매수/매도 신호 생성 로직 수정
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
@@ -1211,7 +1211,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
 
   // useEffect 수정
   useEffect(() => {
-    if (!autoUpdate) return;
+    if (!isAutoUpdate) return;
 
     const updateInterval = setInterval(async () => {
       try {
@@ -1226,14 +1226,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
         await loadAllData(thirtyMinutesAgo, now);
       } catch (error) {
         console.error('자동 업데이트 오류:', error);
-        setAutoUpdate(false); // 오류 발생 시 자동 업데이트 중지
+        setIsAutoUpdate(false); // 오류 발생 시 자동 업데이트 중지
       }
     }, 10000); // 10초마다 업데이트
 
     return () => {
       clearInterval(updateInterval);
     };
-  }, [autoUpdate, loadAllData]);
+  }, [isAutoUpdate, loadAllData]);
 
   // 날짜 범위 변경 핸들러 추가
   const handleDateRangeChange = (start: Date) => {
@@ -1273,14 +1273,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
           <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
           <div className="flex space-x-2">
           <button
-              onClick={() => setAutoUpdate(!autoUpdate)}
+              onClick={() => setIsAutoUpdate(!isAutoUpdate)}
             className={`px-4 py-2 rounded-lg font-bold ${
-                autoUpdate 
+                isAutoUpdate 
                   ? 'bg-green-600 hover:bg-green-700' 
-                  : 'bg-red-600 hover:bg-red-700'
+                  : 'bg-gray-600 hover:bg-gray-700'
               } text-white`}
             >
-              {autoUpdate ? '활성화됨' : '비활성화됨'}
+              {isAutoUpdate ? '자동 업데이트 활성화됨' : '자동 업데이트 비활성화됨'}
             </button>
             <button
               onClick={resetDate}
