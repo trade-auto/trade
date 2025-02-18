@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect } from 'react';
 import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 
@@ -18,6 +20,39 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
 
+  // localStorage에서 주문 제한 설정을 가져오는 함수
+  const getOrderLimits = () => {
+    const savedSettings = localStorage.getItem('orderLimitSettings');
+    if (savedSettings) {
+      return JSON.parse(savedSettings);
+    }
+    return {
+      minOrderPrice: 5000,
+      maxOrderPrice: 1000000000
+    };
+  };
+
+  const [orderLimits, setOrderLimits] = useState(getOrderLimits());
+
+  // 주문 제한 설정이 변경될 때마다 업데이트
+  useEffect(() => {
+    const handleStorageChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setOrderLimits(customEvent.detail);
+      } else {
+        setOrderLimits(getOrderLimits());
+      }
+    };
+
+    // 커스텀 이벤트 리스너 등록
+    window.addEventListener('orderLimitSettingsChanged', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('orderLimitSettingsChanged', handleStorageChange);
+    };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -30,19 +65,14 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
     const orderAmount = Number(price) * Number(volume);
 
     // 주문 제한 설정 확인
-    const savedSettings = localStorage.getItem('orderLimitSettings');
-    if (savedSettings) {
-      const { minOrderPrice, maxOrderPrice } = JSON.parse(savedSettings);
-      
-      if (orderAmount < minOrderPrice) {
-        setError(`최소 주문 금액(${minOrderPrice.toLocaleString()} KRW)보다 작습니다.`);
-        return;
-      }
+    if (orderAmount < orderLimits.minOrderPrice) {
+      setError(`최소 주문 금액(${orderLimits.minOrderPrice.toLocaleString()} KRW)보다 작습니다.`);
+      return;
+    }
 
-      if (orderAmount > maxOrderPrice) {
-        setError(`최대 주문 금액(${maxOrderPrice.toLocaleString()} KRW)을 초과했습니다.`);
-        return;
-      }
+    if (orderAmount > orderLimits.maxOrderPrice) {
+      setError(`최대 주문 금액(${orderLimits.maxOrderPrice.toLocaleString()} KRW)을 초과했습니다.`);
+      return;
     }
 
     try {
@@ -297,6 +327,19 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
             />
             <button
               type="button"
+              onClick={() => {
+                if (currentPrice && price) {
+                  const suggestedVolume = (1000000 / Number(price)).toFixed(4);
+                  setVolume(suggestedVolume);
+                }
+              }}
+              className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded whitespace-nowrap"
+              disabled={!currentPrice || !price}
+            >
+              100만원
+            </button>
+            <button
+              type="button"
               onClick={() => handlePercentage(100)}
               className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
             >
@@ -364,23 +407,19 @@ export function CreateOrder({ market, onOrderCreated }: CreateOrderProps) {
           
           {/* 주문 제한 표시 */}
           {(() => {
-            const savedSettings = localStorage.getItem('orderLimitSettings');
-            if (savedSettings) {
-              const { minOrderPrice, maxOrderPrice } = JSON.parse(savedSettings);
-              if (orderAmount < minOrderPrice) {
-                return (
-                  <div className="text-red-500 text-sm mt-2">
-                    최소 주문 금액({minOrderPrice.toLocaleString()} KRW)보다 작습니다.
-                  </div>
-                );
-              }
-              if (orderAmount > maxOrderPrice) {
-                return (
-                  <div className="text-red-500 text-sm mt-2">
-                    최대 주문 금액({maxOrderPrice.toLocaleString()} KRW)을 초과했습니다.
-                  </div>
-                );
-              }
+            if (orderAmount < orderLimits.minOrderPrice) {
+              return (
+                <div className="text-red-500 text-sm mt-2">
+                  최소 주문 금액({orderLimits.minOrderPrice.toLocaleString()} KRW)보다 작습니다.
+                </div>
+              );
+            }
+            if (orderAmount > orderLimits.maxOrderPrice) {
+              return (
+                <div className="text-red-500 text-sm mt-2">
+                  최대 주문 금액({orderLimits.maxOrderPrice.toLocaleString()} KRW)을 초과했습니다.
+                </div>
+              );
             }
             return null;
           })()}

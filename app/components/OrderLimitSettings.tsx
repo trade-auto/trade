@@ -23,14 +23,28 @@ export function OrderLimitSettings() {
     maxOrderPrice: 1000000000
   };
 
-  // 초기화 함수 추가
+  // 초기화 함수 수정
   const handleReset = () => {
     setSettings(DEFAULT_SETTINGS);
+    // 초기화된 설정을 localStorage에 저장
+    localStorage.setItem('orderLimitSettings', JSON.stringify(DEFAULT_SETTINGS));
+    // 이벤트 발생
+    const event = new CustomEvent('orderLimitSettingsChanged', {
+      detail: DEFAULT_SETTINGS
+    });
+    window.dispatchEvent(event);
   };
 
   // 설정 저장
   const handleSave = () => {
     localStorage.setItem('orderLimitSettings', JSON.stringify(settings));
+    
+    // CustomEvent를 발생시켜 설정 변경을 알림
+    const event = new CustomEvent('orderLimitSettingsChanged', {
+      detail: settings
+    });
+    window.dispatchEvent(event);
+    
     setIsEditing(false);
   };
 
@@ -111,6 +125,15 @@ export function OrderLimitSettings() {
                   <button
                     onClick={() => setSettings(prev => ({
                       ...prev,
+                      maxOrderPrice: 0
+                    }))}
+                    className="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm"
+                  >
+                    0원
+                  </button>
+                  <button
+                    onClick={() => setSettings(prev => ({
+                      ...prev,
                       maxOrderPrice: prev.maxOrderPrice + 100000
                     }))}
                     className="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm"
@@ -143,6 +166,15 @@ export function OrderLimitSettings() {
                     className="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm"
                   >
                     +1000만원
+                  </button>
+                  <button
+                    onClick={() => setSettings(prev => ({
+                      ...prev,
+                      maxOrderPrice: DEFAULT_SETTINGS.maxOrderPrice
+                    }))}
+                    className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm"
+                  >
+                    금액초기화
                   </button>
                 </div>
               </>

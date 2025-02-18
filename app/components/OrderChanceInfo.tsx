@@ -1,4 +1,6 @@
-import { useState } from 'react';
+'use client';
+
+import { useState, useEffect } from 'react';
 import { getOrderChance } from '../api/upbitOrder';
 
 interface OrderChanceInfoProps {
@@ -9,6 +11,38 @@ export function OrderChanceInfo({ market }: OrderChanceInfoProps) {
   const [orderInfo, setOrderInfo] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // localStorage에서 주문 제한 설정을 가져오는 함수
+  const getOrderLimits = () => {
+    const savedSettings = localStorage.getItem('orderLimitSettings');
+    if (savedSettings) {
+      return JSON.parse(savedSettings);
+    }
+    return {
+      minOrderPrice: 5000,
+      maxOrderPrice: 1000000000
+    };
+  };
+
+  const [orderLimits, setOrderLimits] = useState(getOrderLimits());
+
+  // 주문 제한 설정이 변경될 때마다 업데이트
+  useEffect(() => {
+    const handleSettingsChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setOrderLimits(customEvent.detail);
+      } else {
+        setOrderLimits(getOrderLimits());
+      }
+    };
+
+    window.addEventListener('orderLimitSettingsChanged', handleSettingsChange);
+    
+    return () => {
+      window.removeEventListener('orderLimitSettingsChanged', handleSettingsChange);
+    };
+  }, []);
 
   const loadOrderInfo = async () => {
     try {
@@ -95,19 +129,19 @@ export function OrderChanceInfo({ market }: OrderChanceInfoProps) {
           </div>
 
           <div className="bg-gray-800 p-4 rounded-lg">
-            <h3 className="text-lg font-bold text-white mb-4">주문 제한</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-400">최소 매수 금액</span>
-                <span className="text-white">
-                  {parseFloat(orderInfo.market.bid.min_total).toLocaleString()} {orderInfo.market.bid.currency}
-                </span>
+            <h3 className="text-lg font-bold text-white mb-2">주문 제한</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-gray-400">최소 매수 금액</div>
+                <div className="text-white font-bold">
+                  {orderLimits.minOrderPrice.toLocaleString()} KRW
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">최대 매수 금액</span>
-                <span className="text-white">
-                  {parseFloat(orderInfo.market.max_total).toLocaleString()} {orderInfo.market.bid.currency}
-                </span>
+              <div>
+                <div className="text-gray-400">최대 매수 금액</div>
+                <div className="text-white font-bold">
+                  {orderLimits.maxOrderPrice.toLocaleString()} KRW
+                </div>
               </div>
             </div>
           </div>
