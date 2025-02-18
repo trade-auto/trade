@@ -235,10 +235,12 @@ export const cancelAllOrders = async (quoteCurrencies: string = 'KRW', excludedP
 
 interface CreateOrderParams {
   market: string;
-  side: 'ask' | 'bid';
+  side: 'bid' | 'ask';
   volume: string;
   price: string;
   ord_type: 'limit' | 'price' | 'market';
+  mode?: 'test' | 'test-auto' | 'live';
+  isAutomatic?: boolean;
 }
 
 // 주문 생성 함수

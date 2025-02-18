@@ -22,6 +22,7 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
   const [ma3Price, setMa3Price] = useState<number | null>(null);
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
+  const [autoTrading, setAutoTrading] = useState(false);
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
@@ -88,6 +89,7 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
         volume,
         price,
         ord_type: ordType,
+        mode: mode === 'test' ? 'test' : 'live'
       });
 
       // 입력 필드 초기화
@@ -211,6 +213,45 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
     // 수량 변경시 부모에게 전달
     onQuantityUpdate(Number(volume));
   }, [volume, onQuantityUpdate]);
+
+  // 매매 조건 체크 및 자동 거래 실행
+  useEffect(() => {
+    if (mode === 'test' && autoTrading && currentPrice && ma3Price) {
+      const currentTime = new Date().getTime() / 1000;
+      
+      // 매매 조건 체크 (예: 3초 MA를 기준으로 매수/매도 판단)
+      if (currentPrice > ma3Price * 1.001) { // 0.1% 상승 시 매도
+        handleAutomaticTrade('ask', currentPrice);
+      } else if (currentPrice < ma3Price * 0.999) { // 0.1% 하락 시 매수
+        handleAutomaticTrade('bid', currentPrice);
+      }
+    }
+  }, [currentPrice, ma3Price, mode, autoTrading]);
+
+  const handleAutomaticTrade = async (tradeSide: 'bid' | 'ask', tradePrice: number) => {
+    if (isLoading) return;
+
+    try {
+      setIsLoading(true);
+      await createOrder({
+        market,
+        side: tradeSide,
+        volume: volume,
+        price: tradePrice.toString(),
+        ord_type: 'limit',
+        mode: mode === 'test' ? 'test-auto' : 'live',
+        isAutomatic: true
+      });
+      
+      if (onOrderCreated) {
+        onOrderCreated();
+      }
+    } catch (error: any) {
+      console.error('자동 거래 실패:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="mb-8">
@@ -478,6 +519,22 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
             }
             return null;
           })()}
+        </div>
+      )}
+
+      {/* 자동 거래 토글 버튼 추가 */}
+      {mode === 'test' && (
+        <div className="mt-4">
+          <button
+            onClick={() => setAutoTrading(!autoTrading)}
+            className={`w-full py-2 rounded font-bold ${
+              autoTrading 
+                ? 'bg-green-600 hover:bg-green-700' 
+                : 'bg-gray-600 hover:bg-gray-700'
+            } text-white`}
+          >
+            {autoTrading ? '자동 거래 실행 중' : '자동 거래 시작'}
+          </button>
         </div>
       )}
     </div>
