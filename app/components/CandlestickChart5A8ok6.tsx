@@ -1532,26 +1532,46 @@ export const CandlestickChart: React.FC<ChartProps> = ({ symbol, chartType }) =>
                   <th className="px-4 py-2">매도 가격</th>
                   <th className="px-4 py-2">수익률</th>
                   <th className="px-4 py-2">100만원 투자시 수익</th>
+                  <th className="px-4 py-2">체결 상태</th>
                 </tr>
               </thead>
               <tbody>
                 {backtestResult.trades.map((trade, index) => {
                   const profitAmount = 1000000 * trade.return;
+                  const currentTime = new Date().getTime() / 1000;
+                  const exitTime = trade.exitTime as number;
+                  const showStatus = exitTime > currentTime; // 현재 시간 이후의 거래만 체결 상태 표시
+                  
                   return (
-                  <tr key={index} className="border-t border-gray-700">
-                    <td className="px-4 py-2">{new Date((trade.entryTime as number) * 1000).toLocaleString()}</td>
-                    <td className="px-4 py-2">{new Date((trade.exitTime as number) * 1000).toLocaleString()}</td>
-                    <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
+                    <tr key={index} className="border-t border-gray-700">
+                      <td className="px-4 py-2">
+                        {new Date((trade.entryTime as number) * 1000).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        {new Date(exitTime * 1000).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
                       <td className="px-4 py-2">{(trade.entryPrice * 1.0).toLocaleString()}</td>
-                    <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
+                      <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
                       <td className="px-4 py-2">{(trade.exitPrice * 1.0).toLocaleString()}</td>
-                    <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {(trade.return * 100).toFixed(2)}%
-                    </td>
+                      <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {(trade.return * 100).toFixed(2)}%
+                      </td>
                       <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {profitAmount.toLocaleString()}원
-                    </td>
-                  </tr>
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        showStatus ? (
+                          !exitTime 
+                            ? 'text-yellow-500' 
+                            : trade.return >= 0 
+                              ? 'text-red-500' 
+                              : 'text-blue-500'
+                        ) : ''
+                      }`}>
+                        {showStatus ? (!exitTime ? '미체결' : '체결완료') : ''}
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
