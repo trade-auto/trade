@@ -57,10 +57,18 @@ export default function OrdersPage() {
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'trade') {
-        setCurrentPrice(data.trade_price);
-      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result as string);
+          if (data.type === 'trade') {
+            setCurrentPrice(data.trade_price);
+          }
+        } catch (error) {
+          console.error('JSON 파싱 오류:', error);
+        }
+      };
+      reader.readAsText(event.data);
     };
 
     return () => ws.close();

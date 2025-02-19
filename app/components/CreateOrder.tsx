@@ -25,6 +25,10 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
   const [autoTrading, setAutoTrading] = useState(false);
   const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
   const [isTradeComplete, setIsTradeComplete] = useState(false);
+  const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
+  const [statusChangeTime, setStatusChangeTime] = useState<string>(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  const [statusHistory, setStatusHistory] = useState<{ status: string, time: string }[]>([]);
+  const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string }[]>([]);
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
@@ -216,27 +220,74 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
     onQuantityUpdate(Number(volume));
   }, [volume, onQuantityUpdate]);
 
+  // 수익률 계산 함수
+  const calculateProfitRate = (buyPrice: number, sellPrice: number) => {
+    if (buyPrice === 0) return 0;
+    return ((sellPrice - buyPrice) / buyPrice) * 100;
+  };
+
+  // 매매 사이클 업데이트 함수 수정
+  const updateTradeCycle = (status: string) => {
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    
+    setTradeCycles(prev => {
+      const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime };
+      
+      // 새로운 사이클 시작 조건: 매수 대기 상태이거나 이전 사이클이 완료된 경우
+      if (status === '매수 대기' || (lastCycle.cycle.length === 4)) {
+        return [{ 
+          cycle: [status], 
+          times: [currentTime],
+          time: currentTime 
+        }, ...prev].slice(0, 5);
+      }
+
+      // 현재 사이클의 다음 상태 검증
+      const isValidNextState = (currentStates: string[], nextState: string) => {
+        const stateOrder = ['매수 대기', '매수', '매도 대기', '매도'];
+        const currentIdx = stateOrder.indexOf(currentStates[currentStates.length - 1]);
+        const nextIdx = stateOrder.indexOf(nextState);
+        return nextIdx === currentIdx + 1;
+      };
+
+      // 현재 사이클 업데이트
+      if (lastCycle.cycle.length < 4 && isValidNextState(lastCycle.cycle, status)) {
+        const updatedCycle = {
+          cycle: [...lastCycle.cycle, status],
+          times: [...(lastCycle.times || []), currentTime],
+          time: currentTime
+        };
+        return [updatedCycle, ...prev.slice(1)];
+      }
+
+      return prev;
+    });
+  };
+
   // 매매 조건 체크 및 자동 거래 실행 수정
   useEffect(() => {
     if (mode === 'test' && autoTrading && currentPrice && ma3Price) {
-      const currentTime = new Date().getTime() / 1000;
-      
-      // 매매 조건 체크
+      const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
       if (currentPrice > ma3Price * 1.001) { // 0.1% 상승 시 매도
-        if (lastTradeType === 'bid' || !lastTradeType) { // 이전 거래가 매수이거나 첫 거래일 때만
+        if (lastTradeType === 'bid') {
+          // 매수 상태에서 매도 대기로 전환
+          setStatusChangeTime(currentTime);
+          updateTradeCycle('매도 대기');
+          
+          // 매도 실행
           handleAutomaticTrade('ask', currentPrice);
           setLastTradeType('ask');
-          if (lastTradeType === 'bid') {
-            setIsTradeComplete(true); // 매수-매도 쌍이 완료됨
-          }
+          setStatusChangeTime(currentTime);
+          updateTradeCycle('매도');
         }
       } else if (currentPrice < ma3Price * 0.999) { // 0.1% 하락 시 매수
-        if (lastTradeType === 'ask' || !lastTradeType) { // 이전 거래가 매도이거나 첫 거래일 때만
+        if (lastTradeType === null) {
+          // 매수 대기 상태에서 매수 실행
           handleAutomaticTrade('bid', currentPrice);
           setLastTradeType('bid');
-          if (lastTradeType === 'ask') {
-            setIsTradeComplete(true); // 매도-매수 쌍이 완료됨
-          }
+          setStatusChangeTime(currentTime);
+          updateTradeCycle('매수');
         }
       }
     }
@@ -247,18 +298,34 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
 
     try {
       setIsLoading(true);
-      await createOrder({
-        market,
-        side: tradeSide,
-        volume: volume,
-        price: tradePrice.toString(),
-        ord_type: 'limit',
-        mode: mode === 'test' ? 'test-auto' : 'live-auto',
-        isAutomatic: true
-      });
       
-      if (onOrderCreated) {
-        onOrderCreated();
+      if (mode === 'test') {
+        // 테스트 모드에서는 실제 주문을 생성하지 않고 상태만 업데이트
+        console.log('테스트 모드 거래:', {
+          side: tradeSide,
+          price: tradePrice,
+          volume: volume
+        });
+        
+        // 주문 생성 콜백은 호출
+        if (onOrderCreated) {
+          onOrderCreated();
+        }
+      } else {
+        // 실전 모드에서만 실제 주문 생성
+        await createOrder({
+          market,
+          side: tradeSide,
+          volume: volume,
+          price: tradePrice.toString(),
+          ord_type: 'limit',
+          mode: 'live-auto',
+          isAutomatic: true
+        });
+        
+        if (onOrderCreated) {
+          onOrderCreated();
+        }
       }
     } catch (error: any) {
       console.error('자동 거래 실패:', error);
@@ -269,13 +336,20 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
 
   // 자동 거래 토글 버튼 클릭 핸들러 수정
   const handleAutoTradingToggle = () => {
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    
     if (!autoTrading) {
-      // 자동 거래 시작 시 상태 초기화
       setLastTradeType(null);
       setIsTradeComplete(false);
+      setTradeStatus('waiting_buy');
+      setStatusChangeTime(currentTime);
+      updateTradeCycle('매수 대기');
     }
     setAutoTrading(!autoTrading);
   };
+
+  // UI 수정
+  const [showHistory, setShowHistory] = useState(false);
 
   return (
     <div className="mb-8">
@@ -546,25 +620,55 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
         </div>
       )}
 
-      {/* 자동 거래 토글 버튼 수정 */}
+      {/* 자동 거래 토글 버튼과 상태 표시 부분 수정 */}
       {mode === 'test' && (
-        <div className="mt-4">
+        <div className="mt-4 flex items-center gap-4">
           <button
             onClick={handleAutoTradingToggle}
-            className={`w-full py-2 rounded font-bold ${
+            className={`px-6 py-2 rounded font-bold ${
               autoTrading 
-                ? isTradeComplete
-                  ? 'bg-green-600 hover:bg-green-700'
-                  : 'bg-yellow-600 hover:bg-yellow-700'
+                ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-gray-600 hover:bg-gray-700'
             } text-white`}
           >
-            {autoTrading 
-              ? isTradeComplete
-                ? '자동 거래 완료'
-                : '매매 쌍 대기 중...'
-              : '자동 거래 시작'}
+            {autoTrading ? '자동 거래 중지' : '자동 거래 시작'}
           </button>
+
+          {autoTrading && (
+            <div className="flex flex-col items-start">
+              <span className="text-gray-400 mb-2">현재 상태:</span>
+              <span className={`px-3 py-1 rounded-full text-sm font-semibold mb-1 ${
+                lastTradeType === null
+                  ? 'bg-yellow-600 text-white'
+                  : lastTradeType === 'bid'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-blue-600 text-white'
+              }`}>
+                {lastTradeType === null
+                  ? `매수 대기 중 (${statusChangeTime})`
+                  : lastTradeType === 'bid'
+                    ? `매도 대기 중 (${statusChangeTime})`
+                    : `매수 대기 중 (${statusChangeTime})`}
+              </span>
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="mt-2 px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded"
+              >
+                {showHistory ? '히스토리 숨기기' : '히스토리 보기'}
+              </button>
+              {showHistory && (
+                <div className="mt-2">
+                  {tradeCycles.map((entry, index) => (
+                    <div key={index} className="block px-3 py-1 rounded-full text-sm font-semibold bg-gray-700 text-white mb-1">
+                      사이클 {index + 1}: {entry.cycle.map((status, i) => 
+                        `${status} (${entry.times[i]})`
+                      ).join(' -> ')}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
