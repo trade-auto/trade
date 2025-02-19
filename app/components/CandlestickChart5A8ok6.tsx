@@ -1508,8 +1508,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   // 웹소켓 토글 핸들러 수정
   const handleWebSocketToggle = () => {
     if (!isWebSocketEnabled) {
-      // 웹소켓 활성화 시 자동 업데이트 비활성화
       setIsAutoUpdate(false);
+      let currentCandle: ExtendedCandlestickData | null = null;
+      let candleStartTime: number = 0;
+      let candleHistory: ExtendedCandlestickData[] = [];
+
       connectWebSocket([symbol], (data) => {
         if (candleSeriesRef.current && data.type === 'trade') {
           const tradeData = {
@@ -1520,18 +1523,45 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             close: data.trade_price,
             volume: data.trade_volume
           };
-          
+
+          // 캔들스틱 업데이트
           candleSeriesRef.current.update(tradeData);
           
+          // 거래량 업데이트
           if (volumeSeriesRef.current) {
             volumeSeriesRef.current.update({
               time: Math.floor(data.timestamp / 1000) as Time,
               value: data.trade_volume,
-              color: data.trade_price >= (lastCandleRef.current?.close ?? 0) ? '#26a69a' : '#ef5350'
+              color: data.trade_price >= (lastCandleRef.current?.close ?? 0) ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
             });
           }
-          
+
+          // MA 업데이트
+          candleHistory.push(tradeData);
+          if (candleHistory.length > Math.max(thirtyPeriod, fortyPeriod, sixtyPeriod)) {
+            candleHistory.shift();
+          }
+
+          const updateMA = () => {
+            if (candleHistory.length > 0) {
+              if (threeEMASeriesRef.current) {
+                const ma30 = calculateEMA(candleHistory, thirtyPeriod);
+                threeEMASeriesRef.current.update(ma30[ma30.length - 1]);
+              }
+              if (sixEMASeriesRef.current) {
+                const ma40 = calculateEMA(candleHistory, fortyPeriod);
+                sixEMASeriesRef.current.update(ma40[ma40.length - 1]);
+              }
+              if (twentyEMASeriesRef.current) {
+                const ma60 = calculateEMA(candleHistory, sixtyPeriod);
+                twentyEMASeriesRef.current.update(ma60[ma60.length - 1]);
+              }
+            }
+          };
+
+          updateMA();
           lastCandleRef.current = tradeData;
+          setCurrentPrice(data.trade_price);
         }
       });
     } else {
