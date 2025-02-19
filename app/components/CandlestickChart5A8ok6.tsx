@@ -1641,6 +1641,25 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     });
   }, [setOnCandleComplete, handleCompletedCandle]);
 
+  // 마커 업데이트 함수 추가
+  const updateTradeMarkers = (candleSeries: ISeriesApi<"Candlestick">, markers: SeriesMarker<Time>[]) => {
+    try {
+      // 마커 업데이트 전에 차트 다시 그리기
+      const currentData = [...candleSeries.data()];
+      candleSeries.setData([]);
+      candleSeries.setData(currentData);
+      
+      // 새로운 마커 추가
+      if (markers.length > 0) {
+        createSeriesMarkers(candleSeries, markers);
+      }
+      
+      console.log('마커 업데이트 완료:', markers);
+    } catch (error) {
+      console.error('마커 업데이트 중 오류:', error);
+    }
+  };
+
   // 새: 실시간 API 업데이트 토글 상태를 추가
   const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState<boolean>(false);
   
@@ -1696,7 +1715,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               threeEMASeriesRef.current?.setData(threeEMAData);
               sixEMASeriesRef.current?.setData(sixEMAData);
               twentyEMASeriesRef.current?.setData(twentyEMAData);
-
+              // 크로스 포인트 및 마커 업데이트
+              const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+              crossPointsRef.current = crossPoints;
+              const markers = createTradeMarkers(crossPoints);
+              if (candleSeriesRef.current) {
+-               createSeriesMarkers(candleSeriesRef.current, markers);
++               updateTradeMarkers(candleSeriesRef.current, markers);
+              }
               setCurrentPrice(data[0].trade_price);
             }
           }
