@@ -93,6 +93,11 @@ interface TickerData {
 
 // 기존 CandlestickData 인터페이스 확장
 interface ExtendedCandlestickData extends CandlestickData<Time> {
+  time: Time;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
   volume?: number;
 }
 
@@ -318,7 +323,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           color: '#26a69a',
           shape: 'arrowUp',
           text: `매수 ${tradeId}`,
-          size: 4
+          size: 4,
+          id: `buy-${tradeId}` // 마커 ID 추가
         });
       }
       else if (inTrade && point.position === 'sell' && buyPoint) {
@@ -329,7 +335,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           color: '#ef5350',
           shape: 'arrowDown',
           text: `매도 ${tradeId}`,
-          size: 4
+          size: 4,
+          id: `sell-${tradeId}` // 마커 ID 추가
         });
         
         inTrade = false;
@@ -339,6 +346,25 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }
     
     return markers;
+  };
+
+  // 마커 업데이트 함수 수정
+  const updateTradeMarkers = (candleSeries: ISeriesApi<"Candlestick">, markers: SeriesMarker<Time>[]) => {
+    try {
+      // 마커 업데이트 전에 차트 다시 그리기
+      const currentData = [...candleSeries.data()];
+      candleSeries.setData([]);
+      candleSeries.setData(currentData);
+      
+      // 새로운 마커 추가
+      if (markers.length > 0) {
+        createSeriesMarkers(candleSeries, markers);
+      }
+      
+      console.log('마커 업데이트 완료:', markers);
+    } catch (error) {
+      console.error('마커 업데이트 중 오류:', error);
+    }
   };
 
   // MA 기간 변경 핸들러
@@ -535,6 +561,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     if (chartRef.current) {
       chartRef.current.remove();
       chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      threeEMASeriesRef.current = null;
+      sixEMASeriesRef.current = null;
+      twentyEMASeriesRef.current = null;
     }
 
     // Create chart
@@ -621,7 +652,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // Load initial data
     if (dateRange.startDate && dateRange.endDate) {
       // 자동 로드 대신 사용자가 선택한 날짜로 데이터 로드
-    loadAllData(dateRange.startDate, dateRange.endDate);
+      loadAllData(dateRange.startDate, dateRange.endDate);
     }
 
     // Handle window resize
@@ -641,6 +672,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
+        candleSeriesRef.current = null;
+        volumeSeriesRef.current = null;
+        threeEMASeriesRef.current = null;
+        sixEMASeriesRef.current = null;
+        twentyEMASeriesRef.current = null;
       }
     };
   }, [loadAllData]);
@@ -679,142 +715,154 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 실시간 가격 업데이트 처리
   useEffect(() => {
-    if (!currentPrice || !candleSeriesRef.current || !lastCandleRef.current || !tickerData) return;
+    if (!currentPrice || !candleSeriesRef.current || !lastCandleRef.current || !tickerData || !chartRef.current) return;
 
-    // WebSocket timestamp 검증
-    const timestamp = Math.floor(tickerData.timestamp / 1000);
-    if (!timestamp || isNaN(timestamp)) return;  // 유효하지 않은 timestamp 처리
+    // 차트가 이미 제거되었는지 확인
+    try {
+      // WebSocket timestamp 검증
+      const timestamp = Math.floor(tickerData.timestamp / 1000);
+      if (!timestamp || isNaN(timestamp)) return;  // 유효하지 않은 timestamp 처리
 
-    const lastCandle = lastCandleRef.current;
-    const candleSeries = candleSeriesRef.current;
-    const volumeSeries = volumeSeriesRef.current;
-    
-    // 거래량 계산 함수 수정
-    const calculateVolume = (currentAccVolume: number, tradeTimestamp: number) => {
-      if (!currentAccVolume || isNaN(currentAccVolume)) return 0;
+      const lastCandle = lastCandleRef.current;
+      const candleSeries = candleSeriesRef.current;
+      const volumeSeries = volumeSeriesRef.current;
       
-      // 이전 거래 시간과 현재 거래 시간이 다르면 새로운 거래로 간주
-      if (tradeTimestamp !== prevTradeTimeRef.current) {
-        const volume = currentAccVolume - prevVolumeRef.current;
-        prevVolumeRef.current = currentAccVolume;
-        prevTradeTimeRef.current = tradeTimestamp;
-        accVolumeRef.current += volume;
+      // 거래량 계산 함수 수정
+      const calculateVolume = (currentAccVolume: number, tradeTimestamp: number) => {
+        if (!currentAccVolume || isNaN(currentAccVolume)) return 0;
+        
+        // 이전 거래 시간과 현재 거래 시간이 다르면 새로운 거래로 간주
+        if (tradeTimestamp !== prevTradeTimeRef.current) {
+          const volume = currentAccVolume - prevVolumeRef.current;
+          prevVolumeRef.current = currentAccVolume;
+          prevTradeTimeRef.current = tradeTimestamp;
+          accVolumeRef.current += volume;
+          return accVolumeRef.current;
+        }
+        
         return accVolumeRef.current;
-      }
+      };
       
-      return accVolumeRef.current;
-    };
-    
-    // 차트 타입에 따른 캔들 간격 계산
-    let interval: number;
-    if (chartType.startsWith('seconds/')) {
-      interval = parseInt(chartType.split('/')[1]);
-      // 초봉 차트의 경우 실시간으로 새 캔들 생성
-      const currentSecond = timestamp % 60;
-      const lastCandleSecond = (lastCandle.time as number) % 60;
-      
-      // 시간 순서 검증
-      if ((lastCandle.time as number) > timestamp) {
-        return; // 이전 시간의 데이터는 무시
-      }
-
-      if (currentSecond !== lastCandleSecond) {
-        // 새로운 캔들 생성시 거래량 초기화
-        prevVolumeRef.current = tickerData.acc_trade_volume;
-        prevTradeTimeRef.current = timestamp;
-        accVolumeRef.current = 0;
+      // 차트 타입에 따른 캔들 간격 계산
+      let interval: number;
+      if (chartType.startsWith('seconds/')) {
+        interval = parseInt(chartType.split('/')[1]);
+        // 초봉 차트의 경우 실시간으로 새 캔들 생성
+        const currentSecond = timestamp % 60;
+        const lastCandleSecond = (lastCandle.time as number) % 60;
         
-        // 새로운 캔들 생성
-        const newCandle: ExtendedCandlestickData = {
-          time: timestamp as Time,
-          open: lastCandle.close,
-          high: currentPrice,
-          low: currentPrice,
-          close: currentPrice,
-          volume: 0 // 새 캔들의 초기 거래량은 0
-        };
-        
-        if (candleSeries) {
-          candleSeries.update(newCandle);
-          lastCandleRef.current = newCandle;
+        // 시간 순서 검증
+        if ((lastCandle.time as number) > timestamp) {
+          return; // 이전 시간의 데이터는 무시
         }
 
-        // 거래량 업데이트
-        if (volumeSeries) {
-          const newVolume: HistogramData<Time> = {
+        if (currentSecond !== lastCandleSecond) {
+          // 새로운 캔들 생성시 거래량 초기화
+          prevVolumeRef.current = tickerData.acc_trade_volume;
+          prevTradeTimeRef.current = timestamp;
+          accVolumeRef.current = 0;
+          
+          // 새로운 캔들 생성
+          const newCandle: ExtendedCandlestickData = {
             time: timestamp as Time,
-            value: 0,
-            color: currentPrice >= lastCandle.close ? '#26a69a80' : '#ef535080'
+            open: lastCandle.close,
+            high: currentPrice,
+            low: currentPrice,
+            close: currentPrice,
+            volume: 0 // 새 캔들의 초기 거래량은 0
           };
-          volumeSeries.update(newVolume);
+          
+          if (candleSeries) {
+            candleSeries.update(newCandle);
+            lastCandleRef.current = newCandle;
+          }
+
+          // 거래량 업데이트
+          if (volumeSeries) {
+            const newVolume: HistogramData<Time> = {
+              time: timestamp as Time,
+              value: 0,
+              color: currentPrice >= lastCandle.close ? '#26a69a80' : '#ef535080'
+            };
+            volumeSeries.update(newVolume);
+          }
+        } else {
+          // 현재 캔들 업데이트
+          const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
+          const updatedCandle: ExtendedCandlestickData = {
+            ...lastCandle,
+            high: Math.max(lastCandle.high, currentPrice),
+            low: Math.min(lastCandle.low, currentPrice),
+            close: currentPrice,
+            volume: volume
+          };
+
+          if (candleSeries) {
+            candleSeries.update(updatedCandle);
+            lastCandleRef.current = updatedCandle;
+          }
+
+          // 거래량 업데이트
+          if (volumeSeries) {
+            const updatedVolume: HistogramData<Time> = {
+              time: lastCandle.time,
+              value: volume,
+              color: currentPrice >= lastCandle.open ? '#26a69a80' : '#ef535080'
+            };
+            volumeSeries.update(updatedVolume);
+          }
         }
       } else {
-        // 현재 캔들 업데이트
-        const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
-        const updatedCandle: ExtendedCandlestickData = {
-          ...lastCandle,
-          high: Math.max(lastCandle.high, currentPrice),
-          low: Math.min(lastCandle.low, currentPrice),
-          close: currentPrice,
-          volume: volume
-        };
-
-        if (candleSeries) {
-          candleSeries.update(updatedCandle);
-          lastCandleRef.current = updatedCandle;
-        }
-
-        // 거래량 업데이트
-        if (volumeSeries) {
-          const updatedVolume: HistogramData<Time> = {
-            time: lastCandle.time,
-            value: volume,
-            color: currentPrice >= lastCandle.open ? '#26a69a80' : '#ef535080'
+        interval = parseInt(chartType) * 60; // minutes to seconds
+        
+        // 현재 시간이 마지막 캔들의 시간 + 간격을 넘었다면 새로운 캔들 생성
+        if (timestamp >= (lastCandle.time as number) + interval) {
+          // 새로운 캔들 생성시 거래량 초기화
+          prevVolumeRef.current = tickerData.acc_trade_volume;
+          prevTradeTimeRef.current = timestamp;
+          accVolumeRef.current = 0;
+          if (dateRange.endDate) {
+          loadAllData(dateRange.startDate, dateRange.endDate);
+          }
+        } else {
+          // 현재 캔들 업데이트
+          const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
+          const updatedCandle: ExtendedCandlestickData = {
+            ...lastCandle,
+            high: Math.max(lastCandle.high, currentPrice),
+            low: Math.min(lastCandle.low, currentPrice),
+            close: currentPrice,
+            volume: volume
           };
-          volumeSeries.update(updatedVolume);
+
+          if (candleSeries) {
+            candleSeries.update(updatedCandle);
+            lastCandleRef.current = updatedCandle;
+          }
+
+          // 거래량 업데이트
+          if (volumeSeries) {
+            const updatedVolume: HistogramData<Time> = {
+              time: lastCandle.time,
+              value: volume,
+              color: currentPrice >= lastCandle.open ? '#26a69a80' : '#ef535080'
+            };
+            volumeSeries.update(updatedVolume);
+          }
         }
       }
-    } else {
-      interval = parseInt(chartType) * 60; // minutes to seconds
-      
-      // 현재 시간이 마지막 캔들의 시간 + 간격을 넘었다면 새로운 캔들 생성
-      if (timestamp >= (lastCandle.time as number) + interval) {
-        // 새로운 캔들 생성시 거래량 초기화
-        prevVolumeRef.current = tickerData.acc_trade_volume;
-        prevTradeTimeRef.current = timestamp;
-        accVolumeRef.current = 0;
-        if (dateRange.endDate) {
-        loadAllData(dateRange.startDate, dateRange.endDate);
-        }
-      } else {
-        // 현재 캔들 업데이트
-        const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
-        const updatedCandle: ExtendedCandlestickData = {
-          ...lastCandle,
-          high: Math.max(lastCandle.high, currentPrice),
-          low: Math.min(lastCandle.low, currentPrice),
-          close: currentPrice,
-          volume: volume
-        };
 
-        if (candleSeries) {
-          candleSeries.update(updatedCandle);
-          lastCandleRef.current = updatedCandle;
-        }
-
-        // 거래량 업데이트
-        if (volumeSeries) {
-          const updatedVolume: HistogramData<Time> = {
-            time: lastCandle.time,
-            value: volume,
-            color: currentPrice >= lastCandle.open ? '#26a69a80' : '#ef535080'
-          };
-          volumeSeries.update(updatedVolume);
-        }
-      }
+      setChartPrice(currentPrice);
+    } catch (error) {
+      console.error('차트 업데이트 중 오류:', error);
+      // 오류가 발생하면 차트 참조 초기화
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      threeEMASeriesRef.current = null;
+      sixEMASeriesRef.current = null;
+      twentyEMASeriesRef.current = null;
     }
-
-    setChartPrice(currentPrice);
   }, [currentPrice, tickerData, chartType, loadAllData]);
 
   // EMA 계산 함수
@@ -1536,30 +1584,47 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             });
           }
 
-          // MA 업데이트
+          // candleHistory 업데이트
           candleHistory.push(tradeData);
           if (candleHistory.length > Math.max(thirtyPeriod, fortyPeriod, sixtyPeriod)) {
             candleHistory.shift();
           }
 
-          const updateMA = () => {
-            if (candleHistory.length > 0) {
-              if (threeEMASeriesRef.current) {
-                const ma30 = calculateEMA(candleHistory, thirtyPeriod);
-                threeEMASeriesRef.current.update(ma30[ma30.length - 1]);
-              }
-              if (sixEMASeriesRef.current) {
-                const ma40 = calculateEMA(candleHistory, fortyPeriod);
-                sixEMASeriesRef.current.update(ma40[ma40.length - 1]);
-              }
-              if (twentyEMASeriesRef.current) {
-                const ma60 = calculateEMA(candleHistory, sixtyPeriod);
-                twentyEMASeriesRef.current.update(ma60[ma60.length - 1]);
-              }
-            }
-          };
+          // MA 업데이트
+          if (candleHistory.length > 0 && threeEMASeriesRef.current && sixEMASeriesRef.current && twentyEMASeriesRef.current) {
+            const ma30 = calculateEMA(candleHistory, thirtyPeriod);
+            const ma40 = calculateEMA(candleHistory, fortyPeriod);
+            const ma60 = calculateEMA(candleHistory, sixtyPeriod);
 
-          updateMA();
+            // 매수/매도 확률 계산 및 업데이트
+            const probability = calculateTradingProbability(
+              candleHistory,
+              ma30,
+              ma40,
+              ma60,
+              data.trade_volume
+            );
+            setTradingProbability(probability);
+
+            if (ma30.length > 0) {
+              threeEMASeriesRef.current.update(ma30[ma30.length - 1]);
+            }
+            if (ma40.length > 0) {
+              sixEMASeriesRef.current.update(ma40[ma40.length - 1]);
+            }
+            if (ma60.length > 0) {
+              twentyEMASeriesRef.current.update(ma60[ma60.length - 1]);
+            }
+
+            const crossPoints = findCrossPoints(ma30, ma40, ma60);
+            crossPointsRef.current = crossPoints;
+            const markers = createTradeMarkers(crossPoints);
+            
+            if (candleSeriesRef.current) {
+              updateTradeMarkers(candleSeriesRef.current, markers);
+            }
+          }
+
           lastCandleRef.current = tradeData;
           setCurrentPrice(data.trade_price);
         }
@@ -1597,33 +1662,45 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // new: 캔들 완료 처리 함수
   const handleCompletedCandle = (newCandle: ExtendedCandlestickData) => {
-    // 기존 완료된 캔들 데이터 취득 (없다면 빈 배열)
-    const existingData = candleSeriesRef.current?.data() as ExtendedCandlestickData[] || [];
+    if (!candleSeriesRef.current) return;
 
-    // 새 캔들을 누적
-    const updatedData = [...existingData, newCandle];
-    candleSeriesRef.current?.setData(updatedData);
+    try {
+      // 기존 완료된 캔들 데이터 취득 (없다면 빈 배열)
+      const existingData = candleSeriesRef.current.data() as ExtendedCandlestickData[] || [];
 
-    // EMA 재계산
-    const threeEMAData = calculateEMA(updatedData, thirtyPeriod);
-    const sixEMAData = calculateEMA(updatedData, fortyPeriod);
-    const twentyEMAData = calculateEMA(updatedData, sixtyPeriod);
+      // 새 캔들을 누적
+      const updatedData = [...existingData, newCandle];
+      candleSeriesRef.current.setData(updatedData);
 
-    threeEMASeriesRef.current?.setData(threeEMAData);
-    sixEMASeriesRef.current?.setData(sixEMAData);
-    twentyEMASeriesRef.current?.setData(twentyEMAData);
+      // EMA 재계산
+      const threeEMAData = calculateEMA(updatedData, thirtyPeriod);
+      const sixEMAData = calculateEMA(updatedData, fortyPeriod);
+      const twentyEMAData = calculateEMA(updatedData, sixtyPeriod);
 
-    // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
-    const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
-    crossPointsRef.current = crossPoints;
-    const markers = createTradeMarkers(crossPoints);
-    if (candleSeriesRef.current) {
-      createSeriesMarkers(candleSeriesRef.current, markers);
+      if (threeEMASeriesRef.current) {
+        threeEMASeriesRef.current.setData(threeEMAData);
+      }
+      if (sixEMASeriesRef.current) {
+        sixEMASeriesRef.current.setData(sixEMAData);
+      }
+      if (twentyEMASeriesRef.current) {
+        twentyEMASeriesRef.current.setData(twentyEMAData);
+      }
+
+      // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
+      const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+      crossPointsRef.current = crossPoints;
+      const markers = createTradeMarkers(crossPoints);
+      
+      // 새로운 마커 업데이트 함수 사용
+      updateTradeMarkers(candleSeriesRef.current, markers);
+
+      // 백테스팅 결과 업데이트
+      const result = calculateBacktestResult(updatedData, crossPoints);
+      setBacktestResult(result);
+    } catch (error) {
+      console.error('캔들 업데이트 중 오류:', error);
     }
-
-    // 백테스팅 결과 업데이트
-    const result = calculateBacktestResult(updatedData, crossPoints);
-    setBacktestResult(result);
   };
 
   // WebSocket에서 캔들 완료 시 호출하는 콜백 등록:
@@ -1633,6 +1710,97 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     });
   }, [setOnCandleComplete, handleCompletedCandle]);
 
+  // 매수/매도 확률 계산을 위한 인터페이스 추가
+  interface TradingProbability {
+    buyProbability: number;
+    sellProbability: number;
+    currentTrend: 'up' | 'down' | 'neutral';
+    maSpread: number;
+    volumeStrength: 'high' | 'medium' | 'low';
+    lastUpdate: string;
+  }
+
+  // 상태 추가
+  const [tradingProbability, setTradingProbability] = useState<TradingProbability>({
+    buyProbability: 0,
+    sellProbability: 0,
+    currentTrend: 'neutral',
+    maSpread: 0,
+    volumeStrength: 'low',
+    lastUpdate: '-'
+  });
+
+  // 매수/매도 확률 계산 함수
+  const calculateTradingProbability = (
+    candleData: ExtendedCandlestickData[],
+    ma30: LineData<Time>[],
+    ma40: LineData<Time>[],
+    ma60: LineData<Time>[],
+    currentVolume: number
+  ): TradingProbability => {
+    if (candleData.length === 0 || ma30.length === 0 || ma40.length === 0 || ma60.length === 0) {
+      return {
+        buyProbability: 0,
+        sellProbability: 0,
+        currentTrend: 'neutral',
+        maSpread: 0,
+        volumeStrength: 'low',
+        lastUpdate: new Date().toLocaleTimeString()
+      };
+    }
+
+    // 최근 데이터
+    const lastCandle = candleData[candleData.length - 1];
+    const lastMa30 = ma30[ma30.length - 1].value;
+    const lastMa40 = ma40[ma40.length - 1].value;
+    const lastMa60 = ma60[ma60.length - 1].value;
+
+    // MA 스프레드 계산
+    const maSpread = ((lastMa30 - lastMa60) / lastMa60) * 100;
+
+    // 거래량 강도 계산
+    const avgVolume = calculateVMA(candleData, 20);
+    const volumeRatio = currentVolume / avgVolume;
+    let volumeStrength: 'high' | 'medium' | 'low' = 'low';
+    if (volumeRatio > 2) volumeStrength = 'high';
+    else if (volumeRatio > 1) volumeStrength = 'medium';
+
+    // 추세 판단
+    let currentTrend: 'up' | 'down' | 'neutral' = 'neutral';
+    if (lastMa30 > lastMa40 && lastMa40 > lastMa60) currentTrend = 'up';
+    else if (lastMa30 < lastMa40 && lastMa40 < lastMa60) currentTrend = 'down';
+
+    // 매수 확률 계산
+    let buyProbability = 0;
+    if (currentTrend === 'up') buyProbability += 30;
+    if (maSpread > 0) buyProbability += maSpread * 5;
+    if (volumeStrength === 'high') buyProbability += 20;
+    else if (volumeStrength === 'medium') buyProbability += 10;
+    if (lastCandle.close > lastCandle.open) buyProbability += 10;
+
+    // 매도 확률 계산
+    let sellProbability = 0;
+    if (currentTrend === 'down') sellProbability += 30;
+    if (maSpread < 0) sellProbability += Math.abs(maSpread) * 5;
+    if (volumeStrength === 'high') sellProbability += 20;
+    else if (volumeStrength === 'medium') sellProbability += 10;
+    if (lastCandle.close < lastCandle.open) sellProbability += 10;
+
+    // 확률 범위 조정 (0-100)
+    buyProbability = Math.min(100, Math.max(0, buyProbability));
+    sellProbability = Math.min(100, Math.max(0, sellProbability));
+
+    return {
+      buyProbability,
+      sellProbability,
+      currentTrend,
+      maSpread,
+      volumeStrength,
+      lastUpdate: new Date().toLocaleTimeString()
+    };
+  };
+
+  // 차트 위에 확률 표시 패널 추가 (return 문 수정)
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
@@ -2099,6 +2267,78 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* 매수/매도 확률 패널 추가 */}
+      <div className="mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <div className="text-gray-400 text-sm mb-2">매수 확률</div>
+              <div className="relative pt-1">
+                <div className="overflow-hidden h-2 text-xs flex rounded bg-gray-700">
+                  <div
+                    style={{ width: `${tradingProbability.buyProbability}%` }}
+                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-green-500"
+                  ></div>
+                </div>
+                <div className="text-white text-lg font-bold mt-1">
+                  {tradingProbability.buyProbability.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-sm mb-2">매도 확률</div>
+              <div className="relative pt-1">
+                <div className="overflow-hidden h-2 text-xs flex rounded bg-gray-700">
+                  <div
+                    style={{ width: `${tradingProbability.sellProbability}%` }}
+                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-red-500"
+                  ></div>
+                </div>
+                <div className="text-white text-lg font-bold mt-1">
+                  {tradingProbability.sellProbability.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-sm">현재 상태</div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="text-white">
+                  <span className="text-gray-400">추세:</span>{' '}
+                  <span className={
+                    tradingProbability.currentTrend === 'up' ? 'text-green-500' :
+                    tradingProbability.currentTrend === 'down' ? 'text-red-500' :
+                    'text-yellow-500'
+                  }>
+                    {tradingProbability.currentTrend === 'up' ? '상승' :
+                     tradingProbability.currentTrend === 'down' ? '하락' : '중립'}
+                  </span>
+                </div>
+                <div className="text-white">
+                  <span className="text-gray-400">MA 스프레드:</span>{' '}
+                  <span className={tradingProbability.maSpread >= 0 ? 'text-green-500' : 'text-red-500'}>
+                    {tradingProbability.maSpread.toFixed(2)}%
+                  </span>
+                </div>
+                <div className="text-white">
+                  <span className="text-gray-400">거래량:</span>{' '}
+                  <span className={
+                    tradingProbability.volumeStrength === 'high' ? 'text-green-500' :
+                    tradingProbability.volumeStrength === 'medium' ? 'text-yellow-500' :
+                    'text-red-500'
+                  }>
+                    {tradingProbability.volumeStrength === 'high' ? '강함' :
+                     tradingProbability.volumeStrength === 'medium' ? '보통' : '약함'}
+                  </span>
+                </div>
+                <div className="text-gray-400 text-xs">
+                  마지막 업데이트: {tradingProbability.lastUpdate}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

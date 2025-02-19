@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useUpbitStore } from '../store/useUpbitStore';
+import { Time } from 'lightweight-charts';
 
 interface TradeData {
   type: string;
@@ -53,7 +54,12 @@ interface Candle {
 }
 
 interface ExtendedCandlestickData {
-  // Add any necessary properties for ExtendedCandlestickData
+  time: Time;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
 }
 
 export const useUpbitWebSocket = (symbol?: string) => {
