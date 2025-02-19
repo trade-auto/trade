@@ -1681,18 +1681,22 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                 volume: data[0].candle_acc_trade_volume
               };
 
-              // 시간 기준으로 오름차순 정렬하여 데이터 업데이트
-              const updatedData = [...existingData, newCandle]
-                .sort((a, b) => {
-                  const timeA = typeof a.time === 'number' ? a.time : Math.floor(new Date(a.time).getTime() / 1000);
-                  const timeB = typeof b.time === 'number' ? b.time : Math.floor(new Date(b.time).getTime() / 1000);
-                  return timeA - timeB;
-                })
-                .filter((candle, index, self) => 
-                  index === 0 || candle.time !== self[index - 1].time
-                );
+              const updatedData = existingData.filter(candle => 
+                (candle.time as number) !== Math.floor(newDataTime / 1000)
+              ).concat(newCandle)
+                .sort((a, b) => (a.time as number) - (b.time as number));
 
               candleSeriesRef.current?.setData(updatedData);
+              
+              // MA 데이터 업데이트
+              const threeEMAData = calculateEMA(updatedData, thirtyPeriod);
+              const sixEMAData = calculateEMA(updatedData, fortyPeriod);
+              const twentyEMAData = calculateEMA(updatedData, sixtyPeriod);
+              
+              threeEMASeriesRef.current?.setData(threeEMAData);
+              sixEMASeriesRef.current?.setData(sixEMAData);
+              twentyEMASeriesRef.current?.setData(twentyEMAData);
+
               setCurrentPrice(data[0].trade_price);
             }
           }
