@@ -1661,7 +1661,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         try {
           // 초봉 데이터 한 개만 가져오기
           const response = await fetch(
-            `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&count=1`
+            `https://api.upbit.com/v1/candles/seconds?market=${symbol}&count=1`
           );
           const data = await response.json();
           
