@@ -366,7 +366,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
       crossPointsRef.current = crossPoints;
       
-      // 매수/매도 마커 업데이트
+      // 매수/매도 마커 업데이트 
       const markers = createTradeMarkers(crossPoints);
       if (candleSeriesRef.current) {
         createSeriesMarkers(candleSeriesRef.current, markers);
@@ -1584,7 +1584,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 상태 추가
   const [isWebSocketEnabled, setIsWebSocketEnabled] = useState<boolean>(false);
-  const { connectWebSocket, disconnectWebSocket } = useUpbitWebSocket();
+  const { connectWebSocket, disconnectWebSocket, setOnCandleComplete } = useUpbitWebSocket();
 
   // useEffect 내에서 tickers 변경 감지
   useEffect(() => {
@@ -1594,6 +1594,44 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       setLastUpdated(new Date().toLocaleString());
     }
   }, [tickers, symbol]);
+
+  // new: 캔들 완료 처리 함수
+  const handleCompletedCandle = (newCandle: ExtendedCandlestickData) => {
+    // 기존 완료된 캔들 데이터 취득 (없다면 빈 배열)
+    const existingData = candleSeriesRef.current?.data() as ExtendedCandlestickData[] || [];
+
+    // 새 캔들을 누적
+    const updatedData = [...existingData, newCandle];
+    candleSeriesRef.current?.setData(updatedData);
+
+    // EMA 재계산
+    const threeEMAData = calculateEMA(updatedData, thirtyPeriod);
+    const sixEMAData = calculateEMA(updatedData, fortyPeriod);
+    const twentyEMAData = calculateEMA(updatedData, sixtyPeriod);
+
+    threeEMASeriesRef.current?.setData(threeEMAData);
+    sixEMASeriesRef.current?.setData(sixEMAData);
+    twentyEMASeriesRef.current?.setData(twentyEMAData);
+
+    // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
+    const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+    crossPointsRef.current = crossPoints;
+    const markers = createTradeMarkers(crossPoints);
+    if (candleSeriesRef.current) {
+      createSeriesMarkers(candleSeriesRef.current, markers);
+    }
+
+    // 백테스팅 결과 업데이트
+    const result = calculateBacktestResult(updatedData, crossPoints);
+    setBacktestResult(result);
+  };
+
+  // WebSocket에서 캔들 완료 시 호출하는 콜백 등록:
+  useEffect(() => {
+    setOnCandleComplete((completedCandle: ExtendedCandlestickData) => {
+      handleCompletedCandle(completedCandle);
+    });
+  }, [setOnCandleComplete, handleCompletedCandle]);
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
