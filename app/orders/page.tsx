@@ -43,6 +43,7 @@ export default function OrdersPage() {
       unitCurrency: string;
     } | null;
   }>({ coin: null, krw: null });
+  const createOrderRef = useRef<{ handleAutomaticTrade: (tradeSide: 'bid' | 'ask', tradePrice: number) => Promise<void> }>(null);
 
   // WebSocket을 통해 실시간 가격 업데이트
   useEffect(() => {
@@ -177,7 +178,8 @@ export default function OrdersPage() {
         </div>
 
         {/* 주문하기 섹션 */}
-        <CreateOrder 
+        <CreateOrder
+          ref={createOrderRef}
           market={selectedSymbol}
           mode={mode}
           onOrderCreated={handleOrderCreated}
@@ -275,6 +277,15 @@ export default function OrdersPage() {
             chartType="seconds/60"
             initialAutoUpdate={true}
             mode={mode}
+            handleOrder={async (params) => {
+              // CreateOrder의 handleAutomaticTrade 함수 호출
+              if (createOrderRef.current) {
+                await createOrderRef.current.handleAutomaticTrade(
+                  params.side,
+                  Number(params.price)
+                );
+              }
+            }}
           />
         </div>
 

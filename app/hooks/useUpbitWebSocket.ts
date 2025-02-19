@@ -43,11 +43,49 @@ interface TickerData {
   market_state: string;
 }
 
-export const useUpbitWebSocket = (symbol: string) => {
+export const useUpbitWebSocket = (symbol?: string) => {
   const wsRef = useRef<WebSocket | null>(null);
   const { addPrice, setIsConnected, updateTickerData } = useUpbitStore();
   
+  const connectWebSocket = (symbols: string[], onMessage: (data: any) => void) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.close();
+    }
+
+    wsRef.current = new WebSocket('wss://api.upbit.com/websocket/v1');
+
+    if (wsRef.current) {
+      wsRef.current.onopen = () => {
+        const message = JSON.stringify([
+          { ticket: "trade" },
+          { type: "trade", codes: symbols }
+        ]);
+        wsRef.current?.send(message);
+      };
+
+      wsRef.current.onmessage = async (event) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            const data = JSON.parse(reader.result);
+            onMessage(data);
+          }
+        };
+        reader.readAsText(event.data);
+      };
+    }
+  };
+
+  const disconnectWebSocket = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  };
+
   useEffect(() => {
+    if (!symbol) return; // symbol이 없으면 실행하지 않음
+    
     const connect = () => {
       // 기존 연결이 있으면 닫기
       if (wsRef.current) {
@@ -119,5 +157,5 @@ export const useUpbitWebSocket = (symbol: string) => {
     };
   }, [symbol, addPrice, setIsConnected, updateTickerData]);
   
-  return { wsRef };
+  return { connectWebSocket, disconnectWebSocket };
 }; 

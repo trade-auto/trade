@@ -35,6 +35,16 @@ interface TickerData {
   market_state: string;
 }
 
+interface TradeState {
+  lastTradeType: 'bid' | 'ask' | null;
+  statusChangeTime: string;
+  currentPrice: number;
+  actionStartTime: Date | null;
+  isTrading: boolean;
+  theoreticalPosition: 'bid' | 'ask' | 'wait';
+  missedFirstCycle: boolean;
+}
+
 interface UpbitStore {
   prices: Record<string, PriceData>;
   tickers: Record<string, TickerData>;
@@ -43,6 +53,20 @@ interface UpbitStore {
   setIsConnected: (status: boolean) => void;
   updateLastUpdated: (symbol: string) => void;
   updateTickerData: (symbol: string, data: TickerData) => void;
+  tradeState: TradeState;
+  updateTradeState: (update: Partial<TradeState>) => void;
+  createOrder: (params: {
+    market: string;
+    side: 'bid' | 'ask';
+    volume: string;
+    price: string;
+    ord_type: string;
+    mode: string;
+  }) => Promise<void>;
+  orderLimits: {
+    minOrderPrice: number;
+    maxOrderPrice: number;
+  };
 }
 
 export const useUpbitStore = create<UpbitStore>()((set) => ({
@@ -77,5 +101,40 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
       ...state.tickers,
       [symbol]: data
     }
-  }))
+  })),
+
+  tradeState: {
+    lastTradeType: null,
+    statusChangeTime: '',
+    currentPrice: 0,
+    actionStartTime: null,
+    isTrading: false,
+    theoreticalPosition: 'wait',
+    missedFirstCycle: false
+  },
+
+  updateTradeState: (update) => 
+    set((state) => ({
+      tradeState: { ...state.tradeState, ...update }
+    })),
+
+  createOrder: async (params) => {
+    try {
+      // 실제 주문 로직 구현
+      const response = await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      if (!response.ok) throw new Error('주문 실패');
+    } catch (error) {
+      console.error('주문 오류:', error);
+      throw error;
+    }
+  },
+
+  orderLimits: {
+    minOrderPrice: 5000,
+    maxOrderPrice: 1000000000
+  }
 })); 

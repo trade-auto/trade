@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
+import { useUpbitStore } from '../store/useUpbitStore';
 
 interface CreateOrderProps {
   market: string;
@@ -11,7 +12,11 @@ interface CreateOrderProps {
   onQuantityUpdate: (quantity: number) => void;
 }
 
-export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }: CreateOrderProps) {
+export const CreateOrder = forwardRef<
+  { handleAutomaticTrade: (tradeSide: 'bid' | 'ask', tradePrice: number) => Promise<void> },
+  CreateOrderProps
+>(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }, ref) => {
+  const { tradeState, updateTradeState } = useUpbitStore();
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
   const [price, setPrice] = useState('');
@@ -230,43 +235,31 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
 
   // 매매 사이클 업데이트 함수 수정
   const updateTradeCycle = (status: string) => {
-    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
     
     setTradeCycles(prev => {
       const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime };
       
-      // 새로운 사이클 시작 조건
-      if (status === '매수 대기' || (lastCycle.cycle.length === 4)) {
+      // 새로운 사이클 시작 조건 수정
+      if (prev.length === 0 && status === '매수 대기') {
+        // 첫 번째 사이클인 경우에만 매수 대기 상태 추가
         return [{ 
           cycle: [status], 
           times: [currentTime],
           time: currentTime 
-        }, ...prev].slice(0, 5);
+        }];
       }
-
-      // 현재 사이클의 다음 상태 검증
-      const isValidNextState = (currentStates: string[], nextState: string) => {
-        const stateOrder = ['매수 대기', '매수', '매도 대기', '매도'];
-        const currentIdx = stateOrder.indexOf(currentStates[currentStates.length - 1]);
-        const nextIdx = stateOrder.indexOf(nextState);
-        return nextIdx === currentIdx + 1;
-      };
-
-      // 현재 사이클 업데이트 - 매수와 매도 시간 보존
-      if (lastCycle.cycle.length < 4 && isValidNextState(lastCycle.cycle, status)) {
-        let timeToUse = currentTime;
-        
-        // 매수 또는 매도 상태일 때는 이전에 기록된 시간 유지
-        if (status === '매도 대기') {
-          timeToUse = lastCycle.times[1]; // 매수 시간 유지
-        } else if (status === '매도') {
-          timeToUse = currentTime; // 새로운 청산 시간 사용
-        }
-
+      
+      // 기존 사이클 업데이트
+      if (lastCycle.cycle.length < 4) {
         const updatedCycle = {
           cycle: [...lastCycle.cycle, status],
-          times: [...lastCycle.times, timeToUse],
-          time: currentTime
+          times: [...lastCycle.times, currentTime],
+          time: lastCycle.time
         };
         return [updatedCycle, ...prev.slice(1)];
       }
@@ -275,31 +268,24 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
     });
   };
 
-  // 매매 조건 체크 수정
+  // 매매 조건 체크 수정 - 상태 구독만 하도록 변경
   useEffect(() => {
     if (autoTrading && currentPrice && ma3Price) {
-      // 매수 시점 판별
-      if (currentPrice < ma3Price * 0.999) {
-        if (lastTradeType === null) {
-          const now = new Date();
-          setActionStartTime(now);
-          handleAutomaticTrade('bid', currentPrice);
-          setLastTradeType('bid');
-          updateTradeCycle('매수');
-        }
-      }
-      // 매도 시점 판별
-      else if (currentPrice > ma3Price * 1.001) {
+      const { lastTradeType, statusChangeTime } = useUpbitStore.getState().tradeState;
+
+      // 상태가 변경될 때만 업데이트
+      if (lastTradeType !== tradeState.lastTradeType) {
+        setStatusChangeTime(statusChangeTime);
         if (lastTradeType === 'bid') {
-          const now = new Date();
-          setActionStartTime(now);
-          handleAutomaticTrade('ask', currentPrice);
-          setLastTradeType('ask');
+          updateTradeCycle('매수');
+        } else if (lastTradeType === 'ask') {
           updateTradeCycle('매도');
+        } else if (!tradeCycles.length) {  // 첫 사이클인 경우에만 매수 대기 추가
+          updateTradeCycle('매수 대기');
         }
       }
     }
-  }, [currentPrice, ma3Price, autoTrading, lastTradeType]);
+  }, [autoTrading, currentPrice, ma3Price, tradeState.lastTradeType]);
 
   // 경과 시간 업데이트를 위한 useEffect 수정
   useEffect(() => {
@@ -343,7 +329,7 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
     }
   };
 
-  // 자동 거래 실행 함수 수정
+  // 자동 거래 실행 함수 수정 - 상태 변경 로직 제거
   const handleAutomaticTrade = async (tradeSide: 'bid' | 'ask', tradePrice: number) => {
     if (isLoading) return;
 
@@ -351,34 +337,21 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
       setIsLoading(true);
       
       if (mode === 'test') {
-        const tradeTime = new Date().toLocaleTimeString('ko-KR', { 
-          hour: '2-digit', 
-          minute: '2-digit', 
-          second: '2-digit' 
-        });
-
-        // 거래 타입과 상태 즉시 업데이트
-        if (tradeSide === 'bid') {
-          setLastTradeType('bid');
-          updateTradeCycle('매수');
-        } else {
-          setLastTradeType('ask');
-          updateTradeCycle('매도');
-        }
-
-        // 거래 정보 기록
+        // 거래 정보 기록만 수행
         const tradeInfo = {
           side: tradeSide,
           price: tradePrice,
           volume: volume,
-          time: tradeTime
+          time: new Date().toLocaleTimeString('ko-KR', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+          })
         };
 
         if (onOrderCreated) {
           onOrderCreated();
         }
-
-        setStatusChangeTime(tradeTime);
       }
     } catch (error: any) {
       console.error('자동 거래 실패:', error);
@@ -391,23 +364,55 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
   const handleAutoTradingToggle = () => {
     if (!autoTrading) {
       const now = new Date();
-      setActionStartTime(now);
-      setLastTradeType(null);
-      setStatusChangeTime(now.toLocaleTimeString('ko-KR', { 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit' 
-      }));
-      updateTradeCycle('매수 대기');
+      const { theoreticalPosition } = useUpbitStore.getState().tradeState;
+      
+      // 이미 매수 시점을 놓쳤는지 확인
+      const missedFirstCycle = theoreticalPosition === 'ask' || theoreticalPosition === 'wait';
+      
+      updateTradeState({
+        lastTradeType: null,
+        statusChangeTime: now.toLocaleTimeString('ko-KR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }),
+        actionStartTime: now,
+        isTrading: true,
+        missedFirstCycle
+      });
     } else {
-      setActionStartTime(null);
-      setElapsedTime(0);
+      updateTradeState({
+        actionStartTime: null,
+        isTrading: false,
+        missedFirstCycle: false
+      });
     }
     setAutoTrading(!autoTrading);
   };
 
   // UI 수정
   const [showHistory, setShowHistory] = useState(false);
+
+  // 매매 사이클 상태를 표시하는 함수 추가
+  const getTradeStatusText = () => {
+    const { lastTradeType, statusChangeTime, missedFirstCycle } = tradeState;
+
+    if (lastTradeType === null) {
+      if (missedFirstCycle) {
+        return `첫 매수 시점 놓침, 다음 사이클 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
+      }
+      return `첫 매수 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
+    } else if (lastTradeType === 'bid') {
+      return `매수 완료, 매도 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
+    } else {
+      return `매도 완료, 다음 매수 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
+    }
+  };
+
+  // ref로 handleAutomaticTrade 함수 노출
+  useImperativeHandle(ref, () => ({
+    handleAutomaticTrade
+  }));
 
   return (
     <div className="mb-8">
@@ -696,17 +701,13 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
             <div className="flex flex-col items-start">
               <span className="text-gray-400 mb-2">현재 상태:</span>
               <span className={`px-3 py-1 rounded-full text-sm font-semibold mb-1 ${
-                lastTradeType === null
+                tradeState.lastTradeType === null
                   ? 'bg-yellow-600 text-white'
-                  : lastTradeType === 'bid'
+                  : tradeState.lastTradeType === 'bid'
                     ? 'bg-red-600 text-white'
                     : 'bg-blue-600 text-white'
               }`}>
-                {lastTradeType === null
-                  ? `매수 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`
-                  : lastTradeType === 'bid'
-                    ? `매수 상태 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`
-                    : `매도 상태 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`}
+                {getTradeStatusText()}
               </span>
               <button
                 onClick={() => setShowHistory(!showHistory)}
@@ -731,4 +732,4 @@ export function CreateOrder({ market, mode, onOrderCreated, onPriceUpdate, onQua
       )}
     </div>
   );
-} 
+}); 

@@ -22,12 +22,22 @@ import {
 } from 'lightweight-charts';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
+import { getCurrentPrice, get3SecMA } from '../api/upbitOrder';
+import { useUpbitWebSocket } from '../hooks/useUpbitWebSocket';
 
 interface ChartProps {
   symbol: string;
   chartType: string;
   initialAutoUpdate?: boolean;  // 초기 자동 업데이트 상태를 위한 prop 추가
   mode: 'live' | 'test';  // 추가
+  handleOrder: (params: {
+    market: string;
+    side: 'bid' | 'ask';
+    volume: string;
+    price: string;
+    ord_type: string;
+    mode: string;
+  }) => Promise<void>;
 }
 
 interface UpbitCandle {
@@ -193,7 +203,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   symbol, 
   chartType,
   initialAutoUpdate = false,
-  mode  // 추가
+  mode,  // 추가
+  handleOrder  // 추가
 }) => {
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -212,13 +223,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const isLoadingRef = useRef<boolean>(false); // 데이터 로딩 상태를 추적하기 위한 ref
   const oldestTimestampRef = useRef<number | null>(null); // 가장 오래된 데이터의 timestamp를 저장하기 위한 ref
   
-  const { prices, tickers } = useUpbitStore();
+  const { prices, tickers, updateTradeState, orderLimits } = useUpbitStore();
+  const [tickerData, setTickerData] = useState<TickerData | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string>('-');
   const [chartPrice, setChartPrice] = useState<number>(0);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
-  
-  const currentPrice = prices[symbol]?.currentPrice ?? 0;
-  const lastUpdated = prices[symbol]?.lastUpdated ?? '-';
-  const tickerData = tickers[symbol];
+  const [currentPrice, setCurrentPrice] = useState<number>(0);
 
   // MA 기간 설정을 위한 상태 추가
   const [thirtyPeriod, setThirtyPeriod] = useState<number>(30);  // 단기
@@ -1267,16 +1277,304 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }
   }, [chartType, resetAndLoadData]);
 
+  // 상태 변수 추가
+  const [ma3Price, setMa3Price] = useState<number | null>(null);
+  const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
+
+  // 기존 useEffect 수정
+  useEffect(() => {
+    if (mode === 'test' && currentPrice && ma3Price) {
+      const now = new Date();
+      const currentTime = now.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+
+      // 매수 조건 (현재가가 3MA보다 0.1% 이상 하락)
+      if (currentPrice < ma3Price * 0.999) {
+        if (lastTradeType === null) {
+          // 매수 마커 추가 및 거래 상태 업데이트
+          updateTradeState({
+            lastTradeType: 'bid',
+            statusChangeTime: currentTime,
+            currentPrice: currentPrice,
+            actionStartTime: now,
+            isTrading: true
+          });
+          // 기존 마커 추가 로직...
+        }
+      }
+      // 매도 조건 (현재가가 3MA보다 0.1% 이상 상승)
+      else if (currentPrice > ma3Price * 1.001) {
+        if (lastTradeType === 'bid') {
+          // 매도 마커 추가 및 거래 상태 업데이트
+          updateTradeState({
+            lastTradeType: 'ask',
+            statusChangeTime: currentTime,
+            currentPrice: currentPrice,
+            actionStartTime: now,
+            isTrading: true
+          });
+          // 기존 마커 추가 로직...
+        }
+      }
+    }
+  }, [currentPrice, ma3Price, lastTradeType, mode]);
+
+  // 상태 변수 추가
+  const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string }[]>([]);
+
+  // 매매 사이클 업데이트 함수 수정
+  const updateTradeCycle = (status: string) => {
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
+    
+    setTradeCycles((prev: { cycle: string[], times: string[], time: string }[]) => {
+      const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime };
+      
+      // 새로운 사이클 시작
+      if (status === '매수 대기' || (lastCycle.cycle.length === 4)) {
+        return [{ 
+          cycle: [status], 
+          times: [currentTime], // 새 사이클의 첫 시간 기록
+          time: currentTime 
+        }, ...prev].slice(0, 5);
+      }
+
+      // 현재 사이클에 상태 추가 (기존 시간들은 유지)
+      if (lastCycle.cycle.length < 4) {
+        const updatedCycle = {
+          cycle: [...lastCycle.cycle, status],
+          times: [...lastCycle.times, currentTime], // 새로운 상태의 시간만 추가
+          time: lastCycle.time // 사이클의 시작 시간은 유지
+        };
+        return [updatedCycle, ...prev.slice(1)];
+      }
+
+      return prev;
+    });
+  };
+
+  // 매수/매도 마커 업데이트 로직
+  useEffect(() => {
+    if (!mode || !currentPrice || !ma3Price) return;
+
+    const { missedFirstCycle, lastTradeType, isTrading } = useUpbitStore.getState().tradeState;
+    const now = new Date();
+    const currentTime = now.toLocaleTimeString('ko-KR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+
+    // 매수/매도 신호 감지 및 주문 실행
+    const checkAndExecuteOrder = async () => {
+      try {
+        if (currentPrice < ma3Price * 0.999) {
+          // 매수 조건
+          if ((missedFirstCycle && lastTradeType === 'ask') || (!missedFirstCycle && lastTradeType === null)) {
+            await handleOrder({
+              market: symbol,
+              side: 'bid',
+              volume: calculateOrderVolume(currentPrice),
+              price: currentPrice.toString(),
+              ord_type: 'limit',
+              mode: mode
+            });
+
+            // 매수 성공 후 상태 업데이트
+            updateTradeState({
+              lastTradeType: 'bid',
+              statusChangeTime: currentTime,
+              currentPrice: currentPrice,
+              actionStartTime: now,
+              isTrading: true,
+              theoreticalPosition: 'bid',
+              missedFirstCycle: false
+            });
+          }
+        } else if (currentPrice > ma3Price * 1.001 && lastTradeType === 'bid') {
+          // 매도 조건
+          await handleOrder({
+            market: symbol,
+            side: 'ask',
+            volume: calculateOrderVolume(currentPrice),
+            price: currentPrice.toString(),
+            ord_type: 'limit',
+            mode: mode
+          });
+
+          // 매도 성공 후 상태 업데이트
+          updateTradeState({
+            lastTradeType: 'ask',
+            statusChangeTime: currentTime,
+            currentPrice: currentPrice,
+            actionStartTime: now,
+            isTrading: true,
+            theoreticalPosition: 'ask'
+          });
+        } else {
+          // 대기 상태 업데이트
+          updateTradeState({
+            theoreticalPosition: 'wait'
+          });
+        }
+      } catch (error) {
+        console.error('주문 실행 실패:', error);
+      }
+    };
+
+    // 데이터가 준비되었을 때만 실행
+    if (isTrading && !isLoadingRef.current) {
+      checkAndExecuteOrder();
+    }
+  }, [currentPrice, ma3Price, mode]);
+
+  // 상태 추가
+  const [volume, setVolume] = useState<string>('');
+
+  // 주문 수량 계산 함수
+  const calculateOrderVolume = (price: number) => {
+    if (price <= 0) return '0';
+    const amount = orderLimits.maxOrderPrice * 0.25; // 최대 주문 금액의 25%
+    return (amount / price).toFixed(4);
+  };
+
+  // executeOrder 함수 수정
+  const executeOrder = async (orderType: 'bid' | 'ask') => {
+    if (!mode || !currentPrice) return;
+
+    try {
+      const calculatedVolume = calculateOrderVolume(currentPrice);
+      // CreateOrder 컴포넌트의 주문 함수 사용
+      await handleOrder({
+        market: symbol,
+        side: orderType,
+        volume: calculatedVolume,
+        price: currentPrice.toString(),
+        ord_type: 'limit',
+        mode: mode
+      });
+    } catch (error) {
+      console.error(`${orderType} 주문 실패:`, error);
+      throw error;
+    }
+  };
+
+  // 가격 정보 업데이트 함수
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    const updatePrices = async () => {
+      if (isLoadingRef.current) return; // 이미 로딩 중이면 스킵
+      
+      try {
+        isLoadingRef.current = true;
+        const [current, ma3] = await Promise.all([
+          getCurrentPrice(symbol),
+          get3SecMA(symbol)
+        ]);
+        
+        if (current && ma3) {
+          setCurrentPrice(current);
+          setMa3Price(ma3);
+        }
+      } catch (error) {
+        console.error('가격 업데이트 중 오류:', error);
+      } finally {
+        isLoadingRef.current = false;
+      }
+    };
+
+    // 초기 업데이트
+    updatePrices();
+    
+    // 자동 업데이트가 활성화된 경우에만 인터벌 설정
+    if (isAutoUpdate) {
+      interval = setInterval(updatePrices, 3000); // 3초마다 업데이트
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [symbol, isAutoUpdate]); // isAutoUpdate 의존성 추가
+
+  // 웹소켓 토글 핸들러 수정
+  const handleWebSocketToggle = () => {
+    if (!isWebSocketEnabled) {
+      // 웹소켓 활성화 시 자동 업데이트 비활성화
+      setIsAutoUpdate(false);
+      connectWebSocket([symbol], (data) => {
+        if (candleSeriesRef.current && data.type === 'trade') {
+          const tradeData = {
+            time: Math.floor(data.timestamp / 1000) as Time,
+            open: data.trade_price,
+            high: data.trade_price,
+            low: data.trade_price,
+            close: data.trade_price,
+            volume: data.trade_volume
+          };
+          
+          candleSeriesRef.current.update(tradeData);
+          
+          if (volumeSeriesRef.current) {
+            volumeSeriesRef.current.update({
+              time: Math.floor(data.timestamp / 1000) as Time,
+              value: data.trade_volume,
+              color: data.trade_price >= (lastCandleRef.current?.close ?? 0) ? '#26a69a' : '#ef5350'
+            });
+          }
+          
+          lastCandleRef.current = tradeData;
+        }
+      });
+    } else {
+      disconnectWebSocket();
+    }
+    setIsWebSocketEnabled(!isWebSocketEnabled);
+  };
+
+  // 자동 업데이트 토글 핸들러 수정
+  const handleAutoUpdateToggle = () => {
+    if (!isAutoUpdate) {
+      // 자동 업데이트 활성화 시 웹소켓 비활성화
+      if (isWebSocketEnabled) {
+        disconnectWebSocket();
+        setIsWebSocketEnabled(false);
+      }
+    }
+    setIsAutoUpdate(!isAutoUpdate);
+  };
+
+  // 상태 추가
+  const [isWebSocketEnabled, setIsWebSocketEnabled] = useState<boolean>(false);
+  const { connectWebSocket, disconnectWebSocket } = useUpbitWebSocket();
+
+  // useEffect 내에서 tickers 변경 감지
+  useEffect(() => {
+    const currentTicker = tickers[symbol];
+    if (currentTicker) {
+      setTickerData(currentTicker);
+      setLastUpdated(new Date().toLocaleString());
+    }
+  }, [tickers, symbol]);
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
       <div className="mb-4">
         <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
           <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
-          <div className="flex space-x-2">
-          <button
-              onClick={() => setIsAutoUpdate(!isAutoUpdate)}
-            className={`px-4 py-2 rounded-lg font-bold ${
+          <div className="flex space-x-4">
+            <button
+              onClick={handleAutoUpdateToggle}
+              className={`px-4 py-2 rounded-lg font-bold ${
                 isAutoUpdate 
                   ? 'bg-green-600 hover:bg-green-700' 
                   : 'bg-gray-600 hover:bg-gray-700'
@@ -1284,12 +1582,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             >
               {isAutoUpdate ? '자동 업데이트 활성화됨' : '자동 업데이트 비활성화됨'}
             </button>
+            
             <button
-              onClick={resetDate}
-              className="px-4 py-2 rounded-lg font-bold bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handleWebSocketToggle}
+              className={`px-4 py-2 rounded-lg font-bold ${
+                isWebSocketEnabled 
+                  ? 'bg-purple-600 hover:bg-purple-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white`}
             >
-              날짜 초기화
-          </button>
+              {isWebSocketEnabled ? '실시간 데이터 활성화됨' : '실시간 데이터 비활성화됨'}
+            </button>
           </div>
         </div>
       </div>
