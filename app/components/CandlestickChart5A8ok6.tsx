@@ -24,6 +24,7 @@ import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import { useUpbitWebSocket } from '../hooks/useUpbitWebSocket';
+import { ExtendedCandlestickData } from '../types/candlestick';
 
 interface ChartProps {
   symbol: string;
@@ -89,11 +90,6 @@ interface TickerData {
   lowest_52_week_price: number;
   lowest_52_week_date: string;
   market_state: string;
-}
-
-// 기존 CandlestickData 인터페이스 확장
-interface ExtendedCandlestickData extends CandlestickData<Time> {
-  volume?: number;
 }
 
 // Define a Trade interface
@@ -726,7 +722,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         
         // 새로운 캔들 생성
         const newCandle: ExtendedCandlestickData = {
-          time: timestamp as Time,
+          time: new Date(timestamp * 1000).toISOString(),
           open: lastCandle.close,
           high: currentPrice,
           low: currentPrice,
@@ -1524,7 +1520,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             volume: data.trade_volume
           };
 
-          // 캔들스틱 업데이트
+          // 실시간 캔들스틱 업데이트 (진행 중인 캔들만 업데이트)
           candleSeriesRef.current.update(tradeData);
           
           // 거래량 업데이트
@@ -1532,11 +1528,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             volumeSeriesRef.current.update({
               time: Math.floor(data.timestamp / 1000) as Time,
               value: data.trade_volume,
-              color: data.trade_price >= (lastCandleRef.current?.close ?? 0) ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+              color: data.trade_price >= (lastCandleRef.current?.close ?? 0)
+                ? 'rgba(38, 166, 154, 0.5)'
+                : 'rgba(239, 83, 80, 0.5)'
             });
           }
 
-          // MA 업데이트
+          // MA 업데이트 (진행 중인 캔들의 일부로만 처리)
           candleHistory.push(tradeData);
           if (candleHistory.length > Math.max(thirtyPeriod, fortyPeriod, sixtyPeriod)) {
             candleHistory.shift();
@@ -1562,6 +1560,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           updateMA();
           lastCandleRef.current = tradeData;
           setCurrentPrice(data.trade_price);
+
+          const threeEMAData = calculateEMA(candleHistory, thirtyPeriod);
+          const sixEMAData = calculateEMA(candleHistory, fortyPeriod);
+          const twentyEMAData = calculateEMA(candleHistory, sixtyPeriod);
+          const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+          crossPointsRef.current = crossPoints;
+          const markers = createTradeMarkers(crossPoints);
+          if (candleSeriesRef.current) {
+            createSeriesMarkers(candleSeriesRef.current, markers);
+          }
         }
       });
     } else {
@@ -1595,7 +1603,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }
   }, [tickers, symbol]);
 
-  // new: 캔들 완료 처리 함수
+  // new: 캔들 완료 처리 함수 (완료된 캔들을 누적 업데이트)
   const handleCompletedCandle = (newCandle: ExtendedCandlestickData) => {
     // 기존 완료된 캔들 데이터 취득 (없다면 빈 배열)
     const existingData = candleSeriesRef.current?.data() as ExtendedCandlestickData[] || [];
@@ -1633,6 +1641,84 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     });
   }, [setOnCandleComplete, handleCompletedCandle]);
 
+  // 새: 실시간 API 업데이트 토글 상태를 추가
+  const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState<boolean>(false);
+  
+  // 실시간 API 업데이트를 위한 interval ref 추가
+  const apiIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleRealtimeAPIToggle = () => {
+    if (!isRealtimeAPIEnabled) {
+      // 다른 업데이트 모드 비활성화
+      setIsAutoUpdate(false);
+      setIsWebSocketEnabled(false);
+      if (isWebSocketEnabled) {
+        disconnectWebSocket();
+      }
+      
+      // 자동 업데이트와 유사한 구조로 수정
+      apiIntervalRef.current = setInterval(async () => {
+        try {
+          // 초봉 데이터 한 개만 가져오기
+          const response = await fetch(
+            `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&count=1`
+          );
+          const data = await response.json();
+          
+          if (data && data[0]) {
+            const existingData = Array.from(candleSeriesRef.current?.data() ?? []) as ExtendedCandlestickData[];
+            const lastDataTime = existingData.length > 0 ? new Date(existingData[existingData.length - 1].time as string).getTime() : 0;
+            const newDataTime = new Date(data[0].candle_date_time_kst).getTime();
+
+            // 새로운 데이터인 경우에만 추가
+            if (newDataTime > lastDataTime) {
+              const newCandle = {
+                time: Math.floor(new Date(data[0].candle_date_time_kst).getTime() / 1000) as Time,
+                open: data[0].opening_price,
+                high: data[0].high_price,
+                low: data[0].low_price,
+                close: data[0].trade_price,
+                volume: data[0].candle_acc_trade_volume
+              };
+
+              // 시간 기준으로 오름차순 정렬하여 데이터 업데이트
+              const updatedData = [...existingData, newCandle]
+                .sort((a, b) => {
+                  const timeA = typeof a.time === 'number' ? a.time : Math.floor(new Date(a.time).getTime() / 1000);
+                  const timeB = typeof b.time === 'number' ? b.time : Math.floor(new Date(b.time).getTime() / 1000);
+                  return timeA - timeB;
+                })
+                .filter((candle, index, self) => 
+                  index === 0 || candle.time !== self[index - 1].time
+                );
+
+              candleSeriesRef.current?.setData(updatedData);
+              setCurrentPrice(data[0].trade_price);
+            }
+          }
+        } catch (error) {
+          console.error('실시간 API 업데이트 중 오류:', error);
+        }
+      }, 1000);  // 1초마다 업데이트
+    } else {
+      // interval 정리
+      if (apiIntervalRef.current) {
+        clearInterval(apiIntervalRef.current);
+        apiIntervalRef.current = null;
+      }
+    }
+    setIsRealtimeAPIEnabled((prev) => !prev);
+  };
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (apiIntervalRef.current) {
+        clearInterval(apiIntervalRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
@@ -1660,6 +1746,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               } text-white`}
             >
               {isWebSocketEnabled ? '실시간 데이터 활성화됨' : '실시간 데이터 비활성화됨'}
+            </button>
+            
+            <button
+              onClick={handleRealtimeAPIToggle}
+              className={`px-4 py-2 rounded-lg font-bold ${
+                isRealtimeAPIEnabled 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white`}
+            >
+              {isRealtimeAPIEnabled ? '실시간API업데이트 활성화됨' : '실시간API업데이트 비활성화됨'}
             </button>
           </div>
         </div>

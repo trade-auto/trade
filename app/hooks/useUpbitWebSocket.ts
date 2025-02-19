@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useUpbitStore } from '../store/useUpbitStore';
+import { Time } from 'lightweight-charts';
+import { Candle, ExtendedCandlestickData } from '../types/candlestick';
 
 interface TradeData {
   type: string;
@@ -43,19 +45,6 @@ interface TickerData {
   market_state: string;
 }
 
-interface Candle {
-  time: number;   // timestamp (초)
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-interface ExtendedCandlestickData {
-  // Add any necessary properties for ExtendedCandlestickData
-}
-
 export const useUpbitWebSocket = (symbol?: string) => {
   let currentCandle: Candle | null = null;
 
@@ -73,13 +62,13 @@ export const useUpbitWebSocket = (symbol?: string) => {
         console.log('캔들 완료:', currentCandle);
         onCandleCompleteRef.current && onCandleCompleteRef.current({
           ...currentCandle,
-          time: currentCandle.time as unknown as Time, // 필요한 경우 적절히 변환
+          time: currentCandle.time,
         });
       }
 
       // 새 캔들 시작
       currentCandle = {
-        time: timestamp,
+        time: new Date(timestamp * 1000).toISOString(),
         open: tickerData.trade_price,
         high: tickerData.trade_price,
         low: tickerData.trade_price,
