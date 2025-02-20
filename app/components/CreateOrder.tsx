@@ -511,7 +511,7 @@ export const CreateOrder = forwardRef<
 
   // ref로 handleAutomaticTrade 함수 노출
   useImperativeHandle(ref, () => ({
-    handleAutomaticTrade
+    handleAutomaticTrade: handleAutomaticTrade
   }));
 
   // 총 수익률 계산 함수 추가
@@ -534,15 +534,45 @@ export const CreateOrder = forwardRef<
     setTotalProfit(profit);
   }, [tradeCycles]);
 
-  // 사이클 정보 표시
+  // 사이클 정보 표시 수정
   const renderCycleInfo = (entry: TradeCycle, index: number) => (
-    <div key={index} className="block px-3 py-1 rounded-full text-sm font-semibold bg-gray-700 text-white mb-1">
-      사이클 {index + 1}: {entry.cycle.map((status, i) => 
-        `${status} (${entry.times[i]})`
-      ).join(' -> ')}
-      <div>매수 금액: {entry.buyPrice !== null ? entry.buyPrice.toFixed(2) : 'N/A'}</div>
-      <div>청산 금액: {entry.sellPrice !== null ? entry.sellPrice.toFixed(2) : 'N/A'}</div>
-      <div>수익 금액: {entry.profitAmount ? parseFloat(entry.profitAmount).toFixed(2) : 'N/A'}</div>
+    <div className="overflow-x-auto mt-2">
+      <table className="min-w-full text-white">
+        <thead>
+          <tr className="text-gray-400">
+            <th className="px-4 py-2">진입 시간</th>
+            <th className="px-4 py-2">청산 시간</th>
+            <th className="px-4 py-2">매수 가격</th>
+            <th className="px-4 py-2">청산 가격</th>
+            <th className="px-4 py-2">수익률</th>
+            <th className="px-4 py-2">수익 금액</th>
+            <th className="px-4 py-2">체결 상태</th>
+            <th className="px-4 py-2">거래 모드</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="border-t border-gray-700">
+            <td className="px-4 py-2">{entry.times[0]}</td>
+            <td className="px-4 py-2">{entry.times[1] || '-'}</td>
+            <td className="px-4 py-2">{entry.buyPrice?.toFixed(2) || 'N/A'}</td>
+            <td className="px-4 py-2">{entry.sellPrice?.toFixed(2) || 'N/A'}</td>
+            <td className={`px-4 py-2 ${entry.profit && parseFloat(entry.profit) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {entry.profit ? `${entry.profit}%` : 'N/A'}
+            </td>
+            <td className={`px-4 py-2 ${entry.profitAmount && parseFloat(entry.profitAmount) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {entry.profitAmount ? `${parseFloat(entry.profitAmount).toLocaleString()}원` : 'N/A'}
+            </td>
+            <td className="px-4 py-2">
+              {entry.times[1] ? '체결완료' : '미체결'}
+            </td>
+            <td className="px-4 py-2">
+              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-500 text-white">
+                테스트
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 
