@@ -1769,26 +1769,27 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               const markers = createTradeMarkers(crossPoints);
               if (candleSeriesRef.current) {
                 updateTradeMarkers(candleSeriesRef.current, markers);
-            
-                // 가장 최근 크로스 포인트 확인
-        
-              }
-              const lastCrossPoint = crossPoints[crossPoints.length - 1];
-              if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000)) {
+const lastCrossPoint = crossPoints[crossPoints.length - 1];
+console.log('크로스 포인트 감지:', lastCrossPoint.position);
+           
+if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000)) {
                 
                 // CreateOrder 컴포넌트의 handleAutomaticTrade 함수 호출
              
               }
-                console.log('크로스 포인트 감지:', lastCrossPoint.position);
-
-                 await handleOrder({
-                  market: symbol,
-                  side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
-                  volume: calculateOrderVolume(data.trade_price),
-                  price: data.trade_price,
-                  ord_type: 'limit',
-                  mode: mode
-                });
+             
+                await handleOrder({
+                 market: symbol,
+                 side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
+                 volume: calculateOrderVolume(data.trade_price),
+                 price: data.trade_price,
+                 ord_type: 'limit',
+                 mode: mode
+               });
+                // 가장 최근 크로스 포인트 확인
+        
+              }
+              
               setCurrentPrice(data[0].trade_price);
             }
           }

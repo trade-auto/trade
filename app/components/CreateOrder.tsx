@@ -356,13 +356,20 @@ export const CreateOrder = forwardRef<
           second: '2-digit' 
         });
 
-        // 매수 신호 감지 시
+        // 현재 상태에 따른 주문 실행 조건 체크
         if (params.side === 'bid' && currentCycle === 'waiting_buy') {
+          // 이전 사이클이 완료되었는지 확인
+          const lastCycle = tradeCycles[tradeCycles.length - 1];
+          if (lastCycle && lastCycle.cycle.length === 1) {
+            console.log('이전 매수-매도 사이클이 완료되지 않았습니다');
+            return;
+          }
+
           console.log('매수 신호 감지 - 상태 업데이트');
           setCurrentCycle('waiting_sell');
           setElapsedTime(0);
           
-          // 매수 기록 추가
+          // 매수 신호 감지 시 사이클에 기록
           setTradeCycles(prev => {
             const newCycle = {
               cycle: ['매수'],
@@ -377,32 +384,41 @@ export const CreateOrder = forwardRef<
             statusChangeTime: now,
             isTrading: true
           });
-        } 
-        // 매도 신호 감지 시
-        else if (params.side === 'ask' && currentCycle === 'waiting_sell') {
+        } else if (params.side === 'ask' && currentCycle === 'waiting_sell') {
+          // 매도는 매도 대기 상태이고 이전에 매수가 있을 때만 실행
           const lastCycle = tradeCycles[tradeCycles.length - 1];
-          if (lastCycle?.cycle[0] === '매수') {  // 직전 기록이 매수인 경우에만
-            console.log('매도 신호 감지 - 상태 업데이트');
-            setCurrentCycle('waiting_buy');
-            setElapsedTime(0);
-
-            // 매도 기록 추가
-            setTradeCycles(prev => {
-              const lastCycle = prev[prev.length - 1];
-              const updatedCycle = {
-                ...lastCycle,
-                cycle: [...lastCycle.cycle, '매도'],
-                times: [...lastCycle.times, now]
-              };
-              return [...prev.slice(0, -1), updatedCycle];
-            });
-
-            updateTradeState({
-              lastTradeType: 'ask',
-              statusChangeTime: now,
-              isTrading: true
-            });
+          if (!lastCycle || lastCycle.cycle.length !== 1) {
+            console.log('매도 실행 불가: 이전 매수 기록이 없거나 이미 매도가 완료됨');
+            return;
           }
+
+          console.log('매도 신호 감지 - 상태 업데이트');
+          setCurrentCycle('waiting_buy');
+          setElapsedTime(0);
+
+          // 매도 신호 감지 시 사이클에 기록
+          setTradeCycles(prev => {
+            const lastCycle = prev[prev.length - 1];
+            const updatedCycle = {
+              ...lastCycle,
+              cycle: [...lastCycle.cycle, '매도'],
+              times: [...lastCycle.times, now]
+            };
+            return [...prev.slice(0, -1), updatedCycle];
+          });
+
+          updateTradeState({
+            lastTradeType: 'ask',
+            statusChangeTime: now,
+            isTrading: true
+          });
+        } else {
+          console.log('현재 상태에서 실행할 수 없는 주문:', {
+            requestedSide: params.side,
+            currentCycle,
+            lastCycle: tradeCycles[tradeCycles.length - 1]
+          });
+          return;
         }
 
         if (onOrderCreated) {
