@@ -290,7 +290,6 @@ export default function OrdersPage() {
               try {
                 if (createOrderRef.current) {
                   await createOrderRef.current.handleAutomaticTrade(params);
-                  console.log('handleAutomaticTrade 실행 완료');
                 } else {
                   console.warn('handleAutomaticTrade 실행 실패: createOrderRef.current is null');
                 }

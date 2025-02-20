@@ -1427,10 +1427,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
     };
 
-    // 데이터가 준비되었을 때만 실행
-    if (isTrading && !isLoadingRef.current) {
-      checkAndExecuteOrder();
-    }
+    // // 데이터가 준비되었을 때만 실행
+    // if (isTrading && !isLoadingRef.current) {
+    //   checkAndExecuteOrder();
+    // }
   }, [currentPrice, ma3Price, mode]);
 
   // 상태 추가
@@ -1609,7 +1609,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000)) {
               console.log('크로스 포인트 감지:', lastCrossPoint.position);
               
-              // CreateOrder 컴포넌트의 handleAutomaticTrade 함수 호출
+              // CreateOrder 컴포넌트의 handㄹleAutomaticTrade 함수 호출
               handleOrder({
                 market: symbol,
                 side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
@@ -1770,22 +1770,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               if (candleSeriesRef.current) {
                 updateTradeMarkers(candleSeriesRef.current, markers);
 const lastCrossPoint = crossPoints[crossPoints.length - 1];
-console.log('크로스 포인트 감지:', lastCrossPoint.position);
            
-if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000)) {
-                
+const timestampInSeconds = Math.floor(data.timestamp / 1000);
+if (lastCrossPoint &&  typeof lastCrossPoint.time === 'number' && Math.abs(lastCrossPoint.time - timestampInSeconds) <= 1){
+console.log('크로스 포인트 감지:', lastCrossPoint.position);
+await handleOrder({
+  market: symbol,
+  side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
+  volume: calculateOrderVolume(data.trade_price),
+  price: data.trade_price,
+  ord_type: 'limit',
+  mode: mode
+});
                 // CreateOrder 컴포넌트의 handleAutomaticTrade 함수 호출
              
               }
              
-                await handleOrder({
-                 market: symbol,
-                 side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
-                 volume: calculateOrderVolume(data.trade_price),
-                 price: data.trade_price,
-                 ord_type: 'limit',
-                 mode: mode
-               });
+               
                 // 가장 최근 크로스 포인트 확인
         
               }
@@ -1839,7 +1840,7 @@ if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000))
     };
 
     // 컴포넌트 마운트 시 즉시 실행
-    testHandleOrder();
+    // testHandleOrder();/
   }, []); // 빈 의존성 배열로 마운트 시 한 번만 실행
 
   return (

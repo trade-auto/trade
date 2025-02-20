@@ -22,6 +22,17 @@ interface OrderParams {
   mode: string;
 }
 
+// Define the type for a trade cycle entry
+interface TradeCycle {
+  cycle: string[];
+  times: string[];
+  time: string;
+  buyPrice: number | null;
+  sellPrice: number | null;
+  profit: string | null;
+  profitAmount: string | null;
+}
+
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
@@ -43,11 +54,12 @@ export const CreateOrder = forwardRef<
   const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
   const [statusChangeTime, setStatusChangeTime] = useState<string>(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   const [statusHistory, setStatusHistory] = useState<{ status: string, time: string }[]>([]);
-  const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string }[]>([]);
+  const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string, buyPrice: number | null, sellPrice: number | null, profit: string | null, profitAmount: string | null }[]>([]);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [actionStartTime, setActionStartTime] = useState<Date | null>(null);
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [currentCycle, setCurrentCycle] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
+  const [totalProfit, setTotalProfit] = useState<string>('0.00');
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
@@ -254,7 +266,7 @@ export const CreateOrder = forwardRef<
     });
     
     setTradeCycles(prev => {
-      const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime };
+      const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime, buyPrice: null, sellPrice: null, profit: null, profitAmount: null };
       
       // 새로운 사이클 시작 조건 수정
       if (prev.length === 0 && status === '매수 대기') {
@@ -262,7 +274,11 @@ export const CreateOrder = forwardRef<
         return [{ 
           cycle: [status], 
           times: [currentTime],
-          time: currentTime 
+          time: currentTime,
+          buyPrice: null,
+          sellPrice: null,
+          profit: null,
+          profitAmount: null
         }];
       }
       
@@ -271,7 +287,11 @@ export const CreateOrder = forwardRef<
         const updatedCycle = {
           cycle: [...lastCycle.cycle, status],
           times: [...lastCycle.times, currentTime],
-          time: lastCycle.time
+          time: lastCycle.time,
+          buyPrice: lastCycle.buyPrice,
+          sellPrice: lastCycle.sellPrice,
+          profit: lastCycle.profit,
+          profitAmount: lastCycle.profitAmount
         };
         return [updatedCycle, ...prev.slice(1)];
       }
@@ -347,9 +367,9 @@ export const CreateOrder = forwardRef<
 
     try {
       setIsLoading(true);
-      console.log('자동 거래 시작:', { params, currentCycle });
       
       if (mode === 'test') {
+
         const now = new Date().toLocaleTimeString('ko-KR', { 
           hour: '2-digit', 
           minute: '2-digit', 
@@ -358,23 +378,31 @@ export const CreateOrder = forwardRef<
 
         // 현재 상태에 따른 주문 실행 조건 체크
         if (params.side === 'bid' && currentCycle === 'waiting_buy') {
-          // 이전 사이클이 완료되었는지 확인
-          const lastCycle = tradeCycles[tradeCycles.length - 1];
-          if (lastCycle && lastCycle.cycle.length === 1) {
-            console.log('이전 매수-매도 사이클이 완료되지 않았습니다');
-            return;
-          }
+          // 매수는 매수 대기 상태일 때만 실행
+      console.log(' test bid 자동 거래 시작:', { params, currentCycle });
 
           console.log('매수 신호 감지 - 상태 업데이트');
           setCurrentCycle('waiting_sell');
           setElapsedTime(0);
           
-          // 매수 신호 감지 시 사이클에 기록
+          const buyPrice = parseFloat(params.price);
+          if (isNaN(buyPrice)) {
+            console.error('Invalid buy price:', params.price);
+            return;
+          }
+
+          const fixedBuyAmount = 10000; // 매수 금액을 10,000원으로 고정
+          const volume = (fixedBuyAmount / buyPrice).toFixed(4); // 매수 수량 계산
+
           setTradeCycles(prev => {
             const newCycle = {
               cycle: ['매수'],
               times: [now],
-              time: now
+              time: now,
+              buyPrice: buyPrice, // 매수 가격 기록
+              sellPrice: null, // 초기 청산 가격은 null
+              profit: null, // 초기 수익률은 null
+              profitAmount: null // 초기 수익 금액은 null
             };
             return [...prev, newCycle];
           });
@@ -385,26 +413,36 @@ export const CreateOrder = forwardRef<
             isTrading: true
           });
         } else if (params.side === 'ask' && currentCycle === 'waiting_sell') {
-          // 매도는 매도 대기 상태이고 이전에 매수가 있을 때만 실행
-          const lastCycle = tradeCycles[tradeCycles.length - 1];
-          if (!lastCycle || lastCycle.cycle.length !== 1) {
-            console.log('매도 실행 불가: 이전 매수 기록이 없거나 이미 매도가 완료됨');
-            return;
-          }
+          // 매도는 매도 대기 상태일 때만 실행
+      console.log(' test ask 자동 거래 시작:', { params, currentCycle });
 
           console.log('매도 신호 감지 - 상태 업데이트');
           setCurrentCycle('waiting_buy');
           setElapsedTime(0);
 
-          // 매도 신호 감지 시 사이클에 기록
           setTradeCycles(prev => {
             const lastCycle = prev[prev.length - 1];
-            const updatedCycle = {
-              ...lastCycle,
-              cycle: [...lastCycle.cycle, '매도'],
-              times: [...lastCycle.times, now]
-            };
-            return [...prev.slice(0, -1), updatedCycle];
+            if (lastCycle && lastCycle.cycle.length === 1 && lastCycle.buyPrice !== null) {
+              const sellPrice = parseFloat(params.price);
+              if (isNaN(sellPrice)) {
+                console.error('Invalid sell price:', params.price);
+                return prev;
+              }
+
+              const profit = ((sellPrice - lastCycle.buyPrice) / lastCycle.buyPrice) * 100; // 수익률 계산
+              const profitAmount = (sellPrice - lastCycle.buyPrice) * parseFloat(volume); // 수익 금액 계산
+
+              const updatedCycle = {
+                ...lastCycle,
+                cycle: [...lastCycle.cycle, '매도'],
+                times: [...lastCycle.times, now],
+                sellPrice: sellPrice, // 청산 가격 기록
+                profit: profit.toFixed(2), // 수익률 기록
+                profitAmount: profitAmount.toFixed(2) // 수익 금액 기록
+              };
+              return [...prev.slice(0, -1), updatedCycle];
+            }
+            return prev;
           });
 
           updateTradeState({
@@ -415,8 +453,7 @@ export const CreateOrder = forwardRef<
         } else {
           console.log('현재 상태에서 실행할 수 없는 주문:', {
             requestedSide: params.side,
-            currentCycle,
-            lastCycle: tradeCycles[tradeCycles.length - 1]
+            currentCycle
           });
           return;
         }
@@ -477,6 +514,37 @@ export const CreateOrder = forwardRef<
     handleAutomaticTrade
   }));
 
+  // 총 수익률 계산 함수 추가
+  const calculateTotalProfit = (cycles: { profit: string | null }[] = []) => {
+    if (!cycles || cycles.length === 0) return '0.00';
+
+    const totalProfit = cycles.reduce((acc, cycle) => {
+      if (cycle.profit) {
+        return acc + parseFloat(cycle.profit);
+      }
+      return acc;
+    }, 0);
+
+    return totalProfit.toFixed(2);
+  };
+
+  // 총 수익률 업데이트 useEffect 추가
+  useEffect(() => {
+    const profit = calculateTotalProfit(tradeCycles);
+    setTotalProfit(profit);
+  }, [tradeCycles]);
+
+  // 사이클 정보 표시
+  const renderCycleInfo = (entry: TradeCycle, index: number) => (
+    <div key={index} className="block px-3 py-1 rounded-full text-sm font-semibold bg-gray-700 text-white mb-1">
+      사이클 {index + 1}: {entry.cycle.map((status, i) => 
+        `${status} (${entry.times[i]})`
+      ).join(' -> ')}
+      <div>매수 금액: {entry.buyPrice !== null ? entry.buyPrice.toFixed(2) : 'N/A'}</div>
+      <div>청산 금액: {entry.sellPrice !== null ? entry.sellPrice.toFixed(2) : 'N/A'}</div>
+      <div>수익 금액: {entry.profitAmount ? parseFloat(entry.profitAmount).toFixed(2) : 'N/A'}</div>
+    </div>
+  );
 
   return (
     <div className="mb-8">
@@ -779,21 +847,20 @@ export const CreateOrder = forwardRef<
               >
                 {showHistory ? '히스토리 숨기기' : '히스토리 보기'}
               </button>
-              {showHistory && (
+              {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
-                  {tradeCycles.map((entry, index) => (
-                    <div key={index} className="block px-3 py-1 rounded-full text-sm font-semibold bg-gray-700 text-white mb-1">
-                      사이클 {index + 1}: {entry.cycle.map((status, i) => 
-                        `${status} (${entry.times[i]})`
-                      ).join(' -> ')}
-                    </div>
-                  ))}
+                  {tradeCycles.map(renderCycleInfo)}
                 </div>
               )}
             </div>
           )}
         </div>
       )}
+
+      {/* 총 수익률 표시 */}
+      <div className="text-white text-lg font-bold">
+        총 수익률: {totalProfit}%
+      </div>
     </div>
   );
 }); 
