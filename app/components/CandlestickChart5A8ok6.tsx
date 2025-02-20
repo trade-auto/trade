@@ -1769,28 +1769,29 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               const markers = createTradeMarkers(crossPoints);
               if (candleSeriesRef.current) {
                 updateTradeMarkers(candleSeriesRef.current, markers);
-const lastCrossPoint = crossPoints[crossPoints.length - 1];
-           
-const timestampInSeconds = Math.floor(data.timestamp / 1000);
-if (lastCrossPoint &&  typeof lastCrossPoint.time === 'number' && Math.abs(lastCrossPoint.time - timestampInSeconds) <= 1){
-console.log('크로스 포인트 감지:', lastCrossPoint.position);
-await handleOrder({
-  market: symbol,
-  side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
-  volume: calculateOrderVolume(data.trade_price),
-  price: data.trade_price,
-  ord_type: 'limit',
-  mode: mode
-});
-                // CreateOrder 컴포넌트의 handleAutomaticTrade 함수 호출
-             
+                const lastCrossPoint = crossPoints[crossPoints.length - 1];
+                const timestampInSeconds = Math.floor(data[0].timestamp / 1000);
+                if (lastCrossPoint && Math.abs(Number(lastCrossPoint.time) - timestampInSeconds) <= 1) {
+                  console.log('크로스 포인트 감지:', lastCrossPoint.position);
+                  try {
+                    await handleOrder({
+                      market: symbol,
+                      side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
+                      volume: calculateOrderVolume(data[0].trade_price),
+                      price: data[0].trade_price.toString(),
+                      ord_type: 'limit',
+                      mode: mode
+                    });
+                  } catch (error) {
+                    console.error('주문 실행 중 오류:', error);
+                  }
+                }
+                
+                // 크로스 포인트 및 마커 업데이트
+                if (candleSeriesRef.current) {
+                  updateTradeMarkers(candleSeriesRef.current, markers);
+                }
               }
-             
-               
-                // 가장 최근 크로스 포인트 확인
-        
-              }
-              
               setCurrentPrice(data[0].trade_price);
             }
           }
