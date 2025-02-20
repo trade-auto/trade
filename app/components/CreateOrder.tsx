@@ -61,6 +61,11 @@ export const CreateOrder = forwardRef<
   const [currentCycle, setCurrentCycle] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
   const [totalProfit, setTotalProfit] = useState<string>('0.00');
 
+  // 볼린저 밴드 계산을 위한 상태 추가
+  const [upperBand, setUpperBand] = useState<number | null>(null);
+  const [lowerBand, setLowerBand] = useState<number | null>(null);
+  const [basis, setBasis] = useState<number | null>(null);
+
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
     const savedSettings = localStorage.getItem('orderLimitSettings');
@@ -300,24 +305,63 @@ export const CreateOrder = forwardRef<
     });
   };
 
-  // 매매 조건 체크 수정 - 상태 구독만 하도록 변경
-  useEffect(() => {
-    if (autoTrading && currentPrice && ma3Price) {
-      const { lastTradeType, statusChangeTime } = useUpbitStore.getState().tradeState;
+  // 볼린저 밴드 계산 함수
+  const calculateBollingerBands = (prices: number[], period: number = 20, multiplier: number = 2) => {
+    if (prices.length < period) return null;
 
-      // 상태가 변경될 때만 업데이트
-      if (lastTradeType !== tradeState.lastTradeType) {
-        setStatusChangeTime(statusChangeTime);
-        if (lastTradeType === 'bid') {
-          updateTradeCycle('매수');
-        } else if (lastTradeType === 'ask') {
-          updateTradeCycle('매도');
-        } else if (!tradeCycles.length) {  // 첫 사이클인 경우에만 매수 대기 추가
-          updateTradeCycle('매수 대기');
+    const sma = prices.slice(-period).reduce((a, b) => a + b) / period;
+    const squaredDiffs = prices.slice(-period).map(p => Math.pow(p - sma, 2));
+    const standardDeviation = Math.sqrt(squaredDiffs.reduce((a, b) => a + b) / period);
+    
+    return {
+      upper: sma + (standardDeviation * multiplier),
+      lower: sma - (standardDeviation * multiplier),
+      middle: sma
+    };
+  };
+
+  // 매매 조건 체크 수정
+  useEffect(() => {
+    if (autoTrading && currentPrice && priceHistory.length >= 20) {
+      // 볼린저 밴드 계산
+      const bands = calculateBollingerBands(priceHistory);
+      if (bands) {
+        setUpperBand(bands.upper);
+        setLowerBand(bands.lower);
+        setBasis(bands.middle);
+
+        // 매매 조건 체크
+        if (currentPrice > bands.upper && currentCycle === 'waiting_buy') {
+          // 매수 신호
+          handleAutomaticTrade({
+            market: market,
+            side: 'bid',
+            volume: '0.0001',
+            price: currentPrice.toString(),
+            ord_type: 'limit',
+            mode: mode
+          });
+        } else if (currentPrice < bands.lower && currentCycle === 'waiting_sell') {
+          // 매도 신호
+          handleAutomaticTrade({
+            market: market,
+            side: 'ask',
+            volume: '0.0001',
+            price: currentPrice.toString(),
+            ord_type: 'limit',
+            mode: mode
+          });
         }
       }
     }
-  }, [autoTrading, currentPrice, ma3Price, tradeState.lastTradeType]);
+  }, [autoTrading, currentPrice, priceHistory]);
+
+  // 가격 히스토리 업데이트
+  useEffect(() => {
+    if (currentPrice) {
+      setPriceHistory(prev => [...prev, currentPrice].slice(-100)); // 최근 100개 가격만 유지
+    }
+  }, [currentPrice]);
 
   // 경과 시간 업데이트를 위한 useEffect 수정
   useEffect(() => {
