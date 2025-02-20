@@ -12,8 +12,18 @@ interface CreateOrderProps {
   onQuantityUpdate: (quantity: number) => void;
 }
 
+// 파라미터 타입 정의
+interface OrderParams {
+  market: string;
+  side: 'bid' | 'ask';
+  volume: string;
+  price: string;
+  ord_type: string;
+  mode: string;
+}
+
 export const CreateOrder = forwardRef<
-  { handleAutomaticTrade: (tradeSide: 'bid' | 'ask', tradePrice: number) => Promise<void> },
+  { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
 >(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }, ref) => {
   const { tradeState, updateTradeState } = useUpbitStore();
@@ -36,6 +46,8 @@ export const CreateOrder = forwardRef<
   const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string }[]>([]);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [actionStartTime, setActionStartTime] = useState<Date | null>(null);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [currentCycle, setCurrentCycle] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
@@ -329,25 +341,45 @@ export const CreateOrder = forwardRef<
     }
   };
 
-  // 자동 거래 실행 함수 수정 - 상태 변경 로직 제거
-  const handleAutomaticTrade = async (tradeSide: 'bid' | 'ask', tradePrice: number) => {
+  // 자동 거래 실행 함수 수정
+  const handleAutomaticTrade = async (params: OrderParams) => {
     if (isLoading) return;
 
     try {
       setIsLoading(true);
+      console.log('자동 거래 시작:', params);
       
       if (mode === 'test') {
-        // 거래 정보 기록만 수행
-        const tradeInfo = {
-          side: tradeSide,
-          price: tradePrice,
-          volume: volume,
-          time: new Date().toLocaleTimeString('ko-KR', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit' 
-          })
-        };
+        const now = new Date().toLocaleTimeString('ko-KR', { 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit' 
+        });
+
+        // Update the trading cycle and status
+        if (params.side === 'bid') {
+          console.log('매수 신호 감지 - 상태 업데이트');
+          setCurrentCycle('waiting_sell');
+          updateTradeState({
+            lastTradeType: 'bid',
+            statusChangeTime: now,
+            isTrading: true
+          });
+        } else if (params.side === 'ask') {
+          console.log('매도 신호 감지 - 상태 업데이트');
+          setCurrentCycle('waiting_buy');
+          updateTradeState({
+            lastTradeType: 'ask',
+            statusChangeTime: now,
+            isTrading: true
+          });
+        }
+
+        console.log('현재 거래 상태:', {
+          cycle: currentCycle,
+          lastTradeType: tradeState.lastTradeType,
+          statusChangeTime: now
+        });
 
         if (onOrderCreated) {
           onOrderCreated();
@@ -363,12 +395,8 @@ export const CreateOrder = forwardRef<
   // 자동 거래 토글 버튼 클릭 핸들러 수정
   const handleAutoTradingToggle = () => {
     if (!autoTrading) {
+      setCurrentCycle('waiting_buy'); // Start with waiting for a buy
       const now = new Date();
-      const { theoreticalPosition } = useUpbitStore.getState().tradeState;
-      
-      // 이미 매수 시점을 놓쳤는지 확인
-      const missedFirstCycle = theoreticalPosition === 'ask' || theoreticalPosition === 'wait';
-      
       updateTradeState({
         lastTradeType: null,
         statusChangeTime: now.toLocaleTimeString('ko-KR', {
@@ -378,7 +406,7 @@ export const CreateOrder = forwardRef<
         }),
         actionStartTime: now,
         isTrading: true,
-        missedFirstCycle
+        missedFirstCycle: false
       });
     } else {
       updateTradeState({
@@ -390,22 +418,14 @@ export const CreateOrder = forwardRef<
     setAutoTrading(!autoTrading);
   };
 
-  // UI 수정
-  const [showHistory, setShowHistory] = useState(false);
-
   // 매매 사이클 상태를 표시하는 함수 추가
   const getTradeStatusText = () => {
-    const { lastTradeType, statusChangeTime, missedFirstCycle } = tradeState;
-
-    if (lastTradeType === null) {
-      if (missedFirstCycle) {
-        return `첫 매수 시점 놓침, 다음 사이클 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
-      }
-      return `첫 매수 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
-    } else if (lastTradeType === 'bid') {
-      return `매수 완료, 매도 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
+    if (currentCycle === 'waiting_buy') {
+      return `매수 대기 중 - ${formatElapsedTime(elapsedTime)} 경과`;
+    } else if (currentCycle === 'waiting_sell') {
+      return `매도 대기 중 - ${formatElapsedTime(elapsedTime)} 경과`;
     } else {
-      return `매도 완료, 다음 매수 대기 중 (${statusChangeTime}) - ${formatElapsedTime(elapsedTime)} 경과`;
+      return `거래 완료 - ${formatElapsedTime(elapsedTime)} 경과`;
     }
   };
 
@@ -413,6 +433,7 @@ export const CreateOrder = forwardRef<
   useImperativeHandle(ref, () => ({
     handleAutomaticTrade
   }));
+
 
   return (
     <div className="mb-8">

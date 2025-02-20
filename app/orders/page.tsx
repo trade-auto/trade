@@ -43,7 +43,16 @@ export default function OrdersPage() {
       unitCurrency: string;
     } | null;
   }>({ coin: null, krw: null });
-  const createOrderRef = useRef<{ handleAutomaticTrade: (tradeSide: 'bid' | 'ask', tradePrice: number) => Promise<void> }>(null);
+  const createOrderRef = useRef<{ 
+    handleAutomaticTrade: (params: {
+      market: string;
+      side: 'bid' | 'ask';
+      volume: string;
+      price: string;
+      ord_type: string;
+      mode: string;
+    }) => Promise<void> 
+  }>(null);
 
   // WebSocket을 통해 실시간 가격 업데이트
   useEffect(() => {
@@ -278,12 +287,15 @@ export default function OrdersPage() {
             initialAutoUpdate={true}
             mode={mode}
             handleOrder={async (params) => {
-              // CreateOrder의 handleAutomaticTrade 함수 호출
-              if (createOrderRef.current) {
-                await createOrderRef.current.handleAutomaticTrade(
-                  params.side,
-                  Number(params.price)
-                );
+              try {
+                if (createOrderRef.current) {
+                  await createOrderRef.current.handleAutomaticTrade(params);
+                  console.log('handleAutomaticTrade 실행 완료');
+                } else {
+                  console.warn('handleAutomaticTrade 실행 실패: createOrderRef.current is null');
+                }
+              } catch (error) {
+                console.error('handleAutomaticTrade 실행 실패:', error);
               }
             }}
           />

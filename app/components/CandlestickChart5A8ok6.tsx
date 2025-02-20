@@ -1371,8 +1371,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const checkAndExecuteOrder = async () => {
       try {
         if (currentPrice < ma3Price * 0.999) {
+
+       
           // 매수 조건
           if ((missedFirstCycle && lastTradeType === 'ask') || (!missedFirstCycle && lastTradeType === null)) {
+            console.log('handleOrder 실행:');
             await handleOrder({
               market: symbol,
               side: 'bid',
@@ -1440,26 +1443,57 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     return (amount / price).toFixed(4);
   };
 
-  // executeOrder 함수 수정
-  const executeOrder = async (orderType: 'bid' | 'ask') => {
-    if (!mode || !currentPrice) return;
+  // Define the OrderDetails interface
+  interface OrderDetails {
+    market: string;
+    side: 'bid' | 'ask';
+    volume: string;
+    price: string;
+    ord_type: string;
+    mode: string;
+  }
 
-    try {
-      const calculatedVolume = calculateOrderVolume(currentPrice);
-      // CreateOrder 컴포넌트의 주문 함수 사용
-      await handleOrder({
-        market: symbol,
-        side: orderType,
-        volume: calculatedVolume,
-        price: currentPrice.toString(),
-        ord_type: 'limit',
-        mode: mode
-      });
-    } catch (error) {
-      console.error(`${orderType} 주문 실패:`, error);
-      throw error;
-    }
+  // Ensure only one declaration of executeOrder exists
+  const executeOrder = (orderDetails: OrderDetails) => {
+    console.log('주문 실행:', orderDetails);
+    // 주문 실행 로직
+    // ...
+
+    // 주문 내역 업데이트
+    setOrderHistory((prevHistory) => [
+      ...prevHistory,
+      {
+        time: new Date(),
+        side: orderDetails.side === 'bid' ? 'buy' : 'sell',
+        price: orderDetails.price,
+        volume: orderDetails.volume,
+      },
+    ]);
+
+    console.log('주문 내역 업데이트:', orderHistory);
   };
+
+  // Define the Order interface if not already defined
+  interface Order {
+    time: Date;
+    side: 'buy' | 'sell';
+    price: string;
+    volume: string;
+  }
+
+  // Update the OrderHistory component to use the Order type
+  const OrderHistory: React.FC<{ orderHistory: Order[] }> = ({ orderHistory }) => (
+    <div>
+      {orderHistory.map((order, index) => (
+        <div key={index}>
+          <span>{order.time.toLocaleString()}</span>
+          <span>{order.side}</span>
+          <span>{order.price}</span>
+          <span>{order.volume}</span>
+        </div>
+      ))}
+    </div>
+  );
 
   // 가격 정보 업데이트 함수
   useEffect(() => {
@@ -1568,7 +1602,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           crossPointsRef.current = crossPoints;
           const markers = createTradeMarkers(crossPoints);
           if (candleSeriesRef.current) {
-            createSeriesMarkers(candleSeriesRef.current, markers);
+            updateTradeMarkers(candleSeriesRef.current, markers);
+            
+            // 가장 최근 크로스 포인트 확인
+            const lastCrossPoint = crossPoints[crossPoints.length - 1];
+            if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000)) {
+              console.log('크로스 포인트 감지:', lastCrossPoint.position);
+              
+              // CreateOrder 컴포넌트의 handleAutomaticTrade 함수 호출
+              handleOrder({
+                market: symbol,
+                side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
+                volume: calculateOrderVolume(data.trade_price),
+                price: data.trade_price.toString(),
+                ord_type: 'limit',
+                mode: mode
+              });
+            }
           }
         }
       });
@@ -1654,9 +1704,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         createSeriesMarkers(candleSeries, markers);
       }
       
-      console.log('마커 업데이트 완료:', markers);
     } catch (error) {
-      console.error('마커 업데이트 중 오류:', error);
     }
   };
 
@@ -1720,9 +1768,27 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               crossPointsRef.current = crossPoints;
               const markers = createTradeMarkers(crossPoints);
               if (candleSeriesRef.current) {
--               createSeriesMarkers(candleSeriesRef.current, markers);
-+               updateTradeMarkers(candleSeriesRef.current, markers);
+                updateTradeMarkers(candleSeriesRef.current, markers);
+            
+                // 가장 최근 크로스 포인트 확인
+        
               }
+              const lastCrossPoint = crossPoints[crossPoints.length - 1];
+              if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000)) {
+                
+                // CreateOrder 컴포넌트의 handleAutomaticTrade 함수 호출
+             
+              }
+                console.log('크로스 포인트 감지:', lastCrossPoint.position);
+
+                 await handleOrder({
+                  market: symbol,
+                  side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
+                  volume: calculateOrderVolume(data.trade_price),
+                  price: data.trade_price,
+                  ord_type: 'limit',
+                  mode: mode
+                });
               setCurrentPrice(data[0].trade_price);
             }
           }
@@ -1748,6 +1814,32 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
     };
   }, []);
+
+  const [orderHistory, setOrderHistory] = useState<Order[]>([]);
+
+
+  // 컴포넌트 마운트 시 테스트 주문 실행
+  useEffect(() => {
+    const testHandleOrder = async () => {
+      console.log('테스트 주문 시작');
+      try {
+        await handleOrder({
+          market: symbol,
+          side: 'bid', // 테스트용 매수 주문
+          volume: '0.0001',
+          price: '30000000',
+          ord_type: 'limit',
+          mode: mode
+        });
+        console.log('테스트 주문 전달 완료');
+      } catch (error) {
+        console.error('테스트 주문 실패:', error);
+      }
+    };
+
+    // 컴포넌트 마운트 시 즉시 실행
+    testHandleOrder();
+  }, []); // 빈 의존성 배열로 마운트 시 한 번만 실행
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
