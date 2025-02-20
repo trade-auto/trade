@@ -347,7 +347,7 @@ export const CreateOrder = forwardRef<
 
     try {
       setIsLoading(true);
-      console.log('자동 거래 시작:', params);
+      console.log('자동 거래 시작:', { params, currentCycle });
       
       if (mode === 'test') {
         const now = new Date().toLocaleTimeString('ko-KR', { 
@@ -356,30 +356,54 @@ export const CreateOrder = forwardRef<
           second: '2-digit' 
         });
 
-        // Update the trading cycle and status
-        if (params.side === 'bid') {
+        // 매수 신호 감지 시
+        if (params.side === 'bid' && currentCycle === 'waiting_buy') {
           console.log('매수 신호 감지 - 상태 업데이트');
           setCurrentCycle('waiting_sell');
+          setElapsedTime(0);
+          
+          // 매수 기록 추가
+          setTradeCycles(prev => {
+            const newCycle = {
+              cycle: ['매수'],
+              times: [now],
+              time: now
+            };
+            return [...prev, newCycle];
+          });
+
           updateTradeState({
             lastTradeType: 'bid',
             statusChangeTime: now,
             isTrading: true
           });
-        } else if (params.side === 'ask') {
-          console.log('매도 신호 감지 - 상태 업데이트');
-          setCurrentCycle('waiting_buy');
-          updateTradeState({
-            lastTradeType: 'ask',
-            statusChangeTime: now,
-            isTrading: true
-          });
-        }
+        } 
+        // 매도 신호 감지 시
+        else if (params.side === 'ask' && currentCycle === 'waiting_sell') {
+          const lastCycle = tradeCycles[tradeCycles.length - 1];
+          if (lastCycle?.cycle[0] === '매수') {  // 직전 기록이 매수인 경우에만
+            console.log('매도 신호 감지 - 상태 업데이트');
+            setCurrentCycle('waiting_buy');
+            setElapsedTime(0);
 
-        console.log('현재 거래 상태:', {
-          cycle: currentCycle,
-          lastTradeType: tradeState.lastTradeType,
-          statusChangeTime: now
-        });
+            // 매도 기록 추가
+            setTradeCycles(prev => {
+              const lastCycle = prev[prev.length - 1];
+              const updatedCycle = {
+                ...lastCycle,
+                cycle: [...lastCycle.cycle, '매도'],
+                times: [...lastCycle.times, now]
+              };
+              return [...prev.slice(0, -1), updatedCycle];
+            });
+
+            updateTradeState({
+              lastTradeType: 'ask',
+              statusChangeTime: now,
+              isTrading: true
+            });
+          }
+        }
 
         if (onOrderCreated) {
           onOrderCreated();
@@ -395,8 +419,11 @@ export const CreateOrder = forwardRef<
   // 자동 거래 토글 버튼 클릭 핸들러 수정
   const handleAutoTradingToggle = () => {
     if (!autoTrading) {
-      setCurrentCycle('waiting_buy'); // Start with waiting for a buy
       const now = new Date();
+      setElapsedTime(0); // 자동 거래 시작 시 경과 시간 리셋
+      setCurrentCycle('waiting_buy'); // 항상 매수 대기로 시작
+      setTradeCycles([]); // 거래 사이클 초기화
+
       updateTradeState({
         lastTradeType: null,
         statusChangeTime: now.toLocaleTimeString('ko-KR', {
