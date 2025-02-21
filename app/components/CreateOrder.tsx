@@ -1099,12 +1099,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
+                    </div>
+              )}
                 </div>
               )}
             </div>
           )}
-        </div>
-      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1117,8 +1117,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-          </div>
-        )}
+        </div>
+      )}
       </div>
     </div>
   );

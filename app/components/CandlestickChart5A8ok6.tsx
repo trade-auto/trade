@@ -1889,6 +1889,37 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }
   }, [maPeriods, showMA]);
 
+  // 상태 추가
+  const [isAutoUpdateEnabled, setIsAutoUpdateEnabled] = useState<boolean>(true);
+  const [isRealtimeEnabled, setIsRealtimeEnabled] = useState<boolean>(false);
+  const [isInitialDataLoaded, setIsInitialDataLoaded] = useState<boolean>(false);
+
+  // 자동 업데이트 토글 함수
+  const toggleAutoUpdate = () => {
+    setIsAutoUpdateEnabled(prev => !prev);
+    if (!isAutoUpdateEnabled) {
+      setIsRealtimeEnabled(false); // 자동 업데이트 활성화 시 실시간 비활성화
+    }
+  };
+
+  // 실시간 업데이트 토글 함수
+  const toggleRealtime = () => {
+    setIsRealtimeEnabled(prev => !prev);
+    if (!isRealtimeEnabled) {
+      setIsAutoUpdateEnabled(false); // 실시간 활성화 시 자동 업데이트 비활성화
+    }
+  };
+
+  // 초기 데이터 로드 후 실행되는 useEffect
+  useEffect(() => {
+    const candleData = candleSeriesRef.current?.data() as ExtendedCandlestickData[];
+    if (candleData?.length > 0 && !isInitialDataLoaded) {
+      setIsInitialDataLoaded(true);
+      setIsAutoUpdateEnabled(false);
+      setIsRealtimeEnabled(true);
+    }
+  }, [candleSeriesRef.current, isInitialDataLoaded]);
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
@@ -2405,6 +2436,32 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             </div>
           )}
         </div>
+      </div>
+
+      {/* 자동 업데이트 토글 함수 */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={toggleAutoUpdate}
+          className={`px-4 py-2 rounded font-bold ${
+            isAutoUpdateEnabled
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-600 text-gray-300'
+          }`}
+          disabled={isRealtimeEnabled}
+        >
+          자동 업데이트 {isAutoUpdateEnabled ? '활성화됨' : '비활성화됨'}
+        </button>
+        <button
+          onClick={toggleRealtime}
+          className={`px-4 py-2 rounded font-bold ${
+            isRealtimeEnabled
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-600 text-gray-300'
+          }`}
+          disabled={isAutoUpdateEnabled || !isInitialDataLoaded}
+        >
+          실시간 API 업데이트 {isRealtimeEnabled ? '활성화됨' : '비활성화됨'}
+        </button>
       </div>
     </div>
   );
