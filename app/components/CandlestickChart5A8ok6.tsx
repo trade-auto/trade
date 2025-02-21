@@ -19,6 +19,7 @@ import {
   HistogramSeriesPartialOptions,
   HistogramStyleOptions,
   SeriesOptionsCommon,
+  SeriesOptions,
 } from 'lightweight-charts';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
@@ -208,6 +209,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const threeEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const sixEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const twentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);  // 추가
   const lastCandleRef = useRef<CandlestickData<Time> | null>(null);
   const buyMarkerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const sellMarkerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -230,6 +232,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const [thirtyPeriod, setThirtyPeriod] = useState<number>(30);  // 단기
   const [fortyPeriod, setFortyPeriod] = useState<number>(40);    // 중기
   const [sixtyPeriod, setSixtyPeriod] = useState<number>(60);    // 장기
+  const [oneTwentyPeriod, setOneTwentyPeriod] = useState<number>(120);
+  const [showThirtyMA, setShowThirtyMA] = useState<boolean>(true);
+  const [showFortyMA, setShowFortyMA] = useState<boolean>(true);
+  const [showSixtyMA, setShowSixtyMA] = useState<boolean>(true);
+  const [showOneTwentyMA, setShowOneTwentyMA] = useState<boolean>(true);
   
   // 초기 날짜 범위 상태를 chartType에 따라 설정
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
@@ -338,39 +345,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   };
 
   // MA 기간 변경 핸들러
-  const handleMAChange = (type: 'thirty' | 'forty' | 'sixty', value: number) => {
-    if (type === 'thirty') {
-      setThirtyPeriod(value);
-    } else if (type === 'forty') {
-      setFortyPeriod(value);
-    } else if (type === 'sixty') {
-      setSixtyPeriod(value);
-    }
-    
-    // 차트 데이터 업데이트
-    if (candleSeriesRef.current && threeEMASeriesRef.current && sixEMASeriesRef.current && twentyEMASeriesRef.current) {
-      const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
-      const threeEMAData = calculateEMA(candleData, type === 'thirty' ? value : thirtyPeriod);
-      const sixEMAData = calculateEMA(candleData, type === 'forty' ? value : fortyPeriod);
-      const twentyEMAData = calculateEMA(candleData, type === 'sixty' ? value : sixtyPeriod);
-      
-      threeEMASeriesRef.current.setData(threeEMAData);
-      sixEMASeriesRef.current.setData(sixEMAData);
-      twentyEMASeriesRef.current.setData(twentyEMAData);
-      
-      // 크로스 포인트 업데이트
-      const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
-      crossPointsRef.current = crossPoints;
-      
-      // 매수/매도 마커 업데이트 
-      const markers = createTradeMarkers(crossPoints);
-      if (candleSeriesRef.current) {
-        createSeriesMarkers(candleSeriesRef.current, markers);
-      }
-      
-      // 백테스팅 결과 업데이트
-      const result = calculateBacktestResult(candleData, crossPoints);
-      setBacktestResult(result);
+  const handleMAChange = (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty', value: number) => {
+    switch (type) {
+      case 'thirty':
+        setThirtyPeriod(value);
+        break;
+      case 'forty':
+        setFortyPeriod(value);
+        break;
+      case 'sixty':
+        setSixtyPeriod(value);
+        break;
+      case 'oneTwenty':
+        setOneTwentyPeriod(value);
+        break;
     }
   };
 
@@ -815,6 +803,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // EMA 계산 함수
   const calculateEMA = (data: ExtendedCandlestickData[], period: number): LineData<Time>[] => {
+    if (!data || data.length === 0) return [];
+    
     const k = 2 / (period + 1);
     let ema = data[0].close;
     
@@ -1844,6 +1834,78 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // testHandleOrder();/
   }, []); // 빈 의존성 배열로 마운트 시 한 번만 실행
 
+  // 차트 업데이트 부분 수정
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    // 기존 시리즈 제거
+    const removeSeries = (series: ISeriesApi<"Line"> | null) => {
+      if (series && chartRef.current) {
+        try {
+          chartRef.current.removeSeries(series);
+        } catch (error) {
+          console.error('시리즈 제거 중 오류:', error);
+        }
+      }
+    };
+
+    removeSeries(threeEMASeriesRef.current);
+    removeSeries(sixEMASeriesRef.current);
+    removeSeries(twentyEMASeriesRef.current);
+    removeSeries(oneTwentyEMASeriesRef.current);
+
+    // 새 시리즈 추가
+    if (showThirtyMA) {
+      threeEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
+      threeEMASeriesRef.current.applyOptions({
+        color: '#FF0000',  // 빨간색
+        lineWidth: 2,
+      });
+    }
+    if (showFortyMA) {
+      sixEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
+      sixEMASeriesRef.current.applyOptions({
+        color: '#00FF00',  // 초록색
+        lineWidth: 2,
+      });
+    }
+    if (showSixtyMA) {
+      twentyEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
+      twentyEMASeriesRef.current.applyOptions({
+        color: '#0000FF',  // 파란색
+        lineWidth: 2,
+      });
+    }
+    if (showOneTwentyMA) {
+      oneTwentyEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
+      oneTwentyEMASeriesRef.current.applyOptions({
+        color: '#FFFF00',  // 노란색
+        lineWidth: 2,
+      });
+    }
+
+    // 데이터 업데이트
+    if (candleSeriesRef.current) {
+      const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+      if (showThirtyMA) {
+        const thirtyEMA = calculateEMA(candleData, thirtyPeriod);
+        threeEMASeriesRef.current?.setData(thirtyEMA);
+      }
+      if (showFortyMA) {
+        const fortyEMA = calculateEMA(candleData, fortyPeriod);
+        sixEMASeriesRef.current?.setData(fortyEMA);
+      }
+      if (showSixtyMA) {
+        const sixtyEMA = calculateEMA(candleData, sixtyPeriod);
+        twentyEMASeriesRef.current?.setData(sixtyEMA);
+      }
+      if (showOneTwentyMA) {
+        const oneTwentyEMA = calculateEMA(candleData, oneTwentyPeriod);
+        oneTwentyEMASeriesRef.current?.setData(oneTwentyEMA);
+      }
+    }
+  }, [thirtyPeriod, fortyPeriod, sixtyPeriod, oneTwentyPeriod, showThirtyMA, showFortyMA, showSixtyMA, showOneTwentyMA]);
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
@@ -1970,6 +2032,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               className="flex-1"
             />
             <div className="text-white font-bold w-12 text-center">{thirtyPeriod}</div>
+            <button
+              onClick={() => setShowThirtyMA(!showThirtyMA)}
+              className={`px-3 py-1 rounded ${
+                showThirtyMA ? 'bg-blue-600' : 'bg-gray-600'
+              } text-white`}
+            >
+              {showThirtyMA ? '숨기기' : '보이기'}
+            </button>
           </div>
         </div>
         <div className="bg-gray-800 p-4 rounded-lg">
@@ -1984,6 +2054,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               className="flex-1"
             />
             <div className="text-white font-bold w-12 text-center">{fortyPeriod}</div>
+            <button
+              onClick={() => setShowFortyMA(!showFortyMA)}
+              className={`px-3 py-1 rounded ${
+                showFortyMA ? 'bg-blue-600' : 'bg-gray-600'
+              } text-white`}
+            >
+              {showFortyMA ? '숨기기' : '보이기'}
+            </button>
           </div>
         </div>
         <div className="bg-gray-800 p-4 rounded-lg">
@@ -1998,6 +2076,36 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               className="flex-1"
             />
             <div className="text-white font-bold w-12 text-center">{sixtyPeriod}</div>
+            <button
+              onClick={() => setShowSixtyMA(!showSixtyMA)}
+              className={`px-3 py-1 rounded ${
+                showSixtyMA ? 'bg-blue-600' : 'bg-gray-600'
+              } text-white`}
+            >
+              {showSixtyMA ? '숨기기' : '보이기'}
+            </button>
+          </div>
+        </div>
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">MA 120 기간</div>
+          <div className="flex items-center space-x-4">
+            <input
+              type="range"
+              min="60"
+              max="200"
+              value={oneTwentyPeriod}
+              onChange={(e) => handleMAChange('oneTwenty', parseInt(e.target.value))}
+              className="flex-1"
+            />
+            <div className="text-white font-bold w-12 text-center">{oneTwentyPeriod}</div>
+            <button
+              onClick={() => setShowOneTwentyMA(!showOneTwentyMA)}
+              className={`px-3 py-1 rounded ${
+                showOneTwentyMA ? 'bg-blue-600' : 'bg-gray-600'
+              } text-white`}
+            >
+              {showOneTwentyMA ? '숨기기' : '보이기'}
+            </button>
           </div>
         </div>
       </div>
