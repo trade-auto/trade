@@ -67,6 +67,20 @@ interface UpbitStore {
     minOrderPrice: number;
     maxOrderPrice: number;
   };
+  maPeriods: {
+    thirty: number;
+    forty: number;
+    sixty: number;
+    oneTwenty: number;
+  };
+  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty', value: number) => void;
+  showMA: {
+    thirty: boolean;
+    forty: boolean;
+    sixty: boolean;
+    oneTwenty: boolean;
+  };
+  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty') => void;
 }
 
 export const useUpbitStore = create<UpbitStore>()((set) => ({
@@ -136,5 +150,33 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
   orderLimits: {
     minOrderPrice: 5000,
     maxOrderPrice: 1000000000
-  }
+  },
+
+  maPeriods: {
+    thirty: 30,
+    forty: 40,
+    sixty: 60,
+    oneTwenty: 120,
+  },
+
+  updateMAPeriod: (type, value) => set((state) => ({
+    maPeriods: {
+      ...state.maPeriods,
+      [type]: value,
+    },
+  })),
+
+  showMA: {
+    thirty: true,
+    forty: true,
+    sixty: true,
+    oneTwenty: true,
+  },
+
+  updateShowMA: (type) => set((state) => ({
+    showMA: {
+      ...state.showMA,
+      [type]: !state.showMA[type],
+    },
+  })),
 })); 

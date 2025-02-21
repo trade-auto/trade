@@ -40,7 +40,7 @@ export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
 >(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }, ref) => {
-  const { tradeState, updateTradeState } = useUpbitStore();
+  const { tradeState, updateTradeState, maPeriods } = useUpbitStore();
   const [tradeStrategy, setTradeStrategy] = useState<TradeStrategy>('BOLLINGER');
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
@@ -324,115 +324,74 @@ export const CreateOrder = forwardRef<
     };
   };
 
-  // 매매 조건 체크 수정
+  // 매매 전략 상태 표시 추가
+  const [currentStrategy, setCurrentStrategy] = useState<string>('');
+  const [lastSignal, setLastSignal] = useState<string>('');
+
+  // 매매 조건 체크 부분 수정
   useEffect(() => {
     if (!autoTrading || !currentPrice) return;
+
+    let signal = '';
 
     if (tradeStrategy === 'BOLLINGER' && priceHistory.length >= 20) {
       // 볼린저 밴드 전략
       const bands = calculateBollingerBands(priceHistory);
       if (bands) {
-        setUpperBand(bands.upper);
-        setLowerBand(bands.lower);
-        setBasis(bands.middle);
-
         if (currentPrice > bands.upper && currentCycle === 'waiting_buy') {
-          handleAutomaticTrade({
-            market: market,
-            side: 'bid',
-            volume: '0.0001',
-            price: currentPrice.toString(),
-            ord_type: 'limit',
-            mode: mode
-          });
+          signal = '볼린저 밴드 매수 신호: 상단 밴드 돌파';
         } else if (currentPrice < bands.lower && currentCycle === 'waiting_sell') {
-          handleAutomaticTrade({
-            market: market,
-            side: 'ask',
-            volume: '0.0001',
-            price: currentPrice.toString(),
-            ord_type: 'limit',
-            mode: mode
-          });
+          signal = '볼린저 밴드 매도 신호: 하단 밴드 도달';
         }
       }
     } else if (tradeStrategy === 'MA_CROSS' && priceHistory.length >= 60) {
-      // 이동평균선 교차 전략
-      const thirtyMA = calculateMA(priceHistory, 30);
-      const sixtyMA = calculateMA(priceHistory, 60);
+      // 단순 이동평균선 교차 전략
+      const ma30 = calculateMA(priceHistory, maPeriods.thirty);
+      const ma40 = calculateMA(priceHistory, maPeriods.forty);
+      const ma60 = calculateMA(priceHistory, maPeriods.sixty);
       
-      if (thirtyMA.length >= 2 && sixtyMA.length >= 2) {
-        const prevThirty = thirtyMA[thirtyMA.length - 2];
-        const currThirty = thirtyMA[thirtyMA.length - 1];
-        const prevSixty = sixtyMA[sixtyMA.length - 2];
-        const currSixty = sixtyMA[sixtyMA.length - 1];
-
-        if (prevThirty <= prevSixty && currThirty > currSixty && currentCycle === 'waiting_buy') {
-          handleAutomaticTrade({
-            market: market,
-            side: 'bid',
-            volume: '0.0001',
-            price: currentPrice.toString(),
-            ord_type: 'limit',
-            mode: mode
-          });
-        } else if (prevThirty >= prevSixty && currThirty < currSixty && currentCycle === 'waiting_sell') {
-          handleAutomaticTrade({
-            market: market,
-            side: 'ask',
-            volume: '0.0001',
-            price: currentPrice.toString(),
-            ord_type: 'limit',
-            mode: mode
-          });
-        }
+      // 30MA와 40MA의 교차
+      if (ma30[ma30.length - 2] <= ma40[ma40.length - 2] && 
+          ma30[ma30.length - 1] > ma40[ma40.length - 1]) {
+        signal = '이동평균선 매수 신호: 30MA가 40MA 상향돌파';
+      } else if (ma30[ma30.length - 2] >= ma40[ma40.length - 2] && 
+                 ma30[ma30.length - 1] < ma40[ma40.length - 1]) {
+        signal = '이동평균선 매도 신호: 30MA가 40MA 하향돌파';
+      }
+      
+      // 40MA와 60MA의 교차도 확인
+      if (ma40[ma40.length - 2] <= ma60[ma60.length - 2] && 
+          ma40[ma40.length - 1] > ma60[ma60.length - 1]) {
+        signal += '\n이동평균선 매수 신호: 40MA가 60MA 상향돌파';
+      } else if (ma40[ma40.length - 2] >= ma60[ma60.length - 2] && 
+                 ma40[ma40.length - 1] < ma60[ma60.length - 1]) {
+        signal += '\n이동평균선 매도 신호: 40MA가 60MA 하향돌파';
       }
     } else if (tradeStrategy === 'MA_CROSS_DEVIATION' && priceHistory.length >= 120) {
-      // 이동평균선 계산
-      const ma30 = calculateMA(priceHistory, 30);
-      const ma60 = calculateMA(priceHistory, 60);
-      const ma120 = calculateMA(priceHistory, 120);
+      // 이격도 필터 적용 전략
+      const ma30 = calculateMA(priceHistory, maPeriods.thirty);
+      const ma60 = calculateMA(priceHistory, maPeriods.sixty);
+      const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty);
       
-      if (ma30.length >= 2 && ma60.length >= 2 && ma120.length >= 2) {
-        const prevMa30 = ma30[ma30.length - 2];
-        const currMa30 = ma30[ma30.length - 1];
-        const prevMa60 = ma60[ma60.length - 2];
-        const currMa60 = ma60[ma60.length - 1];
-        const currMa120 = ma120[ma120.length - 1];
-
-        // 이격도 계산
-        const gap = Math.abs(currMa60 - currMa120) / currMa120;
-
-        // 매수 조건
-        if (prevMa30 <= prevMa60 && currMa30 > currMa60 && // 30MA가 60MA를 상향돌파
-            currMa30 > currMa120 && currMa60 > currMa120 && // 모든 MA가 120MA 위에 있음
-            gap >= 0.02 && // 이격도 2% 이상
-            currentCycle === 'waiting_buy') {
-          handleAutomaticTrade({
-            market: market,
-            side: 'bid',
-            volume: '0.0001',
-            price: currentPrice.toString(),
-            ord_type: 'limit',
-            mode: mode
-          });
-        }
-        // 매도 조건
-        else if (prevMa30 >= prevMa60 && currMa30 < currMa60 && // 30MA가 60MA를 하향돌파
-                 currMa30 < currMa120 && currMa60 < currMa120 && // 모든 MA가 120MA 아래에 있음
-                 gap >= 0.02 && // 이격도 2% 이상
-                 currentCycle === 'waiting_sell') {
-          handleAutomaticTrade({
-            market: market,
-            side: 'ask',
-            volume: '0.0001',
-            price: currentPrice.toString(),
-            ord_type: 'limit',
-            mode: mode
-          });
+      const gap = Math.abs(ma60[ma60.length - 1] - ma120[ma120.length - 1]) / ma120[ma120.length - 1];
+      
+      if (gap >= 0.02) {
+        if (ma30[ma30.length - 1] > ma120[ma120.length - 1] && 
+            ma60[ma60.length - 1] > ma120[ma120.length - 1]) {
+          signal = `이격도 매수 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
+        } else if (ma30[ma30.length - 1] < ma120[ma120.length - 1] && 
+                   ma60[ma60.length - 1] < ma120[ma120.length - 1]) {
+          signal = `이격도 매도 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
         }
       }
     }
+
+    if (signal !== lastSignal) {
+      setLastSignal(signal);
+      console.log(signal); // 콘솔에 신호 출력
+    }
+
+    setCurrentStrategy(`현재 전략: ${tradeStrategy}`);
   }, [autoTrading, currentPrice, priceHistory, tradeStrategy]);
 
   // 이동평균 계산 함수 추가
@@ -1076,6 +1035,16 @@ export const CreateOrder = forwardRef<
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
         총 수익률: {totalProfit}%
+      </div>
+
+      {/* 전략 상태 표시 패널 추가 */}
+      <div className="mt-4 bg-gray-800 p-4 rounded-lg">
+        <div className="text-white font-bold">{currentStrategy}</div>
+        {lastSignal && (
+          <div className="mt-2 text-yellow-400">
+            마지막 신호: {lastSignal}
+          </div>
+        )}
       </div>
     </div>
   );
