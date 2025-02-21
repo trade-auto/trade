@@ -34,14 +34,18 @@ interface TradeCycle {
 }
 
 // 매매 전략 타입 정의 추가
-type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION';
+type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
 >(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }, ref) => {
   const { tradeState, updateTradeState, maPeriods } = useUpbitStore();
-  const [tradeStrategy, setTradeStrategy] = useState<TradeStrategy>('BOLLINGER');
+  
+  // 로컬 스토리지에서 마지막 전략 불러오기
+  const savedStrategy = localStorage.getItem('lastTradeStrategy') as TradeStrategy || 'BOLLINGER';
+  const [tradeStrategy, setTradeStrategy] = useState<TradeStrategy>(savedStrategy);
+
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
   const [price, setPrice] = useState('');
@@ -333,6 +337,7 @@ export const CreateOrder = forwardRef<
     if (!autoTrading || !currentPrice) return;
 
     let signal = '';
+    let inPosition = false;
 
     if (tradeStrategy === 'BOLLINGER' && priceHistory.length >= 20) {
       // 볼린저 밴드 전략
@@ -388,6 +393,50 @@ export const CreateOrder = forwardRef<
         else if (ma40[ma40.length - 1] < ma120[ma120.length - 1] && 
                  ma60[ma60.length - 1] < ma120[ma120.length - 1]) {
           signal = `이격도 매도 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
+        }
+      }
+    } else if (tradeStrategy === 'SLOPE_FILTER' && priceHistory.length >= 120) {
+      // 기울기 필터 이동평균선 전략
+      const ma40 = calculateMA(priceHistory, maPeriods.forty);
+      const ma60 = calculateMA(priceHistory, maPeriods.sixty);
+      const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty);
+
+      const slope40 = ma40[ma40.length - 1] - ma40[ma40.length - 2];
+      const slope60 = ma60[ma60.length - 1] - ma60[ma60.length - 2];
+
+      const currentPrice = priceHistory[priceHistory.length - 1];
+
+      // 임계치 설정
+      const sellThreshold = -0.005;
+      const buyThreshold = 0.005;
+      const strongSellThreshold = -0.01; // 강한 매도 임계치
+      const strongBuyThreshold = 0.01;   // 강한 매수 임계치
+
+      if (inPosition) {
+        // 포지션 보유 중인 경우
+        if (currentPrice < ma120[ma120.length - 1]) {
+          // 120MA 아래: 약세 영역
+          if (slope40 < strongSellThreshold && slope60 < strongSellThreshold) {
+            signal = '기울기 필터 매도 신호';
+            inPosition = false;
+          } else {
+            signal = '기울기 필터 보유';
+          }
+        } else {
+          signal = '기울기 필터 보유';
+        }
+      } else {
+        // 포지션 미보유 상태인 경우
+        if (currentPrice < ma120[ma120.length - 1]) {
+          // 120MA 아래: 약세 영역
+          if (slope40 > strongBuyThreshold && slope60 > strongBuyThreshold) {
+            signal = '기울기 필터 매수 신호';
+            inPosition = true;
+          } else {
+            signal = '기울기 필터 보유';
+          }
+        } else {
+          signal = '기울기 필터 보유';
         }
       }
     }
@@ -684,6 +733,12 @@ export const CreateOrder = forwardRef<
     </div>
   );
 
+  // 전략 변경 시 로컬 스토리지에 저장
+  const handleStrategyChange = (strategy: TradeStrategy) => {
+    setTradeStrategy(strategy);
+    localStorage.setItem('lastTradeStrategy', strategy);
+  };
+
   return (
     <div className="mb-8">
       <div className="flex items-center gap-2">
@@ -970,7 +1025,7 @@ export const CreateOrder = forwardRef<
           {/* 매매 전략 선택 버튼 수정 */}
           <div className="flex gap-2">
             <button
-              onClick={() => setTradeStrategy('BOLLINGER')}
+              onClick={() => handleStrategyChange('BOLLINGER')}
               disabled={autoTrading}
               className={`px-4 py-2 rounded font-bold ${
                 tradeStrategy === 'BOLLINGER'
@@ -983,7 +1038,7 @@ export const CreateOrder = forwardRef<
               {tradeStrategy === 'BOLLINGER' ? '✓ 볼린저 밴드' : '볼린저 밴드'}
             </button>
             <button
-              onClick={() => setTradeStrategy('MA_CROSS')}
+              onClick={() => handleStrategyChange('MA_CROSS')}
               disabled={autoTrading}
               className={`px-4 py-2 rounded font-bold ${
                 tradeStrategy === 'MA_CROSS'
@@ -996,7 +1051,7 @@ export const CreateOrder = forwardRef<
               {tradeStrategy === 'MA_CROSS' ? '✓ 이동평균선 교차' : '이동평균선 교차'}
             </button>
             <button
-              onClick={() => setTradeStrategy('MA_CROSS_DEVIATION')}
+              onClick={() => handleStrategyChange('MA_CROSS_DEVIATION')}
               disabled={autoTrading}
               className={`px-4 py-2 rounded font-bold ${
                 tradeStrategy === 'MA_CROSS_DEVIATION'
@@ -1007,6 +1062,19 @@ export const CreateOrder = forwardRef<
               } text-white transition-all duration-200`}
             >
               {tradeStrategy === 'MA_CROSS_DEVIATION' ? '✓ 이격도 MA 교차' : '이격도 MA 교차'}
+            </button>
+            <button
+              onClick={() => handleStrategyChange('SLOPE_FILTER')}
+              disabled={autoTrading}
+              className={`px-4 py-2 rounded font-bold ${
+                tradeStrategy === 'SLOPE_FILTER'
+                  ? 'bg-blue-600 ring-2 ring-white'
+                  : autoTrading
+                    ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                    : 'bg-gray-600 hover:bg-gray-700'
+              } text-white transition-all duration-200`}
+            >
+              {tradeStrategy === 'SLOPE_FILTER' ? '✓ 기울기 필터' : '기울기 필터'}
             </button>
           </div>
 
