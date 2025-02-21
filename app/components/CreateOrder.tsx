@@ -344,43 +344,49 @@ export const CreateOrder = forwardRef<
           signal = '볼린저 밴드 매도 신호: 하단 밴드 도달';
         }
       }
-    } else if (tradeStrategy === 'MA_CROSS' && priceHistory.length >= 120) {
-      // 이동평균선 교차 전략
+    } else if (tradeStrategy === 'MA_CROSS' && priceHistory.length >= 60) {
+      // 단순 이동평균선 교차 전략
+      const ma30 = calculateMA(priceHistory, maPeriods.thirty);
       const ma40 = calculateMA(priceHistory, maPeriods.forty);
       const ma60 = calculateMA(priceHistory, maPeriods.sixty);
-      const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty);
       
-      // 40MA와 60MA의 교차
-      if (ma40[ma40.length - 2] <= ma60[ma60.length - 2] && 
-          ma40[ma40.length - 1] > ma60[ma60.length - 1]) {
-        signal = '이동평균선 매수 신호: 40MA가 60MA 상향돌파';
-      } else if (ma40[ma40.length - 2] >= ma60[ma60.length - 2] && 
-                 ma40[ma40.length - 1] < ma60[ma60.length - 1]) {
-        signal = '이동평균선 매도 신호: 40MA가 60MA 하향돌파';
+      // 30MA와 40MA의 교차
+      if (ma30[ma30.length - 2] <= ma40[ma40.length - 2] && 
+          ma30[ma30.length - 1] > ma40[ma40.length - 1]) {
+        signal = '이동평균선 매수 신호: 30MA가 40MA 상향돌파';
+      } else if (ma30[ma30.length - 2] >= ma40[ma40.length - 2] && 
+                 ma30[ma30.length - 1] < ma40[ma40.length - 1]) {
+        signal = '이동평균선 매도 신호: 30MA가 40MA 하향돌파';
       }
       
-      // 60MA와 120MA의 교차도 확인
-      if (ma60[ma60.length - 2] <= ma120[ma120.length - 2] && 
-          ma60[ma60.length - 1] > ma120[ma120.length - 1]) {
-        signal += '\n이동평균선 매수 신호: 60MA가 120MA 상향돌파';
-      } else if (ma60[ma60.length - 2] >= ma120[ma120.length - 2] && 
-                 ma60[ma60.length - 1] < ma120[ma120.length - 1]) {
-        signal += '\n이동평균선 매도 신호: 60MA가 120MA 하향돌파';
+      // 40MA와 60MA의 교차도 확인
+      if (ma40[ma40.length - 2] <= ma60[ma60.length - 2] && 
+          ma40[ma40.length - 1] > ma60[ma60.length - 1]) {
+        signal += '\n이동평균선 매수 신호: 40MA가 60MA 상향돌파';
+      } else if (ma40[ma40.length - 2] >= ma60[ma60.length - 2] && 
+                 ma40[ma40.length - 1] < ma60[ma60.length - 1]) {
+        signal += '\n이동평균선 매도 신호: 40MA가 60MA 하향돌파';
       }
     } else if (tradeStrategy === 'MA_CROSS_DEVIATION' && priceHistory.length >= 120) {
       // 이격도 필터 적용 전략
-      const ma40 = calculateMA(priceHistory, maPeriods.forty);
-      const ma60 = calculateMA(priceHistory, maPeriods.sixty);
-      const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty);
+      const ma40 = calculateMA(priceHistory, maPeriods.forty);  // 40일 이동평균
+      const ma60 = calculateMA(priceHistory, maPeriods.sixty);  // 60일 이동평균
+      const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty); // 120일 이동평균
       
+      // 이격도 계산: (60일 MA - 120일 MA) / 120일 MA
       const gap = Math.abs(ma60[ma60.length - 1] - ma120[ma120.length - 1]) / ma120[ma120.length - 1];
       
-      if (gap >= 0.02) {
+      if (gap >= 0.02) { // 이격도가 2% 이상일 때
+        // 매수 조건: 
+        // 1. 40MA와 60MA가 모두 120MA 위에 있음
         if (ma40[ma40.length - 1] > ma120[ma120.length - 1] && 
             ma60[ma60.length - 1] > ma120[ma120.length - 1]) {
           signal = `이격도 매수 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
-        } else if (ma40[ma40.length - 1] < ma120[ma120.length - 1] && 
-                   ma60[ma60.length - 1] < ma120[ma120.length - 1]) {
+        } 
+        // 매도 조건:
+        // 1. 40MA와 60MA가 모두 120MA 아래에 있음
+        else if (ma40[ma40.length - 1] < ma120[ma120.length - 1] && 
+                 ma60[ma60.length - 1] < ma120[ma120.length - 1]) {
           signal = `이격도 매도 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
         }
       }
@@ -1025,12 +1031,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
-                    </div>
-              )}
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1043,8 +1049,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );
