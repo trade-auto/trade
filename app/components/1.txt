@@ -211,3 +211,64 @@ EMA 지표 사용:
 매도 조건: 120MA 위의 40MA와 60MA의 기울기가 음수일 때 매도 신호가 발생합니다.
 매수 매도는 쌍으로 움직이고  
 매도후 매수시 기울기가 확실히 변하지 않으면 매수하지않고 보유하게 해줘 ,매수후 매도시 기울기가 확실히 변하지않으면 매도하지않고  보유  하게 해줘 
+
+
+# 현재 포지션 상태 (True: 포지션 보유, False: 미포지션)
+in_position = False
+
+# 임계치 설정 (예시 값 - 실제 적용 시 백테스트로 최적화 필요)
+sell_threshold = -0.005   # 충분히 음의 기울기 (매도 조건용)
+buy_threshold  =  0.005   # 충분히 양의 기울기 (매수 조건용)
+
+# 현재 가격과 MA 값 계산
+current_price = price_data[-1]
+ma40 = get_MA(price_data, period=40)
+ma60 = get_MA(price_data, period=60)
+ma120 = get_MA(price_data, period=120)
+
+# 각 MA의 기울기 계산 (현재값 - 바로 이전 값)
+slope_40 = ma40[-1] - ma40[-2]
+slope_60 = ma60[-1] - ma60[-2]
+slope_120 = ma120[-1] - ma120[-2]  # 참고용
+
+signal = "hold"  # 기본 신호
+
+# 시장 상황을 120MA 기준으로 구분
+if in_position:
+    # 포지션 보유 중인 경우
+    if current_price < ma120[-1]:
+        # [120MA 아래: 약세 영역] 매수 후,
+        # 60MA와 40MA의 기울기가 충분히 음(예: sell_threshold 이하)으로 전환되어야 매도
+        if slope_40 < sell_threshold and slope_60 < sell_threshold:
+            signal = "sell"
+            in_position = False
+        else:
+            signal = "hold"
+    else:
+        # [120MA 위: 강세 영역] 보유 중이면, 60MA,40MA가 음의 기울기를 보이면 매도
+        # 단, 여기서도 기울기가 충분히 음(예: sell_threshold 이하)일 때만 매도
+        if slope_40 < sell_threshold and slope_60 < sell_threshold:
+            signal = "sell"
+            in_position = False
+        else:
+            signal = "hold"
+else:
+    # 포지션 미보유 상태인 경우
+    if current_price < ma120[-1]:
+        # [120MA 아래: 약세 영역] 매수 조건:
+        # 60MA와 40MA의 기울기가 양수이면 매수.
+        if slope_40 > 0 and slope_60 > 0:
+            signal = "buy"
+            in_position = True
+        else:
+            signal = "hold"
+    else:
+        # [120MA 위: 강세 영역] 매수 조건:
+        # 매도 후 재진입 시, 60MA와 40MA의 기울기가 충분히 양(예: buy_threshold 이상)이어야 함.
+        if slope_40 > buy_threshold and slope_60 > buy_threshold:
+            signal = "buy"
+            in_position = True
+        else:
+            signal = "hold"
+# 결과적으로 signal 변수에 "buy", "sell", "hold" 중 하나가 지정됩니다.
+이것을 기울기필터에 적용해줘             

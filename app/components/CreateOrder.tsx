@@ -337,7 +337,6 @@ export const CreateOrder = forwardRef<
     if (!autoTrading || !currentPrice) return;
 
     let signal = '';
-    let inPosition = false;
 
     if (tradeStrategy === 'BOLLINGER' && priceHistory.length >= 20) {
       // 볼린저 밴드 전략
@@ -401,42 +400,41 @@ export const CreateOrder = forwardRef<
       const ma60 = calculateMA(priceHistory, maPeriods.sixty);
       const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty);
 
+      // 기울기 계산
       const slope40 = ma40[ma40.length - 1] - ma40[ma40.length - 2];
       const slope60 = ma60[ma60.length - 1] - ma60[ma60.length - 2];
+      const slope120 = ma120[ma120.length - 1] - ma120[ma120.length - 2];
 
-      const currentPrice = priceHistory[priceHistory.length - 1];
+      // 임계값 설정
+      const sellThreshold = -0.005;  // 매도 기울기 임계값
+      const buyThreshold = 0.005;   // 매수 기울기 임계값
 
-      // 임계치 설정
-      const sellThreshold = -0.005;
-      const buyThreshold = 0.005;
-      const strongSellThreshold = -0.01; // 강한 매도 임계치
-      const strongBuyThreshold = 0.01;   // 강한 매수 임계치
+      // 현재 가격이 120MA를 기준으로 강세/약세 구분
+      const isAbove120MA = currentPrice > ma120[ma120.length - 1];
 
-      if (inPosition) {
-        // 포지션 보유 중인 경우
-        if (currentPrice < ma120[ma120.length - 1]) {
-          // 120MA 아래: 약세 영역
-          if (slope40 < strongSellThreshold && slope60 < strongSellThreshold) {
-            signal = '기울기 필터 매도 신호';
-            inPosition = false;
-          } else {
-            signal = '기울기 필터 보유';
+      if (currentCycle === 'waiting_sell') {  // 포지션 보유 중
+        if (!isAbove120MA) {
+          // 120MA 아래에서는 음의 기울기가 임계값을 넘으면 매도
+          if (slope40 < sellThreshold && slope60 < sellThreshold) {
+            signal = `기울기 필터 매도 신호 (약세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
           }
         } else {
-          signal = '기울기 필터 보유';
+          // 120MA 위에서도 음의 기울기가 임계값을 넘으면 매도
+          if (slope40 < sellThreshold && slope60 < sellThreshold) {
+            signal = `기울기 필터 매도 신호 (강세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
+          }
         }
-      } else {
-        // 포지션 미보유 상태인 경우
-        if (currentPrice < ma120[ma120.length - 1]) {
-          // 120MA 아래: 약세 영역
-          if (slope40 > strongBuyThreshold && slope60 > strongBuyThreshold) {
-            signal = '기울기 필터 매수 신호';
-            inPosition = true;
-          } else {
-            signal = '기울기 필터 보유';
+      } else if (currentCycle === 'waiting_buy') {  // 포지션 미보유
+        if (!isAbove120MA) {
+          // 120MA 아래에서는 양의 기울기면 매수
+          if (slope40 > 0 && slope60 > 0) {
+            signal = `기울기 필터 매수 신호 (약세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
           }
         } else {
-          signal = '기울기 필터 보유';
+          // 120MA 위에서는 강한 양의 기울기(임계값 이상)일 때만 매수
+          if (slope40 > buyThreshold && slope60 > buyThreshold) {
+            signal = `기울기 필터 매수 신호 (강세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
+          }
         }
       }
     }
@@ -1099,12 +1097,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
-                    </div>
-              )}
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1117,8 +1115,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );
