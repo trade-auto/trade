@@ -400,51 +400,54 @@ export const CreateOrder = forwardRef<
       const ma60 = calculateMA(priceHistory, maPeriods.sixty);
       const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty);
 
+      // 현재 가격
+      const currentMA = currentPrice;
+
       // 기울기 계산
       const slope40 = ma40[ma40.length - 1] - ma40[ma40.length - 2];
       const slope60 = ma60[ma60.length - 1] - ma60[ma60.length - 2];
       const slope120 = ma120[ma120.length - 1] - ma120[ma120.length - 2];
 
-      // 임계값 설정
-      const sellThreshold = -0.005;  // 매도 기울기 임계값
+      // 기울기 임계값 설정
       const buyThreshold = 0.005;   // 매수 기울기 임계값
+      const sellThreshold = -0.005; // 매도 기울기 임계값
 
-      // 현재 가격이 120MA를 기준으로 강세/약세 구분
-      const isAbove120MA = currentPrice > ma120[ma120.length - 1];
+      // 120MA를 기준으로 시장 상황 판단
+      const isAbove120MA = currentMA > ma120[ma120.length - 1];
 
-      if (currentCycle === 'waiting_sell') {  // 포지션 보유 중
-        if (!isAbove120MA) {
-          // 120MA 아래에서는 음의 기울기가 임계값을 넘으면 매도
-          if (slope40 < sellThreshold && slope60 < sellThreshold) {
-            signal = `기울기 필터 매도 신호 (약세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
+      if (currentCycle === 'waiting_buy') {  // 매수 대기 상태
+        if (!isAbove120MA) {  // 120MA 아래에서
+          // 120MA가 하락 중이면 매수하지 않음
+          if (slope120 >= 0 && slope40 > 0 && slope60 > 0) {  
+            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 상승중`;
           }
-        } else {
-          // 120MA 위에서도 음의 기울기가 임계값을 넘으면 매도
-          if (slope40 < sellThreshold && slope60 < sellThreshold) {
-            signal = `기울기 필터 매도 신호 (강세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
+        } else {  // 120MA 위에서
+          if (slope120 >= 0 && slope40 > buyThreshold && slope60 > buyThreshold) {
+            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 상승중`;
           }
         }
-      } else if (currentCycle === 'waiting_buy') {  // 포지션 미보유
-        if (!isAbove120MA) {
-          // 120MA 아래에서는 양의 기울기면 매수
-          if (slope40 > 0 && slope60 > 0) {
-            signal = `기울기 필터 매수 신호 (약세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
+      } 
+      else if (currentCycle === 'waiting_sell') {  // 매도 대기 상태
+        if (isAbove120MA) {  // 120MA 위에서
+          // 120MA가 상승 중이면 매도하지 않음
+          if (slope120 <= 0 && slope40 < 0 && slope60 < 0) {
+            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 하락중`;
           }
-        } else {
-          // 120MA 위에서는 강한 양의 기울기(임계값 이상)일 때만 매수
-          if (slope40 > buyThreshold && slope60 > buyThreshold) {
-            signal = `기울기 필터 매수 신호 (강세장): 40MA 기울기=${slope40.toFixed(4)}, 60MA 기울기=${slope60.toFixed(4)}`;
+        } else {  // 120MA 아래에서
+          if (slope120 <= 0 && slope40 < sellThreshold && slope60 < sellThreshold) {
+            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 하락중`;
           }
         }
       }
+
+      // 현재 상태 표시에 기울기 정보 추가
+      setCurrentStrategy(`현재 전략: 기울기 필터 (40MA: ${slope40.toFixed(4)}, 60MA: ${slope60.toFixed(4)}, 120MA: ${slope120.toFixed(4)})`);
     }
 
     if (signal !== lastSignal) {
       setLastSignal(signal);
       console.log(signal); // 콘솔에 신호 출력
     }
-
-    setCurrentStrategy(`현재 전략: ${tradeStrategy}`);
   }, [autoTrading, currentPrice, priceHistory, tradeStrategy]);
 
   // 이동평균 계산 함수 추가
