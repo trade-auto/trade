@@ -54,7 +54,13 @@ interface UpbitCandle {
 interface CrossPoint {
   time: Time;
   position: 'buy' | 'sell';
-  value: number;
+  price: number;
+  isAbove360MA: boolean;  // 추가
+  slopes: {              // 추가
+    ma40: number;
+    ma60: number;
+    ma360: number;
+  };
 }
 
 interface BacktestResult {
@@ -254,41 +260,59 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
-    let lastActionTime: number = 0; // 마지막 거래 시간 추적
+    let lastActionTime: number = 0;
     
-    // 데이터 안정화를 위한 시작 시간 설정 (첫 데이터 + 30초)
-    const stabilizationTime = (thirtyEMA[0].time as number) + 30;
+    // 360MA 데이터 가져오기
+    const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
     
-    // 첫 번째 데이터는 건너뛰고 시작
+    // 기울기 임계값 설정
+    const buyThreshold = 0.01;   // 1%
+    const sellThreshold = -0.01; // -1%
+    
     for (let i = 1; i < thirtyEMA.length; i++) {
-      const prevThirty = thirtyEMA[i - 1].value;
-      const currThirty = thirtyEMA[i].value;
-      const currSixty = sixtyEMA[i].value;
-      const prevSixty = sixtyEMA[i - 1].value;
       const currentTime = thirtyEMA[i].time as number;
+      const currThirty = thirtyEMA[i].value;
       
-      // 안정화 시간 이전이면 스킵
-      if (currentTime < stabilizationTime) continue;
+      // 360MA 관련 데이터 계산
+      const ma360Index = ma360Data?.findIndex(d => d.time === thirtyEMA[i].time);
+      const isAbove360MA = ma360Index !== undefined && ma360Index >= 0 
+        ? currThirty > ma360Data[ma360Index].value
+        : false;
       
-      // 마지막 거래 후 30초가 지나지 않았으면 스킵
+      // 기울기 계산
+      const slopes = {
+        ma40: fortyEMA[i].value - fortyEMA[i-1].value,
+        ma60: sixtyEMA[i].value - sixtyEMA[i-1].value,
+        ma360: ma360Index !== undefined && ma360Index > 0
+          ? ma360Data[ma360Index].value - ma360Data[ma360Index-1].value
+          : 0
+      };
+
       if (currentTime - lastActionTime < 30) continue;
       
-      // 매수 조건: 30MA가 60MA를 상향돌파
-      if (prevThirty <= prevSixty && currThirty > currSixty && lastAction !== 'buy') {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'buy',
-            value: currThirty,
-          });
+      // SLOPE_FILTER 전략 조건만 적용
+      if (!isAbove360MA && slopes.ma360 > buyThreshold && 
+          slopes.ma40 > buyThreshold && slopes.ma60 > buyThreshold && 
+          lastAction !== 'buy') {
+        crossPoints.push({
+          time: thirtyEMA[i].time,
+          position: 'buy',
+          price: currThirty,
+          isAbove360MA,
+          slopes
+        });
         lastAction = 'buy';
         lastActionTime = currentTime;
-        }
-      // 매도 조건: 30MA가 60MA를 하향돌파
-      else if (prevThirty >= prevSixty && currThirty < currSixty && lastAction !== 'sell') {
+      }
+      else if (isAbove360MA && slopes.ma360 < sellThreshold && 
+               slopes.ma40 < sellThreshold && slopes.ma60 < sellThreshold && 
+               lastAction !== 'sell') {
         crossPoints.push({
           time: thirtyEMA[i].time,
           position: 'sell',
-          value: currThirty,
+          price: currThirty,
+          isAbove360MA,
+          slopes
         });
         lastAction = 'sell';
         lastActionTime = currentTime;
@@ -303,39 +327,48 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const markers: SeriesMarker<Time>[] = [];
     let tradeId = 1;
     let inTrade = false;
+    let lastActionTime: number = 0;  // 마지막 액션 시간 추가
     let buyPoint: CrossPoint | null = null;
     
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
+      const currentTime = point.time as number;
+      
+      // 마지막 액션으로부터 30초 이내면 스킵
+      if (currentTime - lastActionTime < 30) continue;
       
       if (!inTrade && point.position === 'buy') {
-        // 매수 시작
-        buyPoint = point;
-        inTrade = true;
-        
-        markers.push({
-          time: point.time,
-          position: 'belowBar',
-          color: '#26a69a',
-          shape: 'arrowUp',
-          text: `매수 ${tradeId}`,
-          size: 4
-        });
+        if (!point.isAbove360MA && point.slopes.ma360 > 0.01) {  // 매수 조건 체크
+          buyPoint = point;
+          inTrade = true;
+          lastActionTime = currentTime;
+          
+          markers.push({
+            time: point.time,
+            position: 'belowBar',
+            color: '#26a69a',
+            shape: 'arrowUp',
+            text: `매수 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%)`,
+            size: 4
+          });
+        }
       }
       else if (inTrade && point.position === 'sell' && buyPoint) {
-        // 매도로 거래 종료
-        markers.push({
-          time: point.time,
-          position: 'aboveBar',
-          color: '#ef5350',
-          shape: 'arrowDown',
-          text: `매도 ${tradeId}`,
-          size: 4
-        });
-        
-        inTrade = false;
-        buyPoint = null;
-        tradeId++;
+        if (point.isAbove360MA && point.slopes.ma360 < -0.01) {  // 매도 조건 체크
+          markers.push({
+            time: point.time,
+            position: 'aboveBar',
+            color: '#ef5350',
+            shape: 'arrowDown',
+            text: `매도 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%)`,
+            size: 4
+          });
+          
+          inTrade = false;
+          buyPoint = null;
+          lastActionTime = currentTime;
+          tradeId++;
+        }
       }
     }
     
@@ -365,7 +398,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   // 차트 타입에 따른 데이터 개수 결정
   const getChartCount = (type: string) => {
     if (type.startsWith('seconds/')) {
-      return 1500; // 초봉 데이터 개수 증가 (330 -> 500)
+      return 1500; // 초봉 데이터 개수 증가 (330 -> 500) 1500
     }
     const minutes = parseInt(type);
     if (minutes <= 3) return 430;     // 분봉
@@ -847,7 +880,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
       else if (inTrade && point.position === 'sell' && entryPoint) {
         // 매도 청산
-        const returnRate = (point.value - entryPoint.value) / entryPoint.value;
+        const returnRate = (point.price - entryPoint.price) / entryPoint.price;
         totalReturn += returnRate;
         
         if (returnRate > 0) successfulTrades++;
@@ -855,8 +888,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         trades.push({
           entryTime: entryPoint.time,
           exitTime: point.time,
-          entryPrice: entryPoint.value,
-          exitPrice: point.value,
+          entryPrice: entryPoint.price,
+          exitPrice: point.price,
           return: returnRate,
           isSuccess: returnRate > 0
         });
