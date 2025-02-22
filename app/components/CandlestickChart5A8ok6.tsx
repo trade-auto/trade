@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+//import { useUpbitStore, TradeStrategy } from '../store/useUpbitStore';
 import { useUpbitStore } from '../store/useUpbitStore';
 import {
   createChart,
@@ -27,8 +28,10 @@ import { getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import { useUpbitWebSocket } from '../hooks/useUpbitWebSocket';
 import { ExtendedCandlestickData } from '../types/candlestick';
 
-// 파일 상단에 타입 정의 추가
-type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+// 기존 imports 아래, interfaces 선언부 위에 추가
+//type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+
 
 interface ChartProps {
   symbol: string;
@@ -527,21 +530,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
           
       // 거래 신호 업데이트
-          const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);  // twentyEMAData를 sixtyEMAData로 수정
-          crossPointsRef.current = crossPoints;
-          
-      // 매수/매도 마커 업데이트 - 타입 안전하게 수정
-          const markers = createTradeMarkers(crossPoints, tradeStrategy);
-          if (candleSeriesRef.current) {
-            try {
-              // 마커 설정
-              createSeriesMarkers(candleSeriesRef.current, markers);
-            } catch (error) {
-              console.error('마커 업데이트 실패:', error);
-            }
-        }
-
-        // 백테스팅 결과 업데이트
+      const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
+      crossPointsRef.current = crossPoints;
+      
+      // 통합된 마커 업데이트 함수 사용
+      updateChartMarkers(crossPoints);
+      
+      // 백테스팅 결과 업데이트
       const result = calculateBacktestResult(formattedData, crossPoints);
       if (result.trades.length > 0) {
         setBacktestResult(result);
@@ -2046,28 +2041,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     </button>
   </div>
 
-  // 데이터 업데이트 함수 수정
-  const updateChartData = useCallback((newData: CandlestickData<Time>[]) => {
+  // 마커 업데이트를 위한 함수 통합
+  const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
     if (!candleSeriesRef.current) return;
-
-    // 기존 데이터 가져오기
-    const existingData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
     
-    // 새로운 데이터를 ExtendedCandlestickData로 변환
-    const extendedNewData = newData.map(candle => ({
-      ...candle,
-      volume: 0  // 거래량 정보가 없는 경우 기본값 설정
-    })) as ExtendedCandlestickData[];
+    try {
+      // 기존 마커 제거
+      createSeriesMarkers(candleSeriesRef.current, []);
+      
+      // 새 마커 생성 및 설정
+      const markers = createTradeMarkers(crossPoints, tradeStrategy);
+      createSeriesMarkers(candleSeriesRef.current, markers);
+    } catch (error) {
+      console.error('마커 업데이트 실패:', error);
+    }
+  }, [tradeStrategy]);
 
-    // 새로운 데이터만 필터링
-    const lastExistingTime = existingData.length > 0 ? (existingData[existingData.length - 1].time as number) : 0;
-    const uniqueNewData = extendedNewData.filter(candle => {
-      const candleTime = candle.time as number;
-      return candleTime > lastExistingTime;
-    });
-
-    // 나머지 로직은 동일...
-  }, [findCrossPoints, createTradeMarkers, tradeStrategy, maPeriods, calculateEMA]);
+   
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">

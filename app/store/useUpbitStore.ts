@@ -45,8 +45,8 @@ interface TradeState {
   missedFirstCycle: boolean;
 }
 
-// TradeStrategy 타입 추가
-type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+// TradeStrategy 타입을 export
+export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
 interface UpbitStore {
   prices: Record<string, PriceData>;
