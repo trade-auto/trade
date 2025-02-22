@@ -231,7 +231,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const prevVolumeRef = useRef<number>(0); // 이전 거래량을 저장하기 위한 ref 추가
   const prevTradeTimeRef = useRef<number>(0); // 이전 거래 시간을 저장하기 위한 ref 추가
-  const accVolumeRef = useRef<number>(0); // 현재 캔들의 누적 거래량을 저장하기 위한 ref 추가
+  const accVolumeRef = useRef<number>(0); // 현재 캔들의 누적 거래량을 저장하기 위한 ref
   const isLoadingRef = useRef<boolean>(false); // 데이터 로딩 상태를 추적하기 위한 ref
   const oldestTimestampRef = useRef<number | null>(null); // 가장 오래된 데이터의 timestamp를 저장하기 위한 ref
   
@@ -241,7 +241,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const [chartPrice, setChartPrice] = useState<number>(0);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
-
+  
   // 초기 날짜 범위 상태를 chartType에 따라 설정
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -294,16 +294,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (!isAbove360MA && slopes.ma360 > buyThreshold && 
           slopes.ma40 > buyThreshold && slopes.ma60 > buyThreshold && 
           lastAction !== 'buy') {
-        crossPoints.push({
-          time: thirtyEMA[i].time,
-          position: 'buy',
-          price: currThirty,
-          isAbove360MA,
-          slopes
-        });
+          crossPoints.push({
+            time: thirtyEMA[i].time,
+            position: 'buy',
+            price: currThirty,
+            isAbove360MA,
+            slopes
+          });
         lastAction = 'buy';
         lastActionTime = currentTime;
-      }
+        }
       else if (isAbove360MA && slopes.ma360 < sellThreshold && 
                slopes.ma40 < sellThreshold && slopes.ma60 < sellThreshold && 
                lastAction !== 'sell') {
@@ -327,21 +327,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const markers: SeriesMarker<Time>[] = [];
     let tradeId = 1;
     let inTrade = false;
-    let lastActionTime: number = 0;  // 마지막 액션 시간 추가
     let buyPoint: CrossPoint | null = null;
+    
+    // 기울기 임계값 설정
+    const buyThreshold = 0.01;   // 1%
+    const sellThreshold = -0.01; // -1%
     
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
-      const currentTime = point.time as number;
-      
-      // 마지막 액션으로부터 30초 이내면 스킵
-      if (currentTime - lastActionTime < 30) continue;
       
       if (!inTrade && point.position === 'buy') {
-        if (!point.isAbove360MA && point.slopes.ma360 > 0.01) {  // 매수 조건 체크
+        // findCrossPoints와 동일한 매수 조건 적용
+        if (!point.isAbove360MA && 
+            point.slopes.ma360 > buyThreshold && 
+            point.slopes.ma40 > buyThreshold && 
+            point.slopes.ma60 > buyThreshold) {
           buyPoint = point;
           inTrade = true;
-          lastActionTime = currentTime;
           
           markers.push({
             time: point.time,
@@ -354,7 +356,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         }
       }
       else if (inTrade && point.position === 'sell' && buyPoint) {
-        if (point.isAbove360MA && point.slopes.ma360 < -0.01) {  // 매도 조건 체크
+        // findCrossPoints와 동일한 매도 조건 적용
+        if (point.isAbove360MA && 
+            point.slopes.ma360 < sellThreshold && 
+            point.slopes.ma40 < sellThreshold && 
+            point.slopes.ma60 < sellThreshold) {
           markers.push({
             time: point.time,
             position: 'aboveBar',
@@ -366,7 +372,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           
           inTrade = false;
           buyPoint = null;
-          lastActionTime = currentTime;
           tradeId++;
         }
       }
@@ -490,15 +495,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (threeHundredSixtyEMASeriesRef.current) {
         threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMAData);
       }
-      
+          
       // 거래 신호 업데이트
           const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);  // twentyEMAData를 sixtyEMAData로 수정
           crossPointsRef.current = crossPoints;
           
-      // 매수/매도 마커 업데이트 추가
+      // 매수/매도 마커 업데이트 - 타입 안전하게 수정
           const markers = createTradeMarkers(crossPoints);
           if (candleSeriesRef.current) {
-            createSeriesMarkers(candleSeriesRef.current, markers);
+            try {
+              // 마커 설정
+              (candleSeriesRef.current as any).setMarkers(markers);
+            } catch (error) {
+              console.error('마커 업데이트 실패:', error);
+            }
         }
 
         // 백테스팅 결과 업데이트
@@ -566,8 +576,24 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       height: 400,
       timeScale: {
         timeVisible: true,
-        secondsVisible: false,
-        tickMarkFormatter: getTickMarkFormatter(chartType),
+        secondsVisible: true,
+        borderColor: '#2B2B2B',
+        tickMarkFormatter: (time: number) => {
+          const date = new Date(time * 1000);
+          return chartType.startsWith('seconds/') 
+            ? date.toLocaleTimeString('ko-KR', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+              })
+            : date.toLocaleString('ko-KR', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+        }
       },
       rightPriceScale: {
         scaleMargins: {
@@ -617,7 +643,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const createMASeries = (color: string) => {
       return chart.addSeries(LineSeries, {
         color: color,
-        lineWidth: 2,
+      lineWidth: 2,
         visible: true,
       });
     };
@@ -631,7 +657,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
     // 초기 데이터 로드
     if (dateRange.startDate && dateRange.endDate) {
-      loadAllData(dateRange.startDate, dateRange.endDate);
+    loadAllData(dateRange.startDate, dateRange.endDate);
     }
 
     // 윈도우 리사이즈 핸들러
@@ -710,143 +736,34 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 실시간 가격 업데이트 처리
   useEffect(() => {
-    if (!currentPrice || !candleSeriesRef.current || !lastCandleRef.current || !tickerData) return;
+    if (!candleSeriesRef.current || !chartRef.current) return;
 
-    // WebSocket timestamp 검증
-    const timestamp = Math.floor(tickerData.timestamp / 1000);
-    if (!timestamp || isNaN(timestamp)) return;  // 유효하지 않은 timestamp 처리
+    // 현재 캔들 데이터 가져오기
+    const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+    if (candleData.length === 0) return;
 
-    const lastCandle = lastCandleRef.current;
-    const candleSeries = candleSeriesRef.current;
-    const volumeSeries = volumeSeriesRef.current;
-    
-    // 거래량 계산 함수 수정
-    const calculateVolume = (currentAccVolume: number, tradeTimestamp: number) => {
-      if (!currentAccVolume || isNaN(currentAccVolume)) return 0;
-      
-      // 이전 거래 시간과 현재 거래 시간이 다르면 새로운 거래로 간주
-      if (tradeTimestamp !== prevTradeTimeRef.current) {
-        const volume = currentAccVolume - prevVolumeRef.current;
-        prevVolumeRef.current = currentAccVolume;
-        prevTradeTimeRef.current = tradeTimestamp;
-        accVolumeRef.current += volume;
-        return accVolumeRef.current;
-      }
-      
-      return accVolumeRef.current;
-    };
-    
-    // 차트 타입에 따른 캔들 간격 계산
-    let interval: number;
-    if (chartType.startsWith('seconds/')) {
-      interval = parseInt(chartType.split('/')[1]);
-      // 초봉 차트의 경우 실시간으로 새 캔들 생성
-      const currentSecond = timestamp % 60;
-      const lastCandleSecond = (lastCandle.time as number) % 60;
-      
-      // 시간 순서 검증
-      if ((lastCandle.time as number) > timestamp) {
-        return; // 이전 시간의 데이터는 무시
-      }
+    // 마지막 캔들 정보 업데이트
+    const lastCandle = candleData[candleData.length - 1];
+    if (!lastCandle) return;
 
-      if (currentSecond !== lastCandleSecond) {
-        // 새로운 캔들 생성시 거래량 초기화
-        prevVolumeRef.current = tickerData.acc_trade_volume;
-        prevTradeTimeRef.current = timestamp;
-        accVolumeRef.current = 0;
-        
-        // 새로운 캔들 생성
-        const newCandle: ExtendedCandlestickData = {
-          time: new Date(timestamp * 1000).toISOString(),
-          open: lastCandle.close,
+    // 차트 가격 업데이트
+    setChartPrice(lastCandle.close);
+
+    // 현재 시간이 마지막 캔들의 시간보다 크면 새 캔들 추가
+    const currentTime = Math.floor(Date.now() / 1000);
+    const lastCandleTime = lastCandle.time as number;
+
+    if (currentTime > lastCandleTime && currentPrice > 0) {
+      const newCandle = {
+        time: currentTime as Time,
+        open: currentPrice,
           high: currentPrice,
           low: currentPrice,
-          close: currentPrice,
-          volume: 0 // 새 캔들의 초기 거래량은 0
-        };
-        
-        if (candleSeries) {
-          candleSeries.update(newCandle);
-          lastCandleRef.current = newCandle;
-        }
-
-        // 거래량 업데이트
-        if (volumeSeries) {
-          const newVolume: HistogramData<Time> = {
-            time: timestamp as Time,
-            value: 0,
-            color: currentPrice >= lastCandle.close ? '#26a69a80' : '#ef535080'
-          };
-          volumeSeries.update(newVolume);
-        }
-      } else {
-        // 현재 캔들 업데이트
-        const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
-        const updatedCandle: ExtendedCandlestickData = {
-          ...lastCandle,
-          high: Math.max(lastCandle.high, currentPrice),
-          low: Math.min(lastCandle.low, currentPrice),
-          close: currentPrice,
-          volume: volume
-        };
-
-        if (candleSeries) {
-          candleSeries.update(updatedCandle);
-          lastCandleRef.current = updatedCandle;
-        }
-
-        // 거래량 업데이트
-        if (volumeSeries) {
-          const updatedVolume: HistogramData<Time> = {
-            time: lastCandle.time,
-            value: volume,
-            color: currentPrice >= lastCandle.open ? '#26a69a80' : '#ef535080'
-          };
-          volumeSeries.update(updatedVolume);
-        }
-      }
-    } else {
-      interval = parseInt(chartType) * 60; // minutes to seconds
-      
-      // 현재 시간이 마지막 캔들의 시간 + 간격을 넘었다면 새로운 캔들 생성
-      if (timestamp >= (lastCandle.time as number) + interval) {
-        // 새로운 캔들 생성시 거래량 초기화
-        prevVolumeRef.current = tickerData.acc_trade_volume;
-        prevTradeTimeRef.current = timestamp;
-        accVolumeRef.current = 0;
-        if (dateRange.endDate) {
-        loadAllData(dateRange.startDate, dateRange.endDate);
-        }
-      } else {
-        // 현재 캔들 업데이트
-        const volume = calculateVolume(tickerData.acc_trade_volume, timestamp);
-        const updatedCandle: ExtendedCandlestickData = {
-          ...lastCandle,
-          high: Math.max(lastCandle.high, currentPrice),
-          low: Math.min(lastCandle.low, currentPrice),
-          close: currentPrice,
-          volume: volume
-        };
-
-        if (candleSeries) {
-          candleSeries.update(updatedCandle);
-          lastCandleRef.current = updatedCandle;
-        }
-
-        // 거래량 업데이트
-        if (volumeSeries) {
-          const updatedVolume: HistogramData<Time> = {
-            time: lastCandle.time,
-            value: volume,
-            color: currentPrice >= lastCandle.open ? '#26a69a80' : '#ef535080'
-          };
-          volumeSeries.update(updatedVolume);
-        }
-      }
+        close: currentPrice
+      };
+      candleSeriesRef.current.update(newCandle);
     }
-
-    setChartPrice(currentPrice);
-  }, [currentPrice, tickerData, chartType, loadAllData]);
+  }, [currentPrice, chartType]);
 
   // EMA 계산 함수
   const calculateEMA = (data: ExtendedCandlestickData[], period: number): LineData<Time>[] => {
@@ -1141,7 +1058,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 매수/매도 마커 업데이트
       const markers = createTradeMarkers(crossPoints);
       if (candleSeriesRef.current) {
-        createSeriesMarkers(candleSeriesRef.current, markers);
+        try {
+          // 마커 설정
+          (candleSeriesRef.current as any).setMarkers(markers);
+        } catch (error) {
+          console.error('마커 업데이트 실패:', error);
+        }
       }
 
       // 백테스팅 결과 업데이트
