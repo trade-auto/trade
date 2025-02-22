@@ -3,6 +3,7 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import { useUpbitStore } from '../store/useUpbitStore';
+import { Time } from 'lightweight-charts';
 
 interface CreateOrderProps {
   market: string;
@@ -31,10 +32,32 @@ interface TradeCycle {
   sellPrice: number | null;
   profit: string | null;
   profitAmount: string | null;
+  slopes?: {  // 기울기 정보 추가
+    ma40: number;
+    ma60: number;
+    ma360: number;
+  };
 }
 
 // 매매 전략 타입 정의 추가
 type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+
+// Trade 인터페이스 수정
+interface Trade {
+  entryTime: Time;
+  exitTime: Time;
+  entryPrice: number;
+  exitPrice: number;
+  return: number;
+  isSuccess: boolean;
+  isAutomatic?: boolean;
+  mode: 'test' | 'test-auto' | 'live-auto';
+  slopes?: {  // 기울기 정보 추가
+    ma40: number;
+    ma60: number;
+    ma360: number;
+  };
+}
 
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
@@ -394,11 +417,11 @@ export const CreateOrder = forwardRef<
           signal = `이격도 매도 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
         }
       }
-    } else if (tradeStrategy === 'SLOPE_FILTER' && priceHistory.length >= 120) {
+    } else if (tradeStrategy === 'SLOPE_FILTER' && priceHistory.length >= 360) {
       // 기울기 필터 이동평균선 전략
       const ma40 = calculateMA(priceHistory, maPeriods.forty);
       const ma60 = calculateMA(priceHistory, maPeriods.sixty);
-      const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty);
+      const ma360 = calculateMA(priceHistory, maPeriods.threeHundredSixty);
 
       // 현재 가격
       const currentMA = currentPrice;
@@ -406,42 +429,40 @@ export const CreateOrder = forwardRef<
       // 기울기 계산
       const slope40 = ma40[ma40.length - 1] - ma40[ma40.length - 2];
       const slope60 = ma60[ma60.length - 1] - ma60[ma60.length - 2];
-      const slope120 = ma120[ma120.length - 1] - ma120[ma120.length - 2];
+      const slope360 = ma360[ma360.length - 1] - ma360[ma360.length - 2];
 
       // 기울기 임계값 설정
       const buyThreshold = 0.005;   // 매수 기울기 임계값
       const sellThreshold = -0.005; // 매도 기울기 임계값
 
-      // 120MA를 기준으로 시장 상황 판단
-      const isAbove120MA = currentMA > ma120[ma120.length - 1];
+      // 360MA를 기준으로 시장 상황 판단
+      const isAbove360MA = currentMA > ma360[ma360.length - 1];
 
       if (currentCycle === 'waiting_buy') {  // 매수 대기 상태
-        if (!isAbove120MA) {  // 120MA 아래에서
-          // 120MA가 하락 중이면 매수하지 않음
-          if (slope120 >= 0 && slope40 > 0 && slope60 > 0) {  
-            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 상승중`;
+        if (!isAbove360MA) {  // 360MA 아래에서
+          if (slope40 > 0 && slope60 > 0) {  // 40MA와 60MA의 기울기가 양수
+            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
           }
-        } else {  // 120MA 위에서
-          if (slope120 >= 0 && slope40 > buyThreshold && slope60 > buyThreshold) {
-            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 상승중`;
+        } else {  // 360MA 위에서
+          if (slope40 > buyThreshold && slope60 > buyThreshold) {  // 충분한 상승 기울기
+            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
           }
         }
       } 
       else if (currentCycle === 'waiting_sell') {  // 매도 대기 상태
-        if (isAbove120MA) {  // 120MA 위에서
-          // 120MA가 상승 중이면 매도하지 않음
-          if (slope120 <= 0 && slope40 < 0 && slope60 < 0) {
-            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 하락중`;
+        if (isAbove360MA) {  // 360MA 위에서
+          if (slope40 < sellThreshold && slope60 < sellThreshold) {  // 충분한 하락 기울기
+            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
           }
-        } else {  // 120MA 아래에서
-          if (slope120 <= 0 && slope40 < sellThreshold && slope60 < sellThreshold) {
-            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)}), 120MA(${slope120.toFixed(4)}) 하락중`;
+        } else {  // 360MA 아래에서
+          if (slope40 < sellThreshold && slope60 < sellThreshold) {  // 충분한 하락 기울기
+            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
           }
         }
       }
 
       // 현재 상태 표시에 기울기 정보 추가
-      setCurrentStrategy(`현재 전략: 기울기 필터 (40MA: ${slope40.toFixed(4)}, 60MA: ${slope60.toFixed(4)}, 120MA: ${slope120.toFixed(4)})`);
+      setCurrentStrategy(`현재 전략: 기울기 필터 (40MA: ${slope40.toFixed(4)}, 60MA: ${slope60.toFixed(4)}, 360MA: ${slope360.toFixed(4)})`);
     }
 
     if (signal !== lastSignal) {
@@ -550,7 +571,12 @@ export const CreateOrder = forwardRef<
               buyPrice: buyPrice, // 매수 가격 기록
               sellPrice: null, // 초기 청산 가격은 null
               profit: null, // 초기 수익률은 null
-              profitAmount: null // 초기 수익 금액은 null
+              profitAmount: null, // 초기 수익 금액은 null
+              slopes: {
+                ma40: 0,
+                ma60: 0,
+                ma360: 0
+              }
             };
             return [...prev, newCycle];
           });
@@ -586,7 +612,12 @@ export const CreateOrder = forwardRef<
                 times: [...lastCycle.times, now],
                 sellPrice: sellPrice, // 청산 가격 기록
                 profit: profit.toFixed(2), // 수익률 기록
-                profitAmount: profitAmount.toFixed(2) // 수익 금액 기록
+                profitAmount: profitAmount.toFixed(2), // 수익 금액 기록
+                slopes: {
+                  ma40: 0,
+                  ma60: 0,
+                  ma360: 0
+                }
               };
               return [...prev.slice(0, -1), updatedCycle];
             }
@@ -698,6 +729,7 @@ export const CreateOrder = forwardRef<
             <th className="px-4 py-2">100만원 투자시 수익</th>
             <th className="px-4 py-2">체결 상태</th>
             <th className="px-4 py-2">거래 모드</th>
+            <th className="px-4 py-2">360MA 기울기</th>
           </tr>
         </thead>
         <tbody>
@@ -725,6 +757,11 @@ export const CreateOrder = forwardRef<
                   <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-500 text-white">
                     테스트
                   </span>
+                </td>
+                <td className={`px-4 py-2 ${
+                  (entry.slopes?.ma360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                }`}>
+                  {entry.slopes?.ma360?.toFixed(4) || '-'}
                 </td>
               </tr>
             );
@@ -1100,12 +1137,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
+                    </div>
+              )}
                 </div>
               )}
             </div>
           )}
-        </div>
-      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1118,8 +1155,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-          </div>
-        )}
+        </div>
+      )}
       </div>
     </div>
   );

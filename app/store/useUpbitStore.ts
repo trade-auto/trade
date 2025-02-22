@@ -72,15 +72,17 @@ interface UpbitStore {
     forty: number;
     sixty: number;
     oneTwenty: number;
+    threeHundredSixty: number;
   };
-  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty', value: number) => void;
+  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'threeHundredSixty', value: number) => void;
   showMA: {
     thirty: boolean;
     forty: boolean;
     sixty: boolean;
     oneTwenty: boolean;
+    threeHundredSixty: boolean;
   };
-  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty') => void;
+  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'threeHundredSixty') => void;
 }
 
 export const useUpbitStore = create<UpbitStore>()((set) => ({
@@ -157,6 +159,7 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     forty: 40,
     sixty: 60,
     oneTwenty: 120,
+    threeHundredSixty: 360,
   },
 
   updateMAPeriod: (type, value) => set((state) => ({
@@ -171,6 +174,7 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     forty: true,
     sixty: true,
     oneTwenty: true,
+    threeHundredSixty: true,
   },
 
   updateShowMA: (type) => set((state) => ({
