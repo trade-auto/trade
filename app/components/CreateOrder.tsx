@@ -538,44 +538,35 @@ export const CreateOrder = forwardRef<
       setIsLoading(true);
       
       if (mode === 'test') {
-
         const now = new Date().toLocaleTimeString('ko-KR', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit' 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit' 
         });
 
-        // 현재 상태에 따른 주문 실행 조건 체크
+        // 현재 MA 기울기 계산
+        const ma40 = calculateMA(priceHistory, maPeriods.forty);
+        const ma60 = calculateMA(priceHistory, maPeriods.sixty);
+        const ma360 = calculateMA(priceHistory, maPeriods.threeHundredSixty);
+
+        const slope40 = ma40[ma40.length - 1] - ma40[ma40.length - 2];
+        const slope60 = ma60[ma60.length - 1] - ma60[ma60.length - 2];
+        const slope360 = ma360[ma360.length - 1] - ma360[ma360.length - 2];
+
         if (params.side === 'bid' && currentCycle === 'waiting_buy') {
-          // 매수는 매수 대기 상태일 때만 실행
-      console.log(' test bid 자동 거래 시작:', { params, currentCycle });
-
-          console.log('매수 신호 감지 - 상태 업데이트');
-          setCurrentCycle('waiting_sell');
-          setElapsedTime(0);
-          
-          const buyPrice = parseFloat(params.price);
-          if (isNaN(buyPrice)) {
-            console.error('Invalid buy price:', params.price);
-            return;
-          }
-
-          const fixedBuyAmount = 10000; // 매수 금액을 10,000원으로 고정
-          const volume = (fixedBuyAmount / buyPrice).toFixed(4); // 매수 수량 계산
-
           setTradeCycles(prev => {
             const newCycle = {
               cycle: ['매수'],
               times: [now],
               time: now,
-              buyPrice: buyPrice, // 매수 가격 기록
-              sellPrice: null, // 초기 청산 가격은 null
-              profit: null, // 초기 수익률은 null
-              profitAmount: null, // 초기 수익 금액은 null
+              buyPrice: parseFloat(params.price),
+              sellPrice: null,
+              profit: null,
+              profitAmount: null,
               slopes: {
-                ma40: 0,
-                ma60: 0,
-                ma360: 0
+                ma40: slope40,
+                ma60: slope60,
+                ma360: slope360
               }
             };
             return [...prev, newCycle];
@@ -587,36 +578,21 @@ export const CreateOrder = forwardRef<
             isTrading: true
           });
         } else if (params.side === 'ask' && currentCycle === 'waiting_sell') {
-          // 매도는 매도 대기 상태일 때만 실행
-      console.log(' test ask 자동 거래 시작:', { params, currentCycle });
-
-          console.log('매도 신호 감지 - 상태 업데이트');
-          setCurrentCycle('waiting_buy');
-          setElapsedTime(0);
-
           setTradeCycles(prev => {
             const lastCycle = prev[prev.length - 1];
-            if (lastCycle && lastCycle.cycle.length === 1 && lastCycle.buyPrice !== null) {
-              const sellPrice = parseFloat(params.price);
-              if (isNaN(sellPrice)) {
-                console.error('Invalid sell price:', params.price);
-                return prev;
-              }
-
-              const profit = ((sellPrice - lastCycle.buyPrice) / lastCycle.buyPrice) * 100; // 수익률 계산
-              const profitAmount = (sellPrice - lastCycle.buyPrice) * parseFloat(volume); // 수익 금액 계산
-
+            if (lastCycle && lastCycle.cycle.length === 1) {
               const updatedCycle = {
-                ...lastCycle,
-                cycle: [...lastCycle.cycle, '매도'],
-                times: [...lastCycle.times, now],
-                sellPrice: sellPrice, // 청산 가격 기록
-                profit: profit.toFixed(2), // 수익률 기록
-                profitAmount: profitAmount.toFixed(2), // 수익 금액 기록
+                cycle: ['매도'],
+                times: [now],
+                time: now,
+                buyPrice: lastCycle.buyPrice,
+                sellPrice: parseFloat(params.price),
+                profit: null,
+                profitAmount: null,
                 slopes: {
-                  ma40: 0,
-                  ma60: 0,
-                  ma360: 0
+                  ma40: slope40,
+                  ma60: slope60,
+                  ma360: slope360
                 }
               };
               return [...prev.slice(0, -1), updatedCycle];
@@ -1137,12 +1113,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
-                    </div>
-              )}
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1155,8 +1131,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -434,19 +434,32 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 차트 업데이트
       candleSeriesRef.current.setData(formattedData);
       
-      // EMA 계산 및 업데이트
-      const threeEMAData = calculateEMA(formattedData, maPeriods.thirty);
-      const sixEMAData = calculateEMA(formattedData, maPeriods.forty);
-      const twentyEMAData = calculateEMA(formattedData, maPeriods.sixty);
+      // 모든 EMA 계산 및 업데이트
+      const thirtyEMAData = calculateEMA(formattedData, maPeriods.thirty);
+      const fortyEMAData = calculateEMA(formattedData, maPeriods.forty);
+      const sixtyEMAData = calculateEMA(formattedData, maPeriods.sixty);
+      const oneTwentyEMAData = calculateEMA(formattedData, maPeriods.oneTwenty);
+      const threeHundredSixtyEMAData = calculateEMA(formattedData, maPeriods.threeHundredSixty);
 
-      if (threeEMASeriesRef.current && sixEMASeriesRef.current && twentyEMASeriesRef.current) {
-          threeEMASeriesRef.current.setData(threeEMAData);
-          sixEMASeriesRef.current.setData(sixEMAData);
-          twentyEMASeriesRef.current.setData(twentyEMAData);
+      // 각 EMA 시리즈 업데이트
+      if (threeEMASeriesRef.current) {
+        threeEMASeriesRef.current.setData(thirtyEMAData);
       }
-          
+      if (sixEMASeriesRef.current) {
+        sixEMASeriesRef.current.setData(fortyEMAData);
+      }
+      if (twentyEMASeriesRef.current) {
+        twentyEMASeriesRef.current.setData(sixtyEMAData);
+      }
+      if (oneTwentyEMASeriesRef.current) {
+        oneTwentyEMASeriesRef.current.setData(oneTwentyEMAData);
+      }
+      if (threeHundredSixtyEMASeriesRef.current) {
+        threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMAData);
+      }
+      
       // 거래 신호 업데이트
-          const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+          const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);  // twentyEMAData를 sixtyEMAData로 수정
           crossPointsRef.current = crossPoints;
           
       // 매수/매도 마커 업데이트 추가
@@ -475,7 +488,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 그 다음에 resetAndLoadData 함수 선언
   const resetAndLoadData = useCallback(async (start: Date, end: Date) => {
-    // 차트 초기화
+    // 모든 시리즈 초기화
     if (candleSeriesRef.current) {
       candleSeriesRef.current.setData([]);
     }
@@ -490,6 +503,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }
     if (twentyEMASeriesRef.current) {
       twentyEMASeriesRef.current.setData([]);
+    }
+    if (oneTwentyEMASeriesRef.current) {
+      oneTwentyEMASeriesRef.current.setData([]);
+    }
+    if (threeHundredSixtyEMASeriesRef.current) {
+      threeHundredSixtyEMASeriesRef.current.setData([]);
     }
 
     // 데이터 새로 로드
@@ -1944,64 +1963,65 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     updateCandleData();
   }, [updateCandleData]);
 
-  // WebSocket 데이터 업데이트 부분 수정
-  useEffect(() => {
-    if (isAutoUpdate && candleSeriesRef.current && lastCandleRef.current && backtestResult?.trades) {
+  // 기울기 계산 함수
+  const calculateSlopes = useCallback((candleData: ExtendedCandlestickData[]) => {
+    if (candleData.length < 2) return null;
+    
+    const ma360 = calculateEMA(candleData, maPeriods.threeHundredSixty);
+    return {
+      ma360: ma360[ma360.length - 1].value - ma360[ma360.length - 2].value
+    };
+  }, [maPeriods]);
+
+  // 거래 생성 시 기울기 저장
+  const handleNewTrade = useCallback((trade: Trade) => {
+    if (candleSeriesRef.current) {
       const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+      const slopes = calculateSlopes(candleData);
       
-      if (showMA.threeHundredSixty && threeHundredSixtyEMASeriesRef.current) {
-        const threeHundredSixtyEMA = calculateEMA(candleData, maPeriods.threeHundredSixty);
-        threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMA);
-
-        // 기울기 계산
-        const slope360 = threeHundredSixtyEMA[threeHundredSixtyEMA.length - 1].value - 
-                        threeHundredSixtyEMA[threeHundredSixtyEMA.length - 2].value;
-
-        // 모든 거래에 대해 기울기 업데이트
-        if (backtestResult?.trades) {
-          setBacktestResult(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              trades: prev.trades.map(trade => ({
-                ...trade,
-                slopes: {
-                  ...trade.slopes,
-                  ma360: slope360
-                }
-              }))
-            };
-          });
-        }
-      }
-    }
-  }, [tickerData, isAutoUpdate, showMA.threeHundredSixty]);
-
-  // 초기 거래 생성 시 기울기 계산 추가
-  const handleTrade = useCallback((trade: Trade) => {
-    const candleData = candleSeriesRef.current?.data() as ExtendedCandlestickData[];
-    if (candleData) {
-      const threeHundredSixtyEMA = calculateEMA(candleData, maPeriods.threeHundredSixty);
-      const slope360 = threeHundredSixtyEMA[threeHundredSixtyEMA.length - 1].value - 
-                      threeHundredSixtyEMA[threeHundredSixtyEMA.length - 2].value;
-
       return {
         ...trade,
-        slopes: {
-          ...trade.slopes,
-          ma360: slope360
+        slopes: slopes || {
+          ma360: 0
         }
       };
     }
     return trade;
-  }, [maPeriods.threeHundredSixty]);
+  }, [calculateSlopes]);
 
-  // WebSocket 데이터 업데이트 부분 수정
+  // 백테스트 결과 업데이트 시 기울기 저장
+  useEffect(() => {
+    if (backtestResult?.trades && candleSeriesRef.current) {
+      const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+      
+      // 각 거래별로 해당 시점의 기울기 계산
+      const updatedTrades = backtestResult.trades.map(trade => {
+        const tradeTime = trade.entryTime as number;
+        const tradeCandleData = candleData.filter(d => (d.time as number) <= tradeTime);
+        
+        if (tradeCandleData.length > 0) {
+          const slopes = calculateSlopes(tradeCandleData);
+          return {
+            ...trade,
+            slopes: slopes || trade.slopes
+          };
+        }
+        return trade;
+      });
+
+      setBacktestResult(prev => prev ? {
+        ...prev,
+        trades: updatedTrades
+      } : null);
+    }
+  }, [backtestResult?.trades, calculateSlopes]);
+
+  // 자동 업데이트 효과
   useEffect(() => {
     if (isAutoUpdate && candleSeriesRef.current) {
       const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
       
-      // 모든 MA 업데이트
+      // MA 업데이트
       if (candleData.length > 0) {
         // 120MA 업데이트
         if (showMA.oneTwenty && oneTwentyEMASeriesRef.current) {
@@ -2013,51 +2033,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         if (showMA.threeHundredSixty && threeHundredSixtyEMASeriesRef.current) {
           const threeHundredSixtyEMA = calculateEMA(candleData, maPeriods.threeHundredSixty);
           threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMA);
-
-          // 기울기 계산
-          const slope360 = threeHundredSixtyEMA[threeHundredSixtyEMA.length - 1].value - 
-                          threeHundredSixtyEMA[threeHundredSixtyEMA.length - 2].value;
-
-          // 거래 내역 기울기 업데이트
-          if (backtestResult?.trades) {
-            const updatedTrades = backtestResult.trades.map(trade => ({
-              ...trade,
-              slopes: {
-                ...trade.slopes,
-                ma360: slope360
-              }
-            }));
-
-            setBacktestResult(prev => prev ? {
-              ...prev,
-              trades: updatedTrades
-            } : null);
-          }
         }
       }
     }
-  }, [tickerData, isAutoUpdate, showMA.oneTwenty, showMA.threeHundredSixty, maPeriods]);
+  }, [isAutoUpdate, candleData, showMA, maPeriods]);
 
-  // 거래 생성 시 기울기 계산 함수
-  const calculateSlopes = useCallback((candleData: ExtendedCandlestickData[]) => {
-    const ma360 = calculateEMA(candleData, maPeriods.threeHundredSixty);
-    return {
-      ma360: ma360[ma360.length - 1].value - ma360[ma360.length - 2].value
-    };
-  }, [maPeriods]);
-
-  // 거래 생성 시 기울기 정보 추가
-  const handleNewTrade = useCallback((trade: Trade) => {
-    if (candleSeriesRef.current) {
-      const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
-      const slopes = calculateSlopes(candleData);
-      return {
-        ...trade,
-        slopes
-      };
-    }
-    return trade;
-  }, [calculateSlopes]);
+  // 자동 업데이트 토글 UI
+  <div className="flex items-center space-x-2 mb-4">
+    <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
+    <button
+      onClick={() => setIsAutoUpdate(!isAutoUpdate)}
+      className={`px-3 py-1 rounded ${
+        isAutoUpdate ? 'bg-green-600' : 'bg-gray-600'
+      }`}
+    >
+      {isAutoUpdate ? '활성화됨' : '비활성화됨'}
+    </button>
+  </div>
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
