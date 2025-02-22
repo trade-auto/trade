@@ -559,6 +559,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // 모든 시리즈 초기화
     if (candleSeriesRef.current) {
       candleSeriesRef.current.setData([]);
+      // 마커 초기화 추가
+      createSeriesMarkers(candleSeriesRef.current, []);
     }
     if (volumeSeriesRef.current) {
       volumeSeriesRef.current.setData([]);
@@ -578,6 +580,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     if (threeHundredSixtyEMASeriesRef.current) {
       threeHundredSixtyEMASeriesRef.current.setData([]);
     }
+
+    // crossPoints 초기화 추가
+    crossPointsRef.current = [];
 
     // 데이터 새로 로드
     await loadAllData(start, end);
