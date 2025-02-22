@@ -1483,38 +1483,39 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       ))}
     </div>
   );
-
+  const updatePrices = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    
+    try {
+      isLoadingRef.current = true;
+      const [current, ma3] = await Promise.all([
+        getCurrentPrice(symbol),
+        get3SecMA(symbol)
+      ]);
+      
+      if (current && ma3) {
+        setCurrentPrice(current);
+        setMa3Price(ma3);
+      }
+    } catch (error) {
+      console.error('가격 업데이트 중 오류:', error);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [symbol]);
   // 가격 정보 업데이트 함수
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
-    const updatePrices = async () => {
-      if (isLoadingRef.current) return; // 이미 로딩 중이면 스킵
-      
-      try {
-        isLoadingRef.current = true;
-        const [current, ma3] = await Promise.all([
-          getCurrentPrice(symbol),
-          get3SecMA(symbol)
-        ]);
-        
-        if (current && ma3) {
-          setCurrentPrice(current);
-          setMa3Price(ma3);
-        }
-      } catch (error) {
-        console.error('가격 업데이트 중 오류:', error);
-      } finally {
-        isLoadingRef.current = false;
-      }
-    };
+    // 가격 업데이트 함수 선언
+   
 
-    // 초기 업데이트
-    updatePrices();
+     // 초기 업데이트
+     updatePrices();
     
     // 자동 업데이트가 활성화된 경우에만 인터벌 설정
     if (isAutoUpdate) {
-      interval = setInterval(updatePrices, 3000); // 3초마다 업데이트
+      interval = setInterval(updatePrices, 10000); // 3초마다 업데이트
     }
 
     return () => {
@@ -2013,34 +2014,49 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 자동 업데이트 효과
   useEffect(() => {
-    if (isAutoUpdate && candleSeriesRef.current) {
-      const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
-      
-      // MA 업데이트
-      if (candleData.length > 0) {
-        // 120MA 업데이트
-        if (showMA.oneTwenty && oneTwentyEMASeriesRef.current) {
-          const oneTwentyEMA = calculateEMA(candleData, maPeriods.oneTwenty);
-          oneTwentyEMASeriesRef.current.setData(oneTwentyEMA);
-        }
+    let interval: NodeJS.Timeout | null = null;
+    let apiTimeout: NodeJS.Timeout | null = null;
 
-        // 360MA 업데이트
-        if (showMA.threeHundredSixty && threeHundredSixtyEMASeriesRef.current) {
-          const threeHundredSixtyEMA = calculateEMA(candleData, maPeriods.threeHundredSixty);
-          threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMA);
+    const handleStateChange = async () => {
+      try {
+        if (isAutoUpdate) {
+          // 자동 업데이트 활성화 상태
+          console.log('자동 업데이트 활성화');
+          
+          // 1. 실시간 API 비활성화
+          setIsRealtimeAPIEnabled(false);
+          
+          // 2. 초기 업데이트 실행
+          await updatePrices();
+          
+          // 3. 5초 후 상태 전환
+          apiTimeout = setTimeout(() => {
+            console.log('자동 업데이트 비활성화 및 실시간 API 활성화');
+            setIsAutoUpdate(false);
+            setIsRealtimeAPIEnabled(true);
+          }, 10000);  // 1초에서 5초로 변경
+        } else {
+          console.log('자동 업데이트 비활성화');
         }
+      } catch (error) {
+        console.error('상태 변경 중 오류:', error);
       }
-    }
-  }, [isAutoUpdate, candleData, showMA, maPeriods]);
+    };
+
+    handleStateChange();
+
+    return () => {
+      if (interval) clearInterval(interval);
+      if (apiTimeout) clearTimeout(apiTimeout);
+    };
+  }, [isAutoUpdate, updatePrices]);
 
   // 자동 업데이트 토글 UI
   <div className="flex items-center space-x-2 mb-4">
     <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
     <button
       onClick={() => setIsAutoUpdate(!isAutoUpdate)}
-      className={`px-3 py-1 rounded ${
-        isAutoUpdate ? 'bg-green-600' : 'bg-gray-600'
-      }`}
+      className={`px-3 py-1 rounded ${isAutoUpdate ? 'bg-green-600' : 'bg-gray-600'}`}
     >
       {isAutoUpdate ? '활성화됨' : '비활성화됨'}
     </button>
