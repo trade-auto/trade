@@ -418,7 +418,6 @@ export const CreateOrder = forwardRef<
         }
       }
     } else if (tradeStrategy === 'SLOPE_FILTER' && priceHistory.length >= 360) {
-      // 기울기 필터 이동평균선 전략
       const ma40 = calculateMA(priceHistory, maPeriods.forty);
       const ma60 = calculateMA(priceHistory, maPeriods.sixty);
       const ma360 = calculateMA(priceHistory, maPeriods.threeHundredSixty);
@@ -439,23 +438,14 @@ export const CreateOrder = forwardRef<
       const isAbove360MA = currentMA > ma360[ma360.length - 1];
 
       if (currentCycle === 'waiting_buy') {  // 매수 대기 상태
-        if (!isAbove360MA) {  // 360MA 아래에서
-          if (slope40 > 0 && slope60 > 0) {  // 40MA와 60MA의 기울기가 양수
-            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
-          }
-        } else {  // 360MA 위에서
-          if (slope40 > buyThreshold && slope60 > buyThreshold) {  // 충분한 상승 기울기
+        if (!isAbove360MA && slope360 > 0) {  // 360MA 아래이면서 360MA 기울기가 양수일 때
+          if (slope40 > buyThreshold && slope60 > buyThreshold) {  // 40MA와 60MA의 기울기가 임계값보다 큼
             signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
           }
         }
-      } 
-      else if (currentCycle === 'waiting_sell') {  // 매도 대기 상태
-        if (isAbove360MA) {  // 360MA 위에서
-          if (slope40 < sellThreshold && slope60 < sellThreshold) {  // 충분한 하락 기울기
-            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
-          }
-        } else {  // 360MA 아래에서
-          if (slope40 < sellThreshold && slope60 < sellThreshold) {  // 충분한 하락 기울기
+      } else if (currentCycle === 'waiting_sell') {  // 매도 대기 상태
+        if (isAbove360MA && slope360 < 0) {
+          if (slope40 < sellThreshold && slope60 < sellThreshold) {
             signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}), 60MA(${slope60.toFixed(4)})`;
           }
         }
@@ -1113,12 +1103,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
-                    </div>
-              )}
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1131,8 +1121,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );
