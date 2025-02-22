@@ -27,6 +27,9 @@ import { getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import { useUpbitWebSocket } from '../hooks/useUpbitWebSocket';
 import { ExtendedCandlestickData } from '../types/candlestick';
 
+// 파일 상단에 타입 정의 추가
+type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+
 interface ChartProps {
   symbol: string;
   chartType: string;
@@ -2042,6 +2045,29 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       {isAutoUpdate ? '활성화됨' : '비활성화됨'}
     </button>
   </div>
+
+  // 데이터 업데이트 함수 수정
+  const updateChartData = useCallback((newData: CandlestickData<Time>[]) => {
+    if (!candleSeriesRef.current) return;
+
+    // 기존 데이터 가져오기
+    const existingData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+    
+    // 새로운 데이터를 ExtendedCandlestickData로 변환
+    const extendedNewData = newData.map(candle => ({
+      ...candle,
+      volume: 0  // 거래량 정보가 없는 경우 기본값 설정
+    })) as ExtendedCandlestickData[];
+
+    // 새로운 데이터만 필터링
+    const lastExistingTime = existingData.length > 0 ? (existingData[existingData.length - 1].time as number) : 0;
+    const uniqueNewData = extendedNewData.filter(candle => {
+      const candleTime = candle.time as number;
+      return candleTime > lastExistingTime;
+    });
+
+    // 나머지 로직은 동일...
+  }, [findCrossPoints, createTradeMarkers, tradeStrategy, maPeriods, calculateEMA]);
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
