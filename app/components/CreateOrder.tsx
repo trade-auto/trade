@@ -70,12 +70,8 @@ export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
 >(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }, ref) => {
-  const { tradeState, updateTradeState, maPeriods } = useUpbitStore();
+  const { tradeState, updateTradeState, maPeriods, tradeStrategy, updateTradeStrategy } = useUpbitStore();
   
-  // 로컬 스토리지에서 마지막 전략 불러오기
-  const savedStrategy = localStorage.getItem('lastTradeStrategy') as TradeStrategy || 'BOLLINGER';
-  const [tradeStrategy, setTradeStrategy] = useState<TradeStrategy>(savedStrategy);
-
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
   const [price, setPrice] = useState('');
@@ -778,10 +774,9 @@ export const CreateOrder = forwardRef<
     </div>
   );
 
-  // 전략 변경 시 로컬 스토리지에 저장
+  // 전략 변경 핸들러 수정
   const handleStrategyChange = (strategy: TradeStrategy) => {
-    setTradeStrategy(strategy);
-    localStorage.setItem('lastTradeStrategy', strategy);
+    updateTradeStrategy(strategy);
   };
 
   return (
@@ -1144,12 +1139,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
-                    </div>
-              )}
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1162,8 +1157,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );

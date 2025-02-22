@@ -322,26 +322,39 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     return crossPoints;
   };
 
+  // 컴포넌트 레벨에서 tradeStrategy 가져오기
+  const { tradeStrategy } = useUpbitStore();
+
   // 마커 생성 함수 수정
-  const createTradeMarkers = (crossPoints: CrossPoint[]): SeriesMarker<Time>[] => {
+  const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
     let tradeId = 1;
     let inTrade = false;
     let buyPoint: CrossPoint | null = null;
     
-    // 기울기 임계값 설정
-    const buyThreshold = 0.01;   // 1%
-    const sellThreshold = -0.01; // -1%
-    
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
       
       if (!inTrade && point.position === 'buy') {
-        // findCrossPoints와 동일한 매수 조건 적용
-        if (!point.isAbove360MA && 
-            point.slopes.ma360 > buyThreshold && 
-            point.slopes.ma40 > buyThreshold && 
-            point.slopes.ma60 > buyThreshold) {
+        let shouldBuy = false;
+        
+        switch (strategy) {  // tradeStrategy 대신 매개변수 strategy 사용
+          case 'SLOPE_FILTER':
+            shouldBuy = !point.isAbove360MA && 
+                       point.slopes.ma360 > 0.01 && 
+                       point.slopes.ma40 > 0.01 && 
+                       point.slopes.ma60 > 0.01;
+            break;
+            
+          case 'MA_CROSS':
+            shouldBuy = true;
+            break;
+            
+          default:
+            shouldBuy = true;
+        }
+        
+        if (shouldBuy) {
           buyPoint = point;
           inTrade = true;
           
@@ -356,11 +369,25 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         }
       }
       else if (inTrade && point.position === 'sell' && buyPoint) {
-        // findCrossPoints와 동일한 매도 조건 적용
-        if (point.isAbove360MA && 
-            point.slopes.ma360 < sellThreshold && 
-            point.slopes.ma40 < sellThreshold && 
-            point.slopes.ma60 < sellThreshold) {
+        let shouldSell = false;
+        
+        switch (strategy) {
+          case 'SLOPE_FILTER':
+            shouldSell = point.isAbove360MA && 
+                        point.slopes.ma360 < -0.01 && 
+                        point.slopes.ma40 < -0.01 && 
+                        point.slopes.ma60 < -0.01;
+            break;
+            
+          case 'MA_CROSS':
+            shouldSell = true;
+            break;
+            
+          default:
+            shouldSell = true;
+        }
+        
+        if (shouldSell) {
           markers.push({
             time: point.time,
             position: 'aboveBar',
@@ -501,11 +528,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           crossPointsRef.current = crossPoints;
           
       // 매수/매도 마커 업데이트 - 타입 안전하게 수정
-          const markers = createTradeMarkers(crossPoints);
+          const markers = createTradeMarkers(crossPoints, tradeStrategy);
           if (candleSeriesRef.current) {
             try {
               // 마커 설정
-              (candleSeriesRef.current as any).setMarkers(markers);
+              createSeriesMarkers(candleSeriesRef.current, markers);
             } catch (error) {
               console.error('마커 업데이트 실패:', error);
             }
@@ -527,7 +554,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       setIsLoading(false);
       setProgress(0);
     }
-  }, [symbol, chartType, maPeriods]);
+  }, [symbol, chartType, maPeriods, tradeStrategy]);
 
   // 그 다음에 resetAndLoadData 함수 선언
   const resetAndLoadData = useCallback(async (start: Date, end: Date) => {
@@ -1056,11 +1083,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
 
       // 매수/매도 마커 업데이트
-      const markers = createTradeMarkers(crossPoints);
+      const markers = createTradeMarkers(crossPoints, tradeStrategy);
       if (candleSeriesRef.current) {
         try {
           // 마커 설정
-          (candleSeriesRef.current as any).setMarkers(markers);
+          createSeriesMarkers(candleSeriesRef.current, markers);
         } catch (error) {
           console.error('마커 업데이트 실패:', error);
         }
@@ -1076,7 +1103,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     } catch (error) {
       console.error('Error loading chart data:', error);
     }
-  }, [chartType, symbol, maPeriods]);
+  }, [chartType, symbol, maPeriods, tradeStrategy]);
 
   // chartType이 변경될 때 날짜 범위도 함께 갱신
   useEffect(() => {
@@ -1559,7 +1586,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           const twentyEMAData = calculateEMA(candleHistory, maPeriods.sixty);
           const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
           crossPointsRef.current = crossPoints;
-          const markers = createTradeMarkers(crossPoints);
+          const markers = createTradeMarkers(crossPoints, tradeStrategy);
           if (candleSeriesRef.current) {
             updateTradeMarkers(candleSeriesRef.current, markers);
             
@@ -1633,7 +1660,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
     const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
     crossPointsRef.current = crossPoints;
-    const markers = createTradeMarkers(crossPoints);
+    const markers = createTradeMarkers(crossPoints, tradeStrategy);
     if (candleSeriesRef.current) {
       createSeriesMarkers(candleSeriesRef.current, markers);
     }
@@ -1726,7 +1753,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               // 크로스 포인트 및 마커 업데이트
               const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
               crossPointsRef.current = crossPoints;
-              const markers = createTradeMarkers(crossPoints);
+              const markers = createTradeMarkers(crossPoints, tradeStrategy);
               if (candleSeriesRef.current) {
                 updateTradeMarkers(candleSeriesRef.current, markers);
                 const lastCrossPoint = crossPoints[crossPoints.length - 1];

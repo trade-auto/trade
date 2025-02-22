@@ -45,6 +45,9 @@ interface TradeState {
   missedFirstCycle: boolean;
 }
 
+// TradeStrategy 타입 추가
+type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+
 interface UpbitStore {
   prices: Record<string, PriceData>;
   tickers: Record<string, TickerData>;
@@ -83,6 +86,8 @@ interface UpbitStore {
     threeHundredSixty: boolean;
   };
   updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'threeHundredSixty') => void;
+  tradeStrategy: TradeStrategy;
+  updateTradeStrategy: (strategy: TradeStrategy) => void;
 }
 
 export const useUpbitStore = create<UpbitStore>()((set) => ({
@@ -183,4 +188,12 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
       [type]: !state.showMA[type],
     },
   })),
+
+  // 로컬 스토리지에서 마지막 전략 불러오기 또는 기본값 설정
+  tradeStrategy: (localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER',
+  
+  updateTradeStrategy: (strategy) => {
+    localStorage.setItem('lastTradeStrategy', strategy);
+    set({ tradeStrategy: strategy });
+  },
 })); 
