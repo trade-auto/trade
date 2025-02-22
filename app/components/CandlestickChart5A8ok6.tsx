@@ -519,19 +519,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   useEffect(() => {
     if (!container.current) return;
 
-    // Cleanup previous chart instance if it exists
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
-
     // Create chart
     const chart = createChart(container.current, {
       layout: {
-        background: { color: '#1E1E1E' },
-        textColor: '#DDD',
-        fontFamily: 'Roboto, Ubuntu, Arial, sans-serif',
-        fontSize: 50,
+        background: { color: '#1e1e1e' },
+        textColor: '#d1d4dc',
       },
       grid: {
         vertLines: { color: '#2B2B2B' },
@@ -565,6 +557,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         },
       },
     });
+
     chartRef.current = chart;
 
     // Create series using addSeries method
@@ -577,7 +570,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     });
     candleSeriesRef.current = candlestickSeries;
 
-    // Create volume series using addSeries method
+    // Create volume series
     const volumeSeries = chart.addSeries(HistogramSeries, {
       color: '#26a69a',
       priceFormat: {
@@ -587,32 +580,28 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     });
     volumeSeriesRef.current = volumeSeries;
 
-    // 추가: 이동평균선 시리즈 생성
-    const threeEMASeries = chart.addSeries(LineSeries, {
-      color: '#FF0000', // 3EMA 색상
-      lineWidth: 2,
-    });
-    threeEMASeriesRef.current = threeEMASeries;
+    // 모든 MA 시리즈 생성
+    const createMASeries = (color: string) => {
+      return chart.addSeries(LineSeries, {
+        color: color,
+        lineWidth: 2,
+        visible: true,
+      });
+    };
 
-    const sixEMASeries = chart.addSeries(LineSeries, {
-      color: '#00FF00', // 6EMA 색상
-      lineWidth: 2,
-    });
-    sixEMASeriesRef.current = sixEMASeries;
+    // MA 시리즈 초기화
+    threeEMASeriesRef.current = createMASeries('#FF0000');  // 30MA
+    sixEMASeriesRef.current = createMASeries('#00FF00');    // 40MA
+    twentyEMASeriesRef.current = createMASeries('#0000FF'); // 60MA
+    oneTwentyEMASeriesRef.current = createMASeries('#FFFF00'); // 120MA
+    threeHundredSixtyEMASeriesRef.current = createMASeries('#800080'); // 360MA
 
-    const twentyEMASeries = chart.addSeries(LineSeries, {
-      color: '#0000FF', // 20EMA 색상
-      lineWidth: 2,
-    });
-    twentyEMASeriesRef.current = twentyEMASeries;
-
-    // Load initial data
+    // 초기 데이터 로드
     if (dateRange.startDate && dateRange.endDate) {
-      // 자동 로드 대신 사용자가 선택한 날짜로 데이터 로드
-    loadAllData(dateRange.startDate, dateRange.endDate);
+      loadAllData(dateRange.startDate, dateRange.endDate);
     }
 
-    // Handle window resize
+    // 윈도우 리사이즈 핸들러
     const handleResize = () => {
       if (container.current && chartRef.current) {
         chartRef.current.applyOptions({
@@ -623,7 +612,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
     window.addEventListener('resize', handleResize);
 
-    // Cleanup function
     return () => {
       window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
@@ -632,6 +620,28 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
     };
   }, [loadAllData]);
+
+  // MA 표시 상태 변경 시 업데이트
+  useEffect(() => {
+    if (!chartRef.current || !candleSeriesRef.current) return;
+
+    const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+    
+    // 각 MA 시리즈 업데이트
+    if (candleData.length > 0) {
+      if (oneTwentyEMASeriesRef.current) {
+        const oneTwentyEMA = calculateEMA(candleData, maPeriods.oneTwenty);
+        oneTwentyEMASeriesRef.current.setData(oneTwentyEMA);
+        oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+      }
+
+      if (threeHundredSixtyEMASeriesRef.current) {
+        const threeHundredSixtyEMA = calculateEMA(candleData, maPeriods.threeHundredSixty);
+        threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMA);
+        threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+      }
+    }
+  }, [showMA, maPeriods]);  // candleData 제거
 
   // 차트 생성 시 스크롤 이벤트 구독
   useEffect(() => {
