@@ -361,6 +361,26 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     return Math.atan2(dy, dx) * (180 / Math.PI);
   };
 
+  // 40MA 각도 임계값 (5도 이상)
+  const THRESHOLD_ANGLE_40 = 5;
+  
+  // 40MA의 특정 각도(5도 이상) 이상 지속 시간을 초 단위로 계산하는 함수,
+  // 5초 미만이면 0을 반환하여 5초 이상 지속되는 경우에만 표시
+  const getSustainedDuration = (ma: LineData<Time>[], index: number, threshold: number): number => {
+    if (!ma || index < 0) return 0;
+    let startIndex = index;
+    for (let j = index; j >= 0; j--) {
+      const angle = calculateAngleRaw(ma, j);
+      if (angle >= threshold) {
+        startIndex = j;
+      } else {
+        break;
+      }
+    }
+    const duration = (ma[index].time as number) - (ma[startIndex].time as number);
+    return duration >= 5 ? duration : 0; // 5초 미만이면 0으로 처리
+  };
+
   const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
     let tradeId = 1;
@@ -374,7 +394,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const point = crossPoints[i];
       const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
       const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
-      
+      const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
+      const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
+      const sustainedDuration = getSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
+ 
       console.log(`ma40Index: ${ma40Index}, ma40Data: ${ma40Data[ma40Index]?.value}`);
   
       if (!inTrade && point.position === 'buy') {
@@ -396,15 +419,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           buyPoint = point;
           inTrade = true;
           
-          const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
-          const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
           
           markers.push({
             time: point.time,
             position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°)`,
+            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
             size: 4
           });
         }
@@ -431,7 +452,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, ma40Index).toFixed(1)}°)`,
+            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
+      
             size: 4
           });
           
