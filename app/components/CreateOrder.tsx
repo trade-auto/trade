@@ -66,6 +66,104 @@ const calculateRelativeSlope = (ma: number[]) => {
   return ((current - previous) / previous) * 100;
 };
 
+// ------------------------------
+// 보조 함수들 (SLOPE_FILTER 전략용)
+// ------------------------------
+const getMA = (priceData: number[], period: number): number[] => {
+  if (priceData.length < period) return [];
+  let result: number[] = [];
+  for (let i = 0; i <= priceData.length - period; i++) {
+    const sum = priceData.slice(i, i + period).reduce((a, b) => a + b, 0);
+    result.push(sum / period);
+  }
+  return result;
+};
+
+const getAngle = (maValues: number[]): number => {
+  if (maValues.length < 2) return 0;
+  const delta = maValues[maValues.length - 1] - maValues[maValues.length - 2];
+  return (Math.atan(delta) * 180) / Math.PI;
+};
+
+// 조건 지속시간 추적 (간단한 전역 변수 사용; 실제 환경에서는 적절한 상태 관리 필요)
+if (!(window as any)._conditionStartTimes) {
+  (window as any)._conditionStartTimes = {
+    "40MA_angle_above_5": null,
+    "40MA_angle_below_minus5": null
+  };
+}
+const conditionStartTimes = (window as any)._conditionStartTimes;
+
+const updateConditionDuration = (
+  condition: "40MA_angle_above_5" | "40MA_angle_below_minus5",
+  currentAngle: number
+): number => {
+  const now = Date.now() / 1000; // 초 단위
+  if (condition === "40MA_angle_above_5") {
+    if (currentAngle >= 5) {
+      if (conditionStartTimes[condition] === null) {
+        conditionStartTimes[condition] = now;
+      }
+      return now - conditionStartTimes[condition];
+    } else {
+      conditionStartTimes[condition] = null;
+      return 0;
+    }
+  } else if (condition === "40MA_angle_below_minus5") {
+    if (currentAngle <= -5) {
+      if (conditionStartTimes[condition] === null) {
+        conditionStartTimes[condition] = now;
+      }
+      return now - conditionStartTimes[condition];
+    } else {
+      conditionStartTimes[condition] = null;
+      return 0;
+    }
+  }
+  return 0;
+};
+
+const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sell" | "hold" => {
+  const ma40 = getMA(priceData, 40);
+  const ma120 = getMA(priceData, 120);
+  const ma360 = getMA(priceData, 360);
+  if (ma40.length === 0 || ma120.length === 0 || ma360.length === 0) return "hold";
+
+  const ma40_latest = ma40[ma40.length - 1];
+  const ma120_latest = ma120[ma120.length - 1];
+  const ma360_latest = ma360[ma360.length - 1];
+
+  const angle40 = getAngle(ma40);
+  const prevPrice = priceData[priceData.length - 2];
+  const prev_ma120 = ma120[ma120.length - 2];
+
+  const buy120Cross = prev_ma120 !== undefined && prevPrice < prev_ma120 && currentPrice >= ma120_latest;
+  const sell120Cross = prev_ma120 !== undefined && prevPrice > prev_ma120 && currentPrice <= ma120_latest;
+
+  const buyAngleDuration = updateConditionDuration("40MA_angle_above_5", angle40);
+  const sellAngleDuration = updateConditionDuration("40MA_angle_below_minus5", angle40);
+
+  if (!ma360_latest) return "hold";
+
+  if (currentPrice < ma360_latest) {
+    if (angle40 >= 5 && buyAngleDuration >= 30 && buy120Cross) {
+      return "buy";
+    }
+    return "hold";
+  } else if (currentPrice > ma360_latest) {
+    if (angle40 <= -5 && sellAngleDuration >= 30 && sell120Cross) {
+      return "sell";
+    }
+    return "hold";
+  }
+  return "hold";
+};
+
+const calculateOrderVolume = (currentPrice: number): string => {
+  const investmentAmount = 1000000; // 예시 투자금 (1,000,000 단위)
+  return (investmentAmount / currentPrice).toFixed(4);
+};
+
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
@@ -421,56 +519,34 @@ export const CreateOrder = forwardRef<
         }
       }
     } else if (tradeStrategy === 'SLOPE_FILTER' && priceHistory.length >= 360) {
-      const ma40 = calculateMA(priceHistory, maPeriods.forty);
-      const ma60 = calculateMA(priceHistory, maPeriods.sixty);
-      const ma360 = calculateMA(priceHistory, maPeriods.threeHundredSixty);
+      (async () => {
+        // 새로운 조건 적용: getTradeSignal 함수 사용
+        const priceData: number[] = priceHistory.slice(-100);
+        const signal = getTradeSignal(priceData, currentPrice);
 
-      // 현재 가격
-      if (!currentPrice) return;  // currentPrice가 null이면 함수 종료
-
-      const currentMA = currentPrice;
-
-      // 상대적 기울기 계산 (백분율)
-      const slope360 = calculateRelativeSlope(ma360);
-      const slope40 = calculateRelativeSlope(ma40);
-      const slope60 = calculateRelativeSlope(ma60);
-
-      // 임계값도 백분율 기준으로 수정
-      const buyThreshold = 0.01;   // 1%
-      const sellThreshold = -0.01; // -1%
-
-      // 360MA 기준 위치 확인
-      const isAbove360MA = currentPrice ? currentPrice > ma360[ma360.length - 1] : false;
-
-      if (currentCycle === 'waiting_buy') {  // 매수 대기 상태
-        if (!isAbove360MA && slope360 > buyThreshold) {  // 360MA 아래이면서 360MA 기울기가 임계값보다 커야함
-          if (slope40 > buyThreshold && slope60 > buyThreshold) {  // 40MA와 60MA의 기울기가 임계값보다 큼
-            signal = `기울기 필터 매수 신호: 40MA(${slope40.toFixed(4)}%), 60MA(${slope60.toFixed(4)}%), 360MA(${slope360.toFixed(4)}%)`;
-          }
-        }
-      } else if (currentCycle === 'waiting_sell') {  // 매도 대기 상태
-        console.log('매도 조건 체크:', {
-          isAbove360MA,
-          slope360,
-          sellThreshold,
-          condition: slope360 < sellThreshold
-        });
-        
-        if (isAbove360MA && slope360 < sellThreshold) {  // 360MA 기울기가 임계값보다 작아야함
-          if (slope40 < sellThreshold && slope60 < sellThreshold) {
-            signal = `기울기 필터 매도 신호: 40MA(${slope40.toFixed(4)}%), 60MA(${slope60.toFixed(4)}%), 360MA(${slope360.toFixed(4)}%)`;
-          }
-        } else {
-          console.log('매도 취소 이유:', {
-            isAbove360MA: isAbove360MA ? '만족' : '불만족',
-            slope360: `${slope360.toFixed(4)}% (임계값: ${sellThreshold}%)`
+        // 현재 주문 사이클에 따라 조건 실행: 매수 후 매수 조건은 무시, 매도 후 재매도 무시
+        if (currentCycle === 'waiting_buy' && signal === "buy") {
+          await createOrder({
+            market: market,
+            side: 'bid',
+            volume: calculateOrderVolume(currentPrice),
+            price: currentPrice.toString(),
+            ord_type: 'limit',
+            mode: mode === 'test' ? 'test' : 'live-auto'
           });
-          return;
+          setCurrentCycle('waiting_sell'); // 매수 후 다음은 매도 조건 대기
+        } else if (currentCycle === 'waiting_sell' && signal === "sell") {
+          await createOrder({
+            market: market,
+            side: 'ask',
+            volume: calculateOrderVolume(currentPrice),
+            price: currentPrice.toString(),
+            ord_type: 'limit',
+            mode: mode === 'test' ? 'test' : 'live-auto'
+          });
+          setCurrentCycle('waiting_buy'); // 매도 후 다음은 매수 조건 대기
         }
-      }
-
-      // 현재 상태 표시에 기울기 정보 추가
-      setCurrentStrategy(`현재 전략: 기울기 필터 (40MA: ${slope40.toFixed(4)}%, 60MA: ${slope60.toFixed(4)}%, 360MA: ${slope360.toFixed(4)}%)`);
+      })();
     }
 
     if (signal !== lastSignal) {
@@ -1139,12 +1215,12 @@ export const CreateOrder = forwardRef<
               {showHistory && tradeCycles.length > 0 && (
                 <div className="mt-2">
                   {renderTradeHistory(tradeCycles)}
-                    </div>
-              )}
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
       {/* 총 수익률 표시 */}
       <div className="text-white text-lg font-bold">
@@ -1157,8 +1233,8 @@ export const CreateOrder = forwardRef<
         {lastSignal && (
           <div className="mt-2 text-yellow-400">
             마지막 신호: {lastSignal}
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -452,8 +452,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
-      
+            text: `매도 ${tradeId} @ ${point.price} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
             size: 4
           });
           
