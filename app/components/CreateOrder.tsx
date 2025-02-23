@@ -88,19 +88,19 @@ const getAngle = (maValues: number[]): number => {
 // 조건 지속시간 추적 (간단한 전역 변수 사용; 실제 환경에서는 적절한 상태 관리 필요)
 if (!(window as any)._conditionStartTimes) {
   (window as any)._conditionStartTimes = {
-    "40MA_angle_above_5": null,
-    "40MA_angle_below_minus5": null
+    "40MA_angle_above_45": null,
+    "40MA_angle_below_minus45": null
   };
 }
 const conditionStartTimes = (window as any)._conditionStartTimes;
 
 const updateConditionDuration = (
-  condition: "40MA_angle_above_5" | "40MA_angle_below_minus5",
+  condition: "40MA_angle_above_45" | "40MA_angle_below_minus45",
   currentAngle: number
 ): number => {
   const now = Date.now() / 1000; // 초 단위
-  if (condition === "40MA_angle_above_5") {
-    if (currentAngle >= 5) {
+  if (condition === "40MA_angle_above_45") {
+    if (currentAngle >= 45) {
       if (conditionStartTimes[condition] === null) {
         conditionStartTimes[condition] = now;
       }
@@ -109,8 +109,8 @@ const updateConditionDuration = (
       conditionStartTimes[condition] = null;
       return 0;
     }
-  } else if (condition === "40MA_angle_below_minus5") {
-    if (currentAngle <= -5) {
+  } else if (condition === "40MA_angle_below_minus45") {
+    if (currentAngle <= -45) {
       if (conditionStartTimes[condition] === null) {
         conditionStartTimes[condition] = now;
       }
@@ -140,18 +140,22 @@ const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sel
   const buy120Cross = prev_ma120 !== undefined && prevPrice < prev_ma120 && currentPrice >= ma120_latest;
   const sell120Cross = prev_ma120 !== undefined && prevPrice > prev_ma120 && currentPrice <= ma120_latest;
 
-  const buyAngleDuration = updateConditionDuration("40MA_angle_above_5", angle40);
-  const sellAngleDuration = updateConditionDuration("40MA_angle_below_minus5", angle40);
+  const buyAngleDuration = updateConditionDuration("40MA_angle_above_45", angle40);
+  const sellAngleDuration = updateConditionDuration("40MA_angle_below_minus45", angle40);
 
   if (!ma360_latest) return "hold";
 
   if (currentPrice < ma360_latest) {
-    if (angle40 >= 5 && buyAngleDuration >= 30 && buy120Cross) {
+    // 매수 조건: 현재 가격이 360MA 아래에 있고,
+    // (40MA 각도가 45도 이상이고 해당 조건이 30초 이상 유지되었거나, 120MA 상방 돌파)
+    if ((angle40 >= 45 && buyAngleDuration >= 30) || buy120Cross) {
       return "buy";
     }
     return "hold";
   } else if (currentPrice > ma360_latest) {
-    if (angle40 <= -5 && sellAngleDuration >= 30 && sell120Cross) {
+    // 매도 조건: 현재 가격이 360MA 위에 있고, 
+    // (40MA 각도가 -45도 이하이고 해당 조건이 30초 이상 지속되었거나, 120MA 하방 돌파)
+    if ((angle40 <= -45 && sellAngleDuration >= 30) || sell120Cross) {
       return "sell";
     }
     return "hold";
