@@ -115,13 +115,11 @@ interface Trade {
   isSuccess: boolean;
   isAutomatic?: boolean;
   mode: 'test' | 'test-auto' | 'live-auto';  // 'live'를 'live-auto'로 변경
-  slopes?: {
-    ma30?: number;
-    ma40?: number;
-    ma60?: number;
-    ma120?: number;
-    entryMa360?: number;  // 매수 시점의 360MA 기울기
-    exitMa360?: number;   // 매도 시점의 360MA 기울기
+  angles?: {
+    entryMa40?: number;
+    entryMa360?: number;
+    exitMa40?: number;
+    exitMa360?: number;
   };
 }
 
@@ -345,8 +343,33 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     let inTrade = false;
     let buyPoint: CrossPoint | null = null;
     
+    // 360MA 데이터 가져오기
+    const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
+    const fortyEMAData = fortyEMASeriesRef.current?.data() as LineData<Time>[];
+              const calculateAngle = (ma: LineData<Time>[], index: number): number => {
+ 
+   if (!ma || !ma[index] || index < 7) return 0;  // 최소 5개 포인트 필요
+    
+   // 최근 5개 포인트 사용
+   const points = ma.slice(Math.max(0, index - 4), index + 1);
+   const startPoint = points[0];
+   const endPoint = points[points.length - 1];
+    
+   // 시간 간격을 정규화 (1분 = 1단위)
+   const dx = ((endPoint.time as number) - (startPoint.time as number)) / 60;
+   const dy = endPoint.value - startPoint.value;
+    
+   // 각도 계산 (아크탄젠트)
+   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    
+   // 각도를 0~180도 범위로 정규화
+   return ((angle + 180) % 180) - 90;
+    
+ 
+  };
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
+      const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
       
       if (!inTrade && point.position === 'buy') {
         let shouldBuy = false;
@@ -367,12 +390,15 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           buyPoint = point;
           inTrade = true;
           
+          // 기울기를 각도로 변환하는 함수 추가
+
+          
           markers.push({
             time: point.time,
             position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%, 40MA: ${point.slopes.ma40.toFixed(2)}%)`,
+            text: `매수 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(fortyEMAData, i).toFixed(1)}°)`,
             size: 4
           });
         }
@@ -400,7 +426,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%, 40MA: ${point.slopes.ma60.toFixed(2)}%)`,
+            text: `매도 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(fortyEMAData, i).toFixed(1)}°)`,
             size: 4
           });
           
@@ -838,11 +864,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           return: returnRate,
           isSuccess: returnRate > 0,
           mode: mode === 'test' ? 'test-auto' : 'live-auto',
-          slopes: {
-            entryMa360: buyPoint.slopes.ma360,  // 매수 시점의 기울기
-            exitMa360: point.slopes.ma360,      // 매도 시점의 기울기
-            ma40: point.slopes.ma40,
-            ma60: point.slopes.ma60
+          angles: {
+            entryMa40: buyPoint.slopes.ma40,
+            entryMa360: buyPoint.slopes.ma360,
+            exitMa40: point.slopes.ma40,
+            exitMa360: point.slopes.ma360
           }
         });
         
@@ -1985,8 +2011,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       
       return {
         ...trade,
-        slopes: slopes || {
-          ma360: 0
+        angles: slopes || {
+          entryMa40: 0,
+          entryMa360: 0,
+          exitMa40: 0,
+          exitMa360: 0
         }
       };
     }
@@ -2019,9 +2048,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         
         return {
           ...trade,
-          slopes: {
-            ...trade.slopes,
+          angles: {
+            ...trade.angles,
+            entryMa40: entryIndex > 0 ? calculateSlope(
+              candleData.slice(Math.max(0, entryIndex - 5), entryIndex + 1),
+              maPeriods.forty
+            ) : 0,
             entryMa360,
+            exitMa40: exitIndex > 0 ? calculateSlope(
+              candleData.slice(Math.max(0, exitIndex - 5), exitIndex + 1),
+              maPeriods.forty
+            ) : 0,
             exitMa360
           }
         };
@@ -2516,17 +2553,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                         </span>
                       </td>
                       <td className={`px-4 py-2 ${
-                        (trade.slopes?.entryMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                        (trade.angles?.entryMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {trade.slopes?.entryMa360 
-                          ? `매수 ${index + 1} (360MA: ${trade.slopes.entryMa360.toFixed(2)}%)`
+                        {trade.angles?.entryMa360 
+                          ? `매수 ${index + 1} (360MA: ${trade.angles.entryMa360.toFixed(2)}%)`
                           : '-'}
                       </td>
                       <td className={`px-4 py-2 ${
-                        (trade.slopes?.exitMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                        (trade.angles?.exitMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {trade.slopes?.exitMa360
-                          ? `매도 ${index + 1} (360MA: ${trade.slopes.exitMa360.toFixed(2)}%)`
+                        {trade.angles?.exitMa360
+                          ? `매도 ${index + 1} (360MA: ${trade.angles.exitMa360.toFixed(2)}%)`
                           : '-'}
                       </td>
                     </tr>
