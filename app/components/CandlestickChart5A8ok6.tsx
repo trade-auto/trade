@@ -296,7 +296,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           : 0
       };
 
-      if (currentTime - lastActionTime < 30) continue;
+      if (currentTime - lastActionTime < 60) continue;  // 60초 (1분)로 수정
       
       // SLOPE_FILTER 전략 조건만 적용
       if (!isAbove360MA && slopes.ma360 > 0.01 && 
@@ -816,51 +816,49 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }));
   };
 
-  // 백테스팅 결과 계산 함수
+  // 백테스트 결과 계산 함수 수정
   const calculateBacktestResult = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
-    const trades: any[] = [];
-    let inTrade = false;
-    let entryPoint: CrossPoint | null = null;
-    let totalReturn = 0;
-    let successfulTrades = 0;
-
-    // 모든 크로스 포인트에 대해 처리
+    const trades: Trade[] = [];
+    let buyPoint: CrossPoint | null = null;
+    
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
       
-      if (!inTrade && point.position === 'buy') {
-        // 매수 진입
-        entryPoint = point;
-        inTrade = true;
-      }
-      else if (inTrade && point.position === 'sell' && entryPoint) {
-        // 매도 청산
-        const returnRate = (point.price - entryPoint.price) / entryPoint.price;
-        totalReturn += returnRate;
-        
-        if (returnRate > 0) successfulTrades++;
+      if (point.position === 'buy') {
+        buyPoint = point;
+      } else if (point.position === 'sell' && buyPoint) {
+        const entryPrice = buyPoint.price;
+        const exitPrice = point.price;
+        const returnRate = (exitPrice - entryPrice) / entryPrice;
         
         trades.push({
-          entryTime: entryPoint.time,
+          entryTime: buyPoint.time,
           exitTime: point.time,
-          entryPrice: entryPoint.price,
-          exitPrice: point.price,
+          entryPrice,
+          exitPrice,
           return: returnRate,
-          isSuccess: returnRate > 0
+          isSuccess: returnRate > 0,
+          mode: mode === 'test' ? 'test-auto' : 'live-auto',
+          slopes: {
+            entryMa360: buyPoint.slopes.ma360,  // 매수 시점의 기울기
+            exitMa360: point.slopes.ma360,      // 매도 시점의 기울기
+            ma40: point.slopes.ma40,
+            ma60: point.slopes.ma60
+          }
         });
         
-        inTrade = false;
-        entryPoint = null;
+        buyPoint = null;
       }
     }
 
+    // 나머지 코드는 동일...
     return {
       totalTrades: trades.length,
-      successfulTrades,
-      totalReturn,
-      successRate: trades.length > 0 ? (successfulTrades / trades.length) * 100 : 0,
-      averageReturn: trades.length > 0 ? totalReturn / trades.length : 0,
-      trades: trades.sort((a, b) => (b.entryTime as number) - (a.entryTime as number)) // 최신 거래가 위로 오도록 정렬
+      successfulTrades: trades.filter(t => t.isSuccess).length,
+      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
+      successRate: (trades.filter(t => t.isSuccess).length / trades.length) * 100,
+      averageReturn: trades.reduce((sum, t) => sum + t.return, 0) / trades.length,
+      trades
     };
   };
 
@@ -2521,12 +2519,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                       <td className={`px-4 py-2 ${
                         (trade.slopes?.entryMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {trade.slopes?.entryMa360?.toFixed(4) || '-'}
+                        {trade.slopes?.entryMa360 
+                          ? `매수 ${index + 1} (360MA: ${trade.slopes.entryMa360.toFixed(2)}%)`
+                          : '-'}
                       </td>
                       <td className={`px-4 py-2 ${
                         (trade.slopes?.exitMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {trade.slopes?.exitMa360?.toFixed(4) || '-'}
+                        {trade.slopes?.exitMa360
+                          ? `매도 ${index + 1} (360MA: ${trade.slopes.exitMa360.toFixed(2)}%)`
+                          : '-'}
                       </td>
                     </tr>
                   );
