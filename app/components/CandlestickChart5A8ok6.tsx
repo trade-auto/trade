@@ -269,6 +269,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
+    const startTime = Math.floor(Date.now() / 1000) - 1500; // 현재 시간에서 25분 전 부터 매매
     
     // 360MA 데이터 가져오기
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
@@ -279,6 +280,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     
     for (let i = 1; i < thirtyEMA.length; i++) {
       const currentTime = thirtyEMA[i].time as number;
+      
+      // 시작 시간 이전의 신호는 무시
+      if (currentTime < startTime) continue;
+      
       const currThirty = thirtyEMA[i].value;
       
       // 360MA 관련 데이터 계산
@@ -296,7 +301,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           : 0
       };
 
-      if (currentTime - lastActionTime < 60) continue;  // 60초 (1분)로 수정
+      if (currentTime - lastActionTime < 120) continue;  // 120초 (2분)로 수정
       
       // SLOPE_FILTER 전략 조건만 적용
       if (!isAbove360MA && slopes.ma360 > 0.01 && 
