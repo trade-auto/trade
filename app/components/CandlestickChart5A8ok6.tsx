@@ -286,6 +286,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       
       // 360MA 관련 데이터 계산
       const ma360Index = ma360Data?.findIndex(d => d.time === thirtyEMA[i].time);
+      
       const isAbove360MA = ma360Index !== undefined && ma360Index >= 0 
         ? currThirty > ma360Data[ma360Index].value
         : false;
@@ -337,40 +338,39 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const { tradeStrategy } = useUpbitStore();
 
   // 마커 생성 함수 수정
+  const calculateAngle = (ma: LineData<Time>[], index: number): number => {
+    if (!ma || !ma[index] || index < 5) return 0;  // 최소 5개 포인트 필요
+
+    const points = ma.slice(Math.max(0, index - 4), index + 1);
+    const startPoint = points[0];
+    const endPoint = points[points.length - 1];
+
+    const dx = ((endPoint.time as number) - (startPoint.time as number)) / 60;
+    const dy = endPoint.value - startPoint.value;
+
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    console.log(`Index: ${index}, Start: ${startPoint.value}, End: ${endPoint.value}, Angle: ${angle}`);
+
+    return ((angle + 180) % 180) - 90;
+  };
+
   const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
     let tradeId = 1;
     let inTrade = false;
     let buyPoint: CrossPoint | null = null;
-    
-    // 360MA 데이터 가져오기
+
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
-    const fortyEMAData = fortyEMASeriesRef.current?.data() as LineData<Time>[];
-              const calculateAngle = (ma: LineData<Time>[], index: number): number => {
- 
-   if (!ma || !ma[index] || index < 7) return 0;  // 최소 5개 포인트 필요
-    
-   // 최근 5개 포인트 사용
-   const points = ma.slice(Math.max(0, index - 4), index + 1);
-   const startPoint = points[0];
-   const endPoint = points[points.length - 1];
-    
-   // 시간 간격을 정규화 (1분 = 1단위)
-   const dx = ((endPoint.time as number) - (startPoint.time as number)) / 60;
-   const dy = endPoint.value - startPoint.value;
-    
-   // 각도 계산 (아크탄젠트)
-   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    
-   // 각도를 0~180도 범위로 정규화
-   return ((angle + 180) % 180) - 90;
-    
- 
-  };
+    const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
+
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
       const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
-      
+      const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
+
+      console.log(`ma40Index: ${ma40Index}, ma40Data: ${ma40Data[ma40Index]?.value}`);
+
       if (!inTrade && point.position === 'buy') {
         let shouldBuy = false;
         
@@ -390,15 +390,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           buyPoint = point;
           inTrade = true;
           
-          // 기울기를 각도로 변환하는 함수 추가
-
-          
           markers.push({
             time: point.time,
             position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(fortyEMAData, i).toFixed(1)}°)`,
+            text: `매수 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(ma40Data, ma40Index).toFixed(1)}°)`,
             size: 4
           });
         }
@@ -406,7 +403,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       else if (inTrade && point.position === 'sell' && buyPoint) {
         let shouldSell = false;
         
-        // 매도 조건 수정: 40MA와 60MA의 기울기가 급격히 하락할 때
         const STEEP_DECLINE_THRESHOLD = -0.02; // -2% 이상 하락
         
         switch (strategy) {
@@ -426,7 +422,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(fortyEMAData, i).toFixed(1)}°)`,
+            text: `매도 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(ma40Data, ma40Index).toFixed(1)}°)`,
             size: 4
           });
           
