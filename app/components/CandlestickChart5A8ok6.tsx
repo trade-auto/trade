@@ -436,24 +436,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
       else if (inTrade && point.position === 'sell' && buyPoint) {
         let shouldSell = false;
+        
         const STEEP_DECLINE_THRESHOLD = -0.02; // -2% 이상 하락
         
-        // 기존 SLOPE_FILTER 조건
-        if (point.isAbove360MA && 
-            point.slopes.ma40 < STEEP_DECLINE_THRESHOLD && 
-            point.slopes.ma60 < STEEP_DECLINE_THRESHOLD) {
-          shouldSell = true;
-        }
-        // 디버깅: 조건 미충족 시에도 로그 찍어서 확인
-        else {
-          console.log('매도 조건 미충족:', { 
-            currentPrice, 
-            slopes: point.slopes, 
-            isAbove360MA: point.isAbove360MA 
-          });
+        switch (strategy) {
+          case 'SLOPE_FILTER':
+            shouldSell = point.isAbove360MA && 
+                        point.slopes.ma40 < STEEP_DECLINE_THRESHOLD && 
+                        point.slopes.ma60 < STEEP_DECLINE_THRESHOLD;
+            break;
+            
+          default:
+            shouldSell = true;
         }
         
-        // 조건을 완화하여 sell 신호가 아예 발생하지 않으면(default로 hold 반환) 로그를 남김
         if (shouldSell) {
           markers.push({
             time: point.time,
@@ -463,6 +459,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}° (${positionText})${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
             size: 4
           });
+          
           inTrade = false;
           buyPoint = null;
           tradeId++;
