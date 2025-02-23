@@ -285,7 +285,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const currThirty = thirtyEMA[i].value;
       
       // 360MA 관련 데이터 계산
-      const ma360Index = ma360Data?.findIndex(d => d.time === thirtyEMA[i].time);
+      const tolerance = 3; // 초 단위 허용 오차
+      const ma360Index = ma360Data ? ma360Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
       
       const isAbove360MA = ma360Index !== undefined && ma360Index >= 0 
         ? currThirty > ma360Data[ma360Index].value
@@ -337,22 +338,27 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   // 컴포넌트 레벨에서 tradeStrategy 가져오기
   const { tradeStrategy } = useUpbitStore();
 
-  // 마커 생성 함수 수정
-  const calculateAngle = (ma: LineData<Time>[], index: number): number => {
-    if (!ma || !ma[index] || index < 5) return 0;  // 최소 5개 포인트 필요
-
+  // 새로운 각도 계산 함수 - 360MA 전용 (정규화)
+  const calculateAngleNormalized = (ma: LineData<Time>[], index: number): number => {
+    if (!ma || !ma[index] || index < 5) return 0;
     const points = ma.slice(Math.max(0, index - 4), index + 1);
     const startPoint = points[0];
     const endPoint = points[points.length - 1];
-
     const dx = ((endPoint.time as number) - (startPoint.time as number)) / 60;
     const dy = endPoint.value - startPoint.value;
-
     const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    return ((angle + 180) % 180) - 90;  // 0도를 기준으로 -90 ~ 90도 범위로 정규화
+  };
 
-    console.log(`Index: ${index}, Start: ${startPoint.value}, End: ${endPoint.value}, Angle: ${angle}`);
-
-    return ((angle + 180) % 180) - 90;
+  // 새로운 각도 계산 함수 - 40MA 전용 (원시 각도)
+  const calculateAngleRaw = (ma: LineData<Time>[], index: number): number => {
+    if (!ma || !ma[index] || index < 5) return 0;
+    const points = ma.slice(Math.max(0, index - 4), index + 1);
+    const startPoint = points[0];
+    const endPoint = points[points.length - 1];
+    const dx = ((endPoint.time as number) - (startPoint.time as number)) / 60;
+    const dy = endPoint.value - startPoint.value;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
   };
 
   const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
@@ -360,17 +366,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     let tradeId = 1;
     let inTrade = false;
     let buyPoint: CrossPoint | null = null;
-
+  
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
-
+  
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
       const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
       const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
-
+      
       console.log(`ma40Index: ${ma40Index}, ma40Data: ${ma40Data[ma40Index]?.value}`);
-
+  
       if (!inTrade && point.position === 'buy') {
         let shouldBuy = false;
         
@@ -390,12 +396,15 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           buyPoint = point;
           inTrade = true;
           
+          const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
+          const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
+          
           markers.push({
             time: point.time,
             position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(ma40Data, ma40Index).toFixed(1)}°)`,
+            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°)`,
             size: 4
           });
         }
@@ -422,7 +431,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${calculateAngle(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngle(ma40Data, ma40Index).toFixed(1)}°)`,
+            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, ma360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, ma40Index).toFixed(1)}°)`,
             size: 4
           });
           
