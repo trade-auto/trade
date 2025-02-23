@@ -226,11 +226,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const threeEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const sixEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const thirtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const fortyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const sixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const twentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);  // 추가
-  const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);  // 360MA ref 추가
+  const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const lastCandleRef = useRef<CandlestickData<Time> | null>(null);
   const buyMarkerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const sellMarkerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -514,14 +515,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const threeHundredSixtyEMAData = calculateEMA(formattedData, maPeriods.threeHundredSixty);
 
       // 각 EMA 시리즈 업데이트
-      if (threeEMASeriesRef.current) {
-        threeEMASeriesRef.current.setData(thirtyEMAData);
+      if (thirtyEMASeriesRef.current) {
+        thirtyEMASeriesRef.current.setData(thirtyEMAData);
       }
-      if (sixEMASeriesRef.current) {
-        sixEMASeriesRef.current.setData(fortyEMAData);
+      if (fortyEMASeriesRef.current) {
+        fortyEMASeriesRef.current.setData(fortyEMAData);
+      }
+      if (sixtyEMASeriesRef.current) {
+        sixtyEMASeriesRef.current.setData(sixtyEMAData);
       }
       if (twentyEMASeriesRef.current) {
-        twentyEMASeriesRef.current.setData(sixtyEMAData);
+        twentyEMASeriesRef.current.setData(oneTwentyEMAData);
       }
       if (oneTwentyEMASeriesRef.current) {
         oneTwentyEMASeriesRef.current.setData(oneTwentyEMAData);
@@ -566,11 +570,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     if (volumeSeriesRef.current) {
       volumeSeriesRef.current.setData([]);
     }
-    if (threeEMASeriesRef.current) {
-      threeEMASeriesRef.current.setData([]);
+    if (thirtyEMASeriesRef.current) {
+      thirtyEMASeriesRef.current.setData([]);
     }
-    if (sixEMASeriesRef.current) {
-      sixEMASeriesRef.current.setData([]);
+    if (fortyEMASeriesRef.current) {
+      fortyEMASeriesRef.current.setData([]);
+    }
+    if (sixtyEMASeriesRef.current) {
+      sixtyEMASeriesRef.current.setData([]);
     }
     if (twentyEMASeriesRef.current) {
       twentyEMASeriesRef.current.setData([]);
@@ -680,9 +687,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     };
 
     // MA 시리즈 초기화
-    threeEMASeriesRef.current = createMASeries('#FF0000');  // 30MA
-    sixEMASeriesRef.current = createMASeries('#00FF00');    // 40MA
-    twentyEMASeriesRef.current = createMASeries('#0000FF'); // 60MA
+    thirtyEMASeriesRef.current = createMASeries('#FF0000');  // 30MA
+    fortyEMASeriesRef.current = createMASeries('#00FF00');    // 40MA
+    sixtyEMASeriesRef.current = createMASeries('#0000FF'); // 60MA
     oneTwentyEMASeriesRef.current = createMASeries('#FFFF00'); // 120MA
     threeHundredSixtyEMASeriesRef.current = createMASeries('#800080'); // 360MA
 
@@ -1076,14 +1083,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (volumeSeriesRef.current) {
         volumeSeriesRef.current.setData(volumeData);
       }
-      if (threeEMASeriesRef.current) {
-        threeEMASeriesRef.current.setData(threeEMAData);
+      if (thirtyEMASeriesRef.current) {
+        thirtyEMASeriesRef.current.setData(threeEMAData);
       }
-      if (sixEMASeriesRef.current) {
-        sixEMASeriesRef.current.setData(sixEMAData);
+      if (fortyEMASeriesRef.current) {
+        fortyEMASeriesRef.current.setData(sixEMAData);
       }
-      if (twentyEMASeriesRef.current) {
-        twentyEMASeriesRef.current.setData(twentyEMAData);
+      if (sixtyEMASeriesRef.current) {
+        sixtyEMASeriesRef.current.setData(twentyEMAData);
       }
 
       // 매수/매도 마커 업데이트
@@ -1567,17 +1574,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
           const updateMA = () => {
             if (candleHistory.length > 0) {
-              if (threeEMASeriesRef.current) {
+              if (thirtyEMASeriesRef.current) {
                 const ma30 = calculateEMA(candleHistory, maPeriods.thirty);
-                threeEMASeriesRef.current.update(ma30[ma30.length - 1]);
+                thirtyEMASeriesRef.current.update(ma30[ma30.length - 1]);
               }
-              if (sixEMASeriesRef.current) {
+              if (fortyEMASeriesRef.current) {
                 const ma40 = calculateEMA(candleHistory, maPeriods.forty);
-                sixEMASeriesRef.current.update(ma40[ma40.length - 1]);
+                fortyEMASeriesRef.current.update(ma40[ma40.length - 1]);
               }
-              if (twentyEMASeriesRef.current) {
+              if (sixtyEMASeriesRef.current) {
                 const ma60 = calculateEMA(candleHistory, maPeriods.sixty);
-                twentyEMASeriesRef.current.update(ma60[ma60.length - 1]);
+                sixtyEMASeriesRef.current.update(ma60[ma60.length - 1]);
               }
             }
           };
@@ -1658,9 +1665,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const sixEMAData = calculateEMA(updatedData, maPeriods.forty);
     const twentyEMAData = calculateEMA(updatedData, maPeriods.sixty);
 
-    threeEMASeriesRef.current?.setData(threeEMAData);
-    sixEMASeriesRef.current?.setData(sixEMAData);
-    twentyEMASeriesRef.current?.setData(twentyEMAData);
+    thirtyEMASeriesRef.current?.setData(threeEMAData);
+    fortyEMASeriesRef.current?.setData(sixEMAData);
+    sixtyEMASeriesRef.current?.setData(twentyEMAData);
 
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
     const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
@@ -1751,9 +1758,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               const sixEMAData = calculateEMA(updatedData, maPeriods.forty);
               const twentyEMAData = calculateEMA(updatedData, maPeriods.sixty);
               const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
-              threeEMASeriesRef.current?.setData(threeEMAData);
-              sixEMASeriesRef.current?.setData(sixEMAData);
-              twentyEMASeriesRef.current?.setData(twentyEMAData);
+              thirtyEMASeriesRef.current?.setData(threeEMAData);
+              fortyEMASeriesRef.current?.setData(sixEMAData);
+              sixtyEMASeriesRef.current?.setData(twentyEMAData);
               oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
               // 크로스 포인트 및 마커 업데이트
               const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
@@ -1851,30 +1858,31 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       }
     };
 
-    removeSeries(threeEMASeriesRef.current);
-    removeSeries(sixEMASeriesRef.current);
+    removeSeries(thirtyEMASeriesRef.current);
+    removeSeries(fortyEMASeriesRef.current);
+    removeSeries(sixtyEMASeriesRef.current);
     removeSeries(twentyEMASeriesRef.current);
     removeSeries(oneTwentyEMASeriesRef.current);
     removeSeries(threeHundredSixtyEMASeriesRef.current);
 
     // 새 시리즈 추가
     if (showMA.thirty) {
-      threeEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
-      threeEMASeriesRef.current.applyOptions({
+      thirtyEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
+      thirtyEMASeriesRef.current.applyOptions({
         color: '#FF0000',  // 빨간색
         lineWidth: 2,
       });
     }
     if (showMA.forty) {
-      sixEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
-      sixEMASeriesRef.current.applyOptions({
+      fortyEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
+      fortyEMASeriesRef.current.applyOptions({
         color: '#00FF00',  // 초록색
         lineWidth: 2,
       });
     }
     if (showMA.sixty) {
-      twentyEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
-      twentyEMASeriesRef.current.applyOptions({
+      sixtyEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
+      sixtyEMASeriesRef.current.applyOptions({
         color: '#0000FF',  // 파란색
         lineWidth: 2,
       });
@@ -1899,15 +1907,15 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
       if (showMA.thirty) {
         const thirtyEMA = calculateEMA(candleData, maPeriods.thirty);
-        threeEMASeriesRef.current?.setData(thirtyEMA);
+        thirtyEMASeriesRef.current?.setData(thirtyEMA);
       }
       if (showMA.forty) {
         const fortyEMA = calculateEMA(candleData, maPeriods.forty);
-        sixEMASeriesRef.current?.setData(fortyEMA);
+        fortyEMASeriesRef.current?.setData(fortyEMA);
       }
       if (showMA.sixty) {
         const sixtyEMA = calculateEMA(candleData, maPeriods.sixty);
-        twentyEMASeriesRef.current?.setData(sixtyEMA);
+        sixtyEMASeriesRef.current?.setData(sixtyEMA);
       }
       if (showMA.oneTwenty && oneTwentyEMASeriesRef.current) {
         const oneTwentyEMA = calculateEMA(candleData, maPeriods.oneTwenty);
