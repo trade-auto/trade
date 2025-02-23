@@ -120,7 +120,8 @@ interface Trade {
     ma40?: number;
     ma60?: number;
     ma120?: number;
-    ma360?: number;
+    entryMa360?: number;  // 매수 시점의 360MA 기울기
+    exitMa360?: number;   // 매도 시점의 360MA 기울기
   };
 }
 
@@ -1990,19 +1991,33 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     if (backtestResult?.trades && candleSeriesRef.current) {
       const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
       
-      // 각 거래별로 해당 시점의 기울기 계산
+      // 각 거래별로 진입/청산 시점의 기울기 계산
       const updatedTrades = backtestResult.trades.map(trade => {
-        const tradeTime = trade.entryTime as number;
-        const tradeCandleData = candleData.filter(d => (d.time as number) <= tradeTime);
+        const entryTime = trade.entryTime as number;
+        const exitTime = trade.exitTime as number;
         
-        if (tradeCandleData.length > 0) {
-          const slopes = calculateSlopes(tradeCandleData);
-          return {
-            ...trade,
-            slopes: slopes || trade.slopes
-          };
-        }
-        return trade;
+        // 진입 시점 기울기 계산
+        const entryIndex = candleData.findIndex(d => (d.time as number) === entryTime);
+        const entryMa360 = entryIndex > 0 ? calculateSlope(
+          candleData.slice(Math.max(0, entryIndex - 5), entryIndex + 1),
+          maPeriods.threeHundredSixty
+        ) : 0;
+        
+        // 청산 시점 기울기 계산
+        const exitIndex = candleData.findIndex(d => (d.time as number) === exitTime);
+        const exitMa360 = exitIndex > 0 ? calculateSlope(
+          candleData.slice(Math.max(0, exitIndex - 5), exitIndex + 1),
+          maPeriods.threeHundredSixty
+        ) : 0;
+        
+        return {
+          ...trade,
+          slopes: {
+            ...trade.slopes,
+            entryMa360,
+            exitMa360
+          }
+        };
       });
 
       setBacktestResult(prev => prev ? {
@@ -2010,7 +2025,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         trades: updatedTrades
       } : null);
     }
-  }, [backtestResult?.trades, calculateSlopes]);
+  }, [backtestResult?.trades, maPeriods.threeHundredSixty]);
+
+  // 기울기 계산 함수 추가
+  const calculateSlope = (data: ExtendedCandlestickData[], period: number): number => {
+    if (data.length < 2) return 0;
+    
+    const maData = calculateEMA(data, period);
+    if (maData.length < 2) return 0;
+    
+    const last = maData[maData.length - 1].value;
+    const prev = maData[maData.length - 2].value;
+    
+    return ((last - prev) / prev) * 100; // 변화율을 퍼센트로 반환
+  };
 
   // 자동 업데이트 효과
   useEffect(() => {
@@ -2425,7 +2453,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                   <th className="px-4 py-2">100만원 투자시 수익</th>
                   <th className="px-4 py-2">체결 상태</th>
                   <th className="px-4 py-2">거래 모드</th>
-                  <th className="px-4 py-2">360MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 360MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 360MA 기울기</th>
                 </tr>
               </thead>
               <tbody>
@@ -2480,9 +2509,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                         </span>
                       </td>
                       <td className={`px-4 py-2 ${
-                        (trade.slopes?.ma360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                        (trade.slopes?.entryMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {trade.slopes?.ma360?.toFixed(4) || '-'}
+                        {trade.slopes?.entryMa360?.toFixed(4) || '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.slopes?.exitMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.slopes?.exitMa360?.toFixed(4) || '-'}
                       </td>
                     </tr>
                   );
