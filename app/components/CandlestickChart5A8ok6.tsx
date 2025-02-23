@@ -397,7 +397,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
       const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
       const sustainedDuration = getSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
- 
+  
+      // 40MA와 360MA의 현재 값 비교 (값이 없으면 0 사용)
+      const validMa360Value = ma360Data[validMa360Index]?.value || 0;
+      const validMa40Value = ma40Data[validMa40Index]?.value || 0;
+      const positionText = validMa40Value > validMa360Value ? "40MA 상측" : "40MA 하측";
+  
       console.log(`ma40Index: ${ma40Index}, ma40Data: ${ma40Data[ma40Index]?.value}`);
   
       if (!inTrade && point.position === 'buy') {
@@ -419,13 +424,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           buyPoint = point;
           inTrade = true;
           
-          
           markers.push({
             time: point.time,
             position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
+            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}° (${positionText})${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
             size: 4
           });
         }
@@ -452,7 +456,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} @ ${point.price} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
+            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}° (${positionText})${sustainedDuration ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''})`,
             size: 4
           });
           
