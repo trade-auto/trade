@@ -299,8 +299,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (currentTime - lastActionTime < 30) continue;
       
       // SLOPE_FILTER 전략 조건만 적용
-      if (!isAbove360MA && slopes.ma360 > buyThreshold && 
-          slopes.ma40 > buyThreshold && slopes.ma60 > buyThreshold && 
+      if (!isAbove360MA && slopes.ma360 > 0.01 && 
+          slopes.ma40 > 0.01 && slopes.ma60 > 0.01 && 
           lastAction !== 'buy') {
           crossPoints.push({
             time: thirtyEMA[i].time,
@@ -312,8 +312,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         lastAction = 'buy';
         lastActionTime = currentTime;
         }
-      else if (isAbove360MA && slopes.ma360 < sellThreshold && 
-               slopes.ma40 < sellThreshold && slopes.ma60 < sellThreshold && 
+      else if (isAbove360MA && slopes.ma360 < -0.01 && 
+               slopes.ma40 < -0.01 && slopes.ma60 < -0.01 && 
                lastAction !== 'sell') {
         crossPoints.push({
           time: thirtyEMA[i].time,
@@ -690,8 +690,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     thirtyEMASeriesRef.current = createMASeries('#FF0000');  // 30MA
     fortyEMASeriesRef.current = createMASeries('#00FF00');    // 40MA
     sixtyEMASeriesRef.current = createMASeries('#0000FF'); // 60MA
-    oneTwentyEMASeriesRef.current = createMASeries('#FFFF00'); // 120MA
-    threeHundredSixtyEMASeriesRef.current = createMASeries('#800080'); // 360MA
+    twentyEMASeriesRef.current = createMASeries('#FFFF00'); // 120MA
+    oneTwentyEMASeriesRef.current = createMASeries('#800080'); // 360MA
 
     // 초기 데이터 로드
     if (dateRange.startDate && dateRange.endDate) {
@@ -1070,12 +1070,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       lastCandleRef.current = candleData[candleData.length - 1];
 
       // 이동평균 계산
-      const threeEMAData = calculateEMA(candleData, maPeriods.thirty);
-      const sixEMAData = calculateEMA(candleData, maPeriods.forty);
-      const twentyEMAData = calculateEMA(candleData, maPeriods.sixty);
+      const thirtyEMAData = calculateEMA(candleData, maPeriods.thirty);
+      const fortyEMAData = calculateEMA(candleData, maPeriods.forty);
+      const sixtyEMAData = calculateEMA(candleData, maPeriods.sixty);
+      const oneTwentyEMAData = calculateEMA(candleData, maPeriods.oneTwenty);
+      const threeHundredSixtyEMAData = calculateEMA(candleData, maPeriods.threeHundredSixty);
 
       // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+      const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
       crossPointsRef.current = crossPoints;
 
       // 데이터 설정
@@ -1084,13 +1086,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         volumeSeriesRef.current.setData(volumeData);
       }
       if (thirtyEMASeriesRef.current) {
-        thirtyEMASeriesRef.current.setData(threeEMAData);
+        thirtyEMASeriesRef.current.setData(thirtyEMAData);
       }
       if (fortyEMASeriesRef.current) {
-        fortyEMASeriesRef.current.setData(sixEMAData);
+        fortyEMASeriesRef.current.setData(fortyEMAData);
       }
       if (sixtyEMASeriesRef.current) {
-        sixtyEMASeriesRef.current.setData(twentyEMAData);
+        sixtyEMASeriesRef.current.setData(sixtyEMAData);
       }
 
       // 매수/매도 마커 업데이트
@@ -1593,10 +1595,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           lastCandleRef.current = tradeData;
           setCurrentPrice(data.trade_price);
 
-          const threeEMAData = calculateEMA(candleHistory, maPeriods.thirty);
-          const sixEMAData = calculateEMA(candleHistory, maPeriods.forty);
-          const twentyEMAData = calculateEMA(candleHistory, maPeriods.sixty);
-          const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+          const thirtyEMAData = calculateEMA(candleHistory, maPeriods.thirty);
+          const fortyEMAData = calculateEMA(candleHistory, maPeriods.forty);
+          const sixtyEMAData = calculateEMA(candleHistory, maPeriods.sixty);
+          const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
           crossPointsRef.current = crossPoints;
           const markers = createTradeMarkers(crossPoints, tradeStrategy);
           if (candleSeriesRef.current) {
@@ -1661,16 +1663,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     candleSeriesRef.current?.setData(updatedData);
 
     // EMA 재계산
-    const threeEMAData = calculateEMA(updatedData, maPeriods.thirty);
-    const sixEMAData = calculateEMA(updatedData, maPeriods.forty);
-    const twentyEMAData = calculateEMA(updatedData, maPeriods.sixty);
-
-    thirtyEMASeriesRef.current?.setData(threeEMAData);
-    fortyEMASeriesRef.current?.setData(sixEMAData);
-    sixtyEMASeriesRef.current?.setData(twentyEMAData);
+ 
+    const thirtyEMAData = calculateEMA(updatedData, maPeriods.thirty);
+    const fortyEMAData = calculateEMA(updatedData, maPeriods.forty);
+    const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
+ thirtyEMASeriesRef.current?.setData(thirtyEMAData);
+ fortyEMASeriesRef.current?.setData(fortyEMAData);
+ sixtyEMASeriesRef.current?.setData(sixtyEMAData);
 
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
-    const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+    const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
     crossPointsRef.current = crossPoints;
     const markers = createTradeMarkers(crossPoints, tradeStrategy);
     if (candleSeriesRef.current) {
@@ -1754,16 +1756,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               candleSeriesRef.current?.setData(updatedData);
               
               // MA 데이터 업데이트
-              const threeEMAData = calculateEMA(updatedData, maPeriods.thirty);
-              const sixEMAData = calculateEMA(updatedData, maPeriods.forty);
-              const twentyEMAData = calculateEMA(updatedData, maPeriods.sixty);
+              const thirtyEMAData = calculateEMA(updatedData, maPeriods.thirty);
+              const fortyEMAData = calculateEMA(updatedData, maPeriods.forty);
+              const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
               const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
-              thirtyEMASeriesRef.current?.setData(threeEMAData);
-              fortyEMASeriesRef.current?.setData(sixEMAData);
-              sixtyEMASeriesRef.current?.setData(twentyEMAData);
+              thirtyEMASeriesRef.current?.setData(thirtyEMAData);
+              fortyEMASeriesRef.current?.setData(fortyEMAData);
+              sixtyEMASeriesRef.current?.setData(sixtyEMAData);
               oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
               // 크로스 포인트 및 마커 업데이트
-              const crossPoints = findCrossPoints(threeEMAData, sixEMAData, twentyEMAData);
+              const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
               crossPointsRef.current = crossPoints;
               const markers = createTradeMarkers(crossPoints, tradeStrategy);
               if (candleSeriesRef.current) {
