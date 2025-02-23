@@ -346,16 +346,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (!inTrade && point.position === 'buy') {
         let shouldBuy = false;
         
-        switch (strategy) {  // tradeStrategy 대신 매개변수 strategy 사용
+        switch (strategy) {
           case 'SLOPE_FILTER':
             shouldBuy = !point.isAbove360MA && 
                        point.slopes.ma360 > 0.01 && 
                        point.slopes.ma40 > 0.01 && 
                        point.slopes.ma60 > 0.01;
-            break;
-            
-          case 'MA_CROSS':
-            shouldBuy = true;
             break;
             
           default:
@@ -371,7 +367,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%)`,
+            text: `매수 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%, 40MA: ${point.slopes.ma40.toFixed(2)}%)`,
             size: 4
           });
         }
@@ -379,16 +375,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       else if (inTrade && point.position === 'sell' && buyPoint) {
         let shouldSell = false;
         
+        // 매도 조건 수정: 40MA와 60MA의 기울기가 급격히 하락할 때
+        const STEEP_DECLINE_THRESHOLD = -0.02; // -2% 이상 하락
+        
         switch (strategy) {
           case 'SLOPE_FILTER':
             shouldSell = point.isAbove360MA && 
-                        point.slopes.ma360 < -0.01 && 
-                        point.slopes.ma40 < -0.01 && 
-                        point.slopes.ma60 < -0.01;
-            break;
-            
-          case 'MA_CROSS':
-            shouldSell = true;
+                        point.slopes.ma40 < STEEP_DECLINE_THRESHOLD && 
+                        point.slopes.ma60 < STEEP_DECLINE_THRESHOLD;
             break;
             
           default:
@@ -401,7 +395,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%)`,
+            text: `매도 ${tradeId} (360MA: ${point.slopes.ma360.toFixed(2)}%, 40MA: ${point.slopes.ma60.toFixed(2)}%)`,
             size: 4
           });
           
