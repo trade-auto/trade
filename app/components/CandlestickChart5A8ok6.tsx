@@ -501,7 +501,51 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     if (minutes === 7200) return 200; // 월봉 (200개월)
     return 30;                        // 년봉 (30년)
   };
+  // 백테스트 결과 계산 함수 수정
+  const calculateBacktestResult = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
+    const trades: Trade[] = [];
+    let buyPoint: CrossPoint | null = null;
+    
+    for (let i = 0; i < crossPoints.length; i++) {
+      const point = crossPoints[i];
+      
+      if (point.position === 'buy') {
+        buyPoint = point;
+      } else if (point.position === 'sell' && buyPoint) {
+        const entryPrice = buyPoint.price;
+        const exitPrice = point.price;
+        const returnRate = (exitPrice - entryPrice) / entryPrice;
+        
+        trades.push({
+          entryTime: buyPoint.time,
+          exitTime: point.time,
+          entryPrice,
+          exitPrice,
+          return: returnRate,
+          isSuccess: returnRate > 0,
+          mode: mode === 'test' ? 'test-auto' : 'live-auto',
+          angles: {
+            entryMa40: buyPoint.slopes.ma40,
+            entryMa360: buyPoint.slopes.ma360,
+            exitMa40: point.slopes.ma40,
+            exitMa360: point.slopes.ma360
+          }
+        });
+        
+        buyPoint = null;
+      }
+    }
 
+    // 나머지 코드는 동일...
+    return {
+      totalTrades: trades.length,
+      successfulTrades: trades.filter(t => t.isSuccess).length,
+      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
+      successRate: (trades.filter(t => t.isSuccess).length / trades.length) * 100,
+      averageReturn: trades.reduce((sum, t) => sum + t.return, 0) / trades.length,
+      trades
+    };
+  };
   // 전체 데이터 로드 함수를 먼저 선언
   const loadAllData = useCallback(async (startDate: Date, endDate: Date) => {
     if (!candleSeriesRef.current) return;
@@ -871,51 +915,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }));
   };
 
-  // 백테스트 결과 계산 함수 수정
-  const calculateBacktestResult = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
-    const trades: Trade[] = [];
-    let buyPoint: CrossPoint | null = null;
-    
-    for (let i = 0; i < crossPoints.length; i++) {
-      const point = crossPoints[i];
-      
-      if (point.position === 'buy') {
-        buyPoint = point;
-      } else if (point.position === 'sell' && buyPoint) {
-        const entryPrice = buyPoint.price;
-        const exitPrice = point.price;
-        const returnRate = (exitPrice - entryPrice) / entryPrice;
-        
-        trades.push({
-          entryTime: buyPoint.time,
-          exitTime: point.time,
-          entryPrice,
-          exitPrice,
-          return: returnRate,
-          isSuccess: returnRate > 0,
-          mode: mode === 'test' ? 'test-auto' : 'live-auto',
-          angles: {
-            entryMa40: buyPoint.slopes.ma40,
-            entryMa360: buyPoint.slopes.ma360,
-            exitMa40: point.slopes.ma40,
-            exitMa360: point.slopes.ma360
-          }
-        });
-        
-        buyPoint = null;
-      }
-    }
-
-    // 나머지 코드는 동일...
-    return {
-      totalTrades: trades.length,
-      successfulTrades: trades.filter(t => t.isSuccess).length,
-      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
-      successRate: (trades.filter(t => t.isSuccess).length / trades.length) * 100,
-      averageReturn: trades.reduce((sum, t) => sum + t.return, 0) / trades.length,
-      trades
-    };
-  };
+   
 
   // 시세 차이 계산
   const priceDiff = currentPrice > 0 && chartPrice > 0 
@@ -1159,7 +1159,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         }
       }
 
-      // 백테스팅 결과 업데이트
+      // 백테스트 결과 업데이트
       const result = calculateBacktestResult(candleData, crossPoints);
       setBacktestResult(result);
 
