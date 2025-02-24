@@ -68,6 +68,7 @@ interface CrossPoint {
     ma40: number;
     ma60: number;
     ma360: number;
+    ma120: number;
   };
 }
 
@@ -122,6 +123,8 @@ interface Trade {
     entryMa360?: number;
     exitMa40?: number;
     exitMa360?: number;
+    entryMa120?: number;
+    exitMa120?: number;
   };
 }
 
@@ -300,6 +303,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         ma60: sixtyEMA[i].value - sixtyEMA[i-1].value,
         ma360: ma360Index !== undefined && ma360Index > 0
           ? ma360Data[ma360Index].value - ma360Data[ma360Index-1].value
+          : 0,
+        ma120: oneTwentyEMASeriesRef.current?.data()[i] && 'value' in oneTwentyEMASeriesRef.current?.data()[i] 
+          ? (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value - 
+            (oneTwentyEMASeriesRef.current?.data()[i-1] as LineData<Time>).value 
           : 0
       };
 
@@ -313,7 +320,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             time: thirtyEMA[i].time,
             position: 'buy',
             price: currThirty,
-            isAbove360MA,
+          isAbove360MA,
             slopes
           });
         lastAction = 'buy';
@@ -362,10 +369,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const dy = endPoint.value - startPoint.value;
     return Math.atan2(dy, dx) * (180 / Math.PI);
   };
+  //const THRESHOLD_ANGLE_40 = 5;
+ //const THRESHOLD_ANGLE_40_MINUS = -5;
 
+ //SKY
+const THRESHOLD_ANGLE_360 = 5; // 360ma 기울기 높을때 매수   ,//1 근접시 매도  
+  const THRESHOLD_ANGLE_360_MINUS = -5; // 기울기 높을때 매수  //-1
   // 40MA 각도 임계값 (5도 이상)
   const THRESHOLD_ANGLE_40 = 5;
-  
+    // 40MA 각도 임계값 (5도 이상)
+    const MIN_SLOPE_THRESHOLD = 1;
+    const THRESHOLD_ANGLE_40_MINUS = -5;
   // 40MA의 특정 각도(5도 이상) 이상 지속 시간을 초 단위로 계산하는 함수,
   // 5초 미만이면 0을 반환하여 5초 이상 지속되는 경우에만 표시
   // const getSustainedDuration = (ma: LineData<Time>[], index: number, threshold: number): number => {
@@ -391,7 +405,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
-  
+    
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
       const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
@@ -406,32 +420,34 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const positionText = validMa40Value > validMa360Value ? "40MA 상측" : "40MA 하측";
   
       console.log(`ma40Index: ${ma40Index}, ma40Data: ${ma40Data[ma40Index]?.value}`);
-  
+      
       if (!inTrade && point.position === 'buy') {
         let shouldBuy = false;
         switch (strategy) {
           case 'SLOPE_FILTER':
             shouldBuy = !point.isAbove360MA && 
-                       point.slopes.ma360 > 0.01 && 
-                       point.slopes.ma40 > 0.01 && 
-                       point.slopes.ma60 > 0.01;
+                       point.slopes.ma360 > THRESHOLD_ANGLE_360 && 
+                       point.slopes.ma40 > THRESHOLD_ANGLE_40 && 
+                       point.slopes.ma60 > THRESHOLD_ANGLE_40 &&
+                       Math.abs(point.slopes.ma360) > MIN_SLOPE_THRESHOLD && // 360MA 기울기 1도 이상
+                       Math.abs(point.slopes.ma120) > MIN_SLOPE_THRESHOLD;   // 120MA 기울기 1도 이상
             break;
           default:
             shouldBuy = true;
         }
-        const buySustainedDuration = getBuySustainedDuration(ma40Data, validMa40Index, 0.01);
+        const buySustainedDuration = getBuySustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
         if (shouldBuy) {
-          buyPoint = point;
-          inTrade = true;
-          
-          markers.push({
-            time: point.time,
-            position: 'belowBar',
-            color: '#26a69a',
-            shape: 'arrowUp',
+        buyPoint = point;
+        inTrade = true;
+        
+        markers.push({
+          time: point.time,
+          position: 'belowBar',
+          color: '#26a69a',
+          shape: 'arrowUp',
             text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(buySustainedDuration !== null && buySustainedDuration !== undefined) ? `, 지속: ${buySustainedDuration.toFixed(0)}초` : ''}`,
-            size: 4
-          });
+          size: 4
+        });
           
 
           //await logBuyPoint(buyPoint); // Use 'await' instead of 'wait'
@@ -449,26 +465,27 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         switch (strategy) {
           case 'SLOPE_FILTER':
             shouldSell = point.isAbove360MA && 
-                        point.slopes.ma40 < STEEP_DECLINE_THRESHOLD && 
-                        point.slopes.ma60 < STEEP_DECLINE_THRESHOLD;
+                        point.slopes.ma360 < THRESHOLD_ANGLE_360_MINUS && 
+                        point.slopes.ma40 < THRESHOLD_ANGLE_40_MINUS && 
+                        point.slopes.ma60 < THRESHOLD_ANGLE_40_MINUS;
             break;
           default:
             shouldSell = true;
         }
-        const sellSustainedDuration = getSellSustainedDuration(ma40Data, validMa40Index, -0.01);
+        const sellSustainedDuration = getSellSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40_MINUS);
         if (shouldSell) {
-          markers.push({
-            time: point.time,
-            position: 'aboveBar',
-            color: '#ef5350',
-            shape: 'arrowDown',
+        markers.push({
+          time: point.time,
+          position: 'aboveBar',
+          color: '#ef5350',
+          shape: 'arrowDown',
             text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(sellSustainedDuration !== null && sellSustainedDuration !== undefined) ? `, 지속: ${sellSustainedDuration.toFixed(0)}초` : ''}`,
-            size: 4
-          });
-          
-          inTrade = false;
-          buyPoint = null;
-          tradeId++;
+          size: 4
+        });
+        
+        inTrade = false;
+        buyPoint = null;
+        tradeId++;
         }
       }
     }
@@ -597,12 +614,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           
       // 거래 신호 업데이트
       const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
-      crossPointsRef.current = crossPoints;
-      
+          crossPointsRef.current = crossPoints;
+          
       // 통합된 마커 업데이트 함수 사용
       updateChartMarkers(crossPoints);
-      
-      // 백테스팅 결과 업데이트
+
+        // 백테스팅 결과 업데이트
       const result = calculateBacktestResult(formattedData, crossPoints);
       if (result.trades.length > 0) {
         setBacktestResult(result);
@@ -904,7 +921,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             entryMa40: buyPoint.slopes.ma40,
             entryMa360: buyPoint.slopes.ma360,
             exitMa40: point.slopes.ma40,
-            exitMa360: point.slopes.ma360
+            exitMa360: point.slopes.ma360,
+            entryMa120: buyPoint.slopes.ma120,
+            exitMa120: point.slopes.ma120
           }
         });
         
@@ -1159,7 +1178,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (candleSeriesRef.current) {
         try {
           // 마커 설정
-          createSeriesMarkers(candleSeriesRef.current, markers);
+        createSeriesMarkers(candleSeriesRef.current, markers);
         } catch (error) {
           console.error('마커 업데이트 실패:', error);
         }
@@ -1554,23 +1573,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   );
   const updatePrices = useCallback(async () => {
     if (isLoadingRef.current) return;
-    
-    try {
-      isLoadingRef.current = true;
-      const [current, ma3] = await Promise.all([
-        getCurrentPrice(symbol),
-        get3SecMA(symbol)
-      ]);
       
-      if (current && ma3) {
-        setCurrentPrice(current);
-        setMa3Price(ma3);
+      try {
+        isLoadingRef.current = true;
+        const [current, ma3] = await Promise.all([
+          getCurrentPrice(symbol),
+          get3SecMA(symbol)
+        ]);
+        
+        if (current && ma3) {
+          setCurrentPrice(current);
+          setMa3Price(ma3);
+        }
+      } catch (error) {
+        console.error('가격 업데이트 중 오류:', error);
+      } finally {
+        isLoadingRef.current = false;
       }
-    } catch (error) {
-      console.error('가격 업데이트 중 오류:', error);
-    } finally {
-      isLoadingRef.current = false;
-    }
   }, [symbol]);
   // 가격 정보 업데이트 함수
   useEffect(() => {
@@ -1579,8 +1598,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // 가격 업데이트 함수 선언
    
 
-     // 초기 업데이트
-     updatePrices();
+    // 초기 업데이트
+    updatePrices();
     
     // 자동 업데이트가 활성화된 경우에만 인터벌 설정
     if (isAutoUpdate) {
@@ -1726,9 +1745,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const thirtyEMAData = calculateEMA(updatedData, maPeriods.thirty);
     const fortyEMAData = calculateEMA(updatedData, maPeriods.forty);
     const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
- thirtyEMASeriesRef.current?.setData(thirtyEMAData);
- fortyEMASeriesRef.current?.setData(fortyEMAData);
- sixtyEMASeriesRef.current?.setData(sixtyEMAData);
+    thirtyEMASeriesRef.current?.setData(thirtyEMAData);
+    fortyEMASeriesRef.current?.setData(fortyEMAData);
+    sixtyEMASeriesRef.current?.setData(sixtyEMAData);
 
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
     const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
@@ -2051,7 +2070,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           entryMa40: 0,
           entryMa360: 0,
           exitMa40: 0,
-          exitMa360: 0
+          exitMa360: 0,
+          entryMa120: 0,
+          exitMa120: 0
         }
       };
     }
@@ -2082,8 +2103,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           maPeriods.threeHundredSixty
         ) : 0;
         
-        return {
-          ...trade,
+          return {
+            ...trade,
           angles: {
             ...trade.angles,
             entryMa40: entryIndex > 0 ? calculateSlope(
@@ -2180,7 +2201,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       
       // 새 마커 생성 및 설정
       const markers = createTradeMarkers(crossPoints, tradeStrategy);
-      createSeriesMarkers(candleSeriesRef.current, markers);
+    createSeriesMarkers(candleSeriesRef.current, markers);
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }
@@ -2598,6 +2619,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                   <th className="px-4 py-2">거래 모드</th>
                   <th className="px-4 py-2">매수 시 360MA 기울기</th>
                   <th className="px-4 py-2">매도 시 360MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 120MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 120MA 기울기</th>
                 </tr>
               </thead>
               <tbody>
@@ -2663,6 +2686,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                       }`}>
                         {trade.angles?.exitMa360
                           ? `매도 ${index + 1} (360MA: ${trade.angles.exitMa360.toFixed(2)}%)`
+                          : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.angles?.entryMa120 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.angles?.entryMa120
+                          ? `매수 ${index + 1} (120MA: ${trade.angles.entryMa120.toFixed(2)}%)`
+                          : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.angles?.exitMa120 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.angles?.exitMa120
+                          ? `매도 ${index + 1} (120MA: ${trade.angles.exitMa120.toFixed(2)}%)`
                           : '-'}
                       </td>
                     </tr>
@@ -2812,20 +2849,32 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
 function getBuySustainedDuration(maData: LineData<Time>[], index: number, buyThreshold: number): number {
   let startIndex = index;
-  while (startIndex > 0 && maData[startIndex].value > buyThreshold) {
+  let duration = 0;
+  
+  // 최대 30개의 과거 데이터만 확인 (약 30초)
+  const lookbackLimit = Math.max(0, index - 15);
+  
+  while (startIndex > lookbackLimit && maData[startIndex].value > buyThreshold) {
     startIndex--;
   }
-  const duration = (maData[index].time as number) - (maData[startIndex].time as number);
-  return duration >= 5 ? duration : 0; // 5초 미만이면 0으로 처리
+  
+  duration = (maData[index].time as number) - (maData[startIndex].time as number);
+  return duration >= 15 ? duration : 0; // 30초 미만이면 0으로 처리
 }
 
 function getSellSustainedDuration(maData: LineData<Time>[], index: number, sellThreshold: number): number {
   let startIndex = index;
-  while (startIndex > 0 && maData[startIndex].value < sellThreshold) {
+  let duration = 0;
+  
+  // 최대 30개의 과거 데이터만 확인 (약 30초)
+  const lookbackLimit = Math.max(0, index - 15);
+  
+  while (startIndex > lookbackLimit && maData[startIndex].value < sellThreshold) {
     startIndex--;
   }
-  const duration = (maData[index].time as number) - (maData[startIndex].time as number);
-  return duration >= 5 ? duration : 0; // 5초 미만이면 0으로 처리
+  
+  duration = (maData[index].time as number) - (maData[startIndex].time as number);
+  return duration >= 15 ? duration : 0; // 30초 미만이면 0으로 처리
 }
 
 
