@@ -437,7 +437,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       else if (inTrade && point.position === 'sell' && buyPoint) {
         let shouldSell = false;
         
-        const STEEP_DECLINE_THRESHOLD = -0.02; // -2% 이상 하락
+        const STEEP_DECLINE_THRESHOLD = -0.02; // -2% 이상 하락 
         
         switch (strategy) {
           case 'SLOPE_FILTER':
