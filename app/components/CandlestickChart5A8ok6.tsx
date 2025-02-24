@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import debug from 'debug';
+const log = debug('trade:orders');
 //import { useUpbitStore, TradeStrategy } from '../store/useUpbitStore';
 import { useUpbitStore } from '../store/useUpbitStore';
 import {
@@ -366,20 +368,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   
   // 40MA의 특정 각도(5도 이상) 이상 지속 시간을 초 단위로 계산하는 함수,
   // 5초 미만이면 0을 반환하여 5초 이상 지속되는 경우에만 표시
-  const getSustainedDuration = (ma: LineData<Time>[], index: number, threshold: number): number => {
-    if (!ma || index < 0) return 0;
-    let startIndex = index;
-    for (let j = index; j >= 0; j--) {
-      const angle = calculateAngleRaw(ma, j);
-      if (angle >= threshold) {
-        startIndex = j;
-      } else {
-        break;
-      }
-    }
-    const duration = (ma[index].time as number) - (ma[startIndex].time as number);
-    return duration >= 5 ? duration : 0; // 5초 미만이면 0으로 처리
-  };
+  // const getSustainedDuration = (ma: LineData<Time>[], index: number, threshold: number): number => {
+  //   if (!ma || index < 0) return 0;
+  //   let startIndex = index;
+  //   for (let j = index; j >= 0; j--) {
+  //     const angle = calculateAngleRaw(ma, j);
+  //     if (angle >= threshold) {
+  //       startIndex = j;
+  //     } else {
+  //       break;
+  //     }
+  //   }
+  //   const duration = (ma[index].time as number) - (ma[startIndex].time as number);
+  //   return duration >= 1 ? duration : 0; // 5초 미만이면 0으로 처리
+  // };
 
   const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
@@ -396,7 +398,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
       const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
       const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
-      const sustainedDuration = getSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
+      //const sustainedDuration = getSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
   
       // 40MA와 360MA의 현재 값 비교 (값이 없으면 0 사용)
       const validMa360Value = ma360Data[validMa360Index]?.value || 0;
@@ -407,7 +409,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   
       if (!inTrade && point.position === 'buy') {
         let shouldBuy = false;
-        
         switch (strategy) {
           case 'SLOPE_FILTER':
             shouldBuy = !point.isAbove360MA && 
@@ -415,11 +416,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                        point.slopes.ma40 > 0.01 && 
                        point.slopes.ma60 > 0.01;
             break;
-            
           default:
             shouldBuy = true;
         }
-        
+        const buySustainedDuration = getBuySustainedDuration(ma40Data, validMa40Index, 0.01);
         if (shouldBuy) {
           buyPoint = point;
           inTrade = true;
@@ -429,12 +429,19 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(sustainedDuration !== null && sustainedDuration !== undefined) ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''}`,
+            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(buySustainedDuration !== null && buySustainedDuration !== undefined) ? `, 지속: ${buySustainedDuration.toFixed(0)}초` : ''}`,
             size: 4
           });
+          
+
+          //await logBuyPoint(buyPoint); // Use 'await' instead of 'wait'
         }
+        console.log('매도 신호 발생:', buyPoint);
+        console.log('매도 신호 발생:', buyPoint);
+        //log('매도 신호 발생:', buyPoint);
       }
-      else if (inTrade && point.position === 'sell' && buyPoint) {
+      else if (inTrade && point.position === 'sell'  && buyPoint) {
+
         let shouldSell = false;
         
         const STEEP_DECLINE_THRESHOLD = -0.02; // -2% 이상 하락 
@@ -445,18 +452,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                         point.slopes.ma40 < STEEP_DECLINE_THRESHOLD && 
                         point.slopes.ma60 < STEEP_DECLINE_THRESHOLD;
             break;
-            
           default:
             shouldSell = true;
         }
-        
+        const sellSustainedDuration = getSellSustainedDuration(ma40Data, validMa40Index, -0.01);
         if (shouldSell) {
           markers.push({
             time: point.time,
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(sustainedDuration !== null && sustainedDuration !== undefined) ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''}`,
+            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(sellSustainedDuration !== null && sellSustainedDuration !== undefined) ? `, 지속: ${sellSustainedDuration.toFixed(0)}초` : ''}`,
             size: 4
           });
           
@@ -501,51 +507,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     if (minutes === 7200) return 200; // 월봉 (200개월)
     return 30;                        // 년봉 (30년)
   };
-  // 백테스트 결과 계산 함수 수정
-  const calculateBacktestResult = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
-    const trades: Trade[] = [];
-    let buyPoint: CrossPoint | null = null;
-    
-    for (let i = 0; i < crossPoints.length; i++) {
-      const point = crossPoints[i];
-      
-      if (point.position === 'buy') {
-        buyPoint = point;
-      } else if (point.position === 'sell' && buyPoint) {
-        const entryPrice = buyPoint.price;
-        const exitPrice = point.price;
-        const returnRate = (exitPrice - entryPrice) / entryPrice;
-        
-        trades.push({
-          entryTime: buyPoint.time,
-          exitTime: point.time,
-          entryPrice,
-          exitPrice,
-          return: returnRate,
-          isSuccess: returnRate > 0,
-          mode: mode === 'test' ? 'test-auto' : 'live-auto',
-          angles: {
-            entryMa40: buyPoint.slopes.ma40,
-            entryMa360: buyPoint.slopes.ma360,
-            exitMa40: point.slopes.ma40,
-            exitMa360: point.slopes.ma360
-          }
-        });
-        
-        buyPoint = null;
-      }
-    }
 
-    // 나머지 코드는 동일...
-    return {
-      totalTrades: trades.length,
-      successfulTrades: trades.filter(t => t.isSuccess).length,
-      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
-      successRate: (trades.filter(t => t.isSuccess).length / trades.length) * 100,
-      averageReturn: trades.reduce((sum, t) => sum + t.return, 0) / trades.length,
-      trades
-    };
-  };
   // 전체 데이터 로드 함수를 먼저 선언
   const loadAllData = useCallback(async (startDate: Date, endDate: Date) => {
     if (!candleSeriesRef.current) return;
@@ -915,7 +877,51 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }));
   };
 
-   
+  // 백테스트 결과 계산 함수 수정
+  const calculateBacktestResult = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
+    const trades: Trade[] = [];
+    let buyPoint: CrossPoint | null = null;
+    
+    for (let i = 0; i < crossPoints.length; i++) {
+      const point = crossPoints[i];
+      
+      if (point.position === 'buy') {
+        buyPoint = point;
+      } else if (point.position === 'sell' && buyPoint) {
+        const entryPrice = buyPoint.price;
+        const exitPrice = point.price;
+        const returnRate = (exitPrice - entryPrice) / entryPrice;
+        
+        trades.push({
+          entryTime: buyPoint.time,
+          exitTime: point.time,
+          entryPrice,
+          exitPrice,
+          return: returnRate,
+          isSuccess: returnRate > 0,
+          mode: mode === 'test' ? 'test-auto' : 'live-auto',
+          angles: {
+            entryMa40: buyPoint.slopes.ma40,
+            entryMa360: buyPoint.slopes.ma360,
+            exitMa40: point.slopes.ma40,
+            exitMa360: point.slopes.ma360
+          }
+        });
+        
+        buyPoint = null;
+      }
+    }
+
+    // 나머지 코드는 동일...
+    return {
+      totalTrades: trades.length,
+      successfulTrades: trades.filter(t => t.isSuccess).length,
+      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
+      successRate: (trades.filter(t => t.isSuccess).length / trades.length) * 100,
+      averageReturn: trades.reduce((sum, t) => sum + t.return, 0) / trades.length,
+      trades
+    };
+  };
 
   // 시세 차이 계산
   const priceDiff = currentPrice > 0 && chartPrice > 0 
@@ -2182,6 +2188,69 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
    
 
+  // 시리즈 제거 함수
+  const removeSeries = () => {
+    if (chartRef.current) {
+      // 각 시리즈 제거 전 존재 여부 확인
+      if (candleSeriesRef.current) {
+        chartRef.current.removeSeries(candleSeriesRef.current);
+        candleSeriesRef.current = null;
+      }
+      
+      if (thirtyEMASeriesRef.current) {
+        chartRef.current.removeSeries(thirtyEMASeriesRef.current);
+        thirtyEMASeriesRef.current = null;
+      }
+      
+      if (fortyEMASeriesRef.current) {
+        chartRef.current.removeSeries(fortyEMASeriesRef.current);
+        fortyEMASeriesRef.current = null;
+      }
+      
+      if (sixtyEMASeriesRef.current) {
+        chartRef.current.removeSeries(sixtyEMASeriesRef.current);
+        sixtyEMASeriesRef.current = null;
+      }
+      
+      if (twentyEMASeriesRef.current) {
+        chartRef.current.removeSeries(twentyEMASeriesRef.current);
+        twentyEMASeriesRef.current = null;
+      }
+      
+      if (oneTwentyEMASeriesRef.current) {
+        chartRef.current.removeSeries(oneTwentyEMASeriesRef.current);
+        oneTwentyEMASeriesRef.current = null;
+      }
+      
+      if (threeHundredSixtyEMASeriesRef.current) {
+        chartRef.current.removeSeries(threeHundredSixtyEMASeriesRef.current);
+        threeHundredSixtyEMASeriesRef.current = null;
+      }
+      
+      if (volumeSeriesRef.current) {
+        chartRef.current.removeSeries(volumeSeriesRef.current);
+        volumeSeriesRef.current = null;
+      }
+    }
+  };
+
+  // cleanup 함수에서 사용
+  useEffect(() => {
+    // ... 차트 초기화 코드 ...
+
+    return () => {
+      try {
+        removeSeries();
+        if (chartRef.current) {
+          chartRef.current.remove();
+          chartRef.current = null;
+        }
+      } catch (error) {
+        console.error('차트 정리 중 오류 발생:', error);
+      }
+    };
+  }, []);
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
@@ -2740,3 +2809,39 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     </div>
   );
 }; 
+
+function getBuySustainedDuration(maData: LineData<Time>[], index: number, buyThreshold: number): number {
+  let startIndex = index;
+  while (startIndex > 0 && maData[startIndex].value > buyThreshold) {
+    startIndex--;
+  }
+  const duration = (maData[index].time as number) - (maData[startIndex].time as number);
+  return duration >= 5 ? duration : 0; // 5초 미만이면 0으로 처리
+}
+
+function getSellSustainedDuration(maData: LineData<Time>[], index: number, sellThreshold: number): number {
+  let startIndex = index;
+  while (startIndex > 0 && maData[startIndex].value < sellThreshold) {
+    startIndex--;
+  }
+  const duration = (maData[index].time as number) - (maData[startIndex].time as number);
+  return duration >= 5 ? duration : 0; // 5초 미만이면 0으로 처리
+}
+
+
+//sky
+async function logBuyPoint(buyPoint: CrossPoint | null) {
+  if (buyPoint) {
+    // 비동기 작업이 필요하다면 여기에 추가
+    await new Promise(resolve => setTimeout(resolve, 0)); // 예시로 비동기 작업을 기다림
+    console.log('개발 환경 로그:', buyPoint);
+  } else {
+    console.log('buyPoint가 설정되지 않았습니다.');
+  }
+}
+
+// 매수 조건이 충족될 때 호출
+// if (shouldBuy) {
+//   buyPoint = point;
+//   await logBuyPoint(buyPoint);
+// } 

@@ -301,3 +301,19 @@ else:
 매도조건 
 360MA 위에서 매도 조건은 40MA 각도가 -45도이하 이고 30초이상되거나 120MA를 하방돌파 할때이다.
 매수후  매수조건이 나와도 매수안하고 매도이후만 매수하고,매도후 재매도 안하고 매수이후에만 매도함
+
+         switch (strategy) {
+        //   case 'SLOPE_FILTER':
+        //     shouldSell = point.isAbove360MA && 
+        //                 point.slopes.ma40 < STEEP_DECLINE_THRESHOLD && 
+        //                 point.slopes.ma60 < STEEP_DECLINE_THRESHOLD;
+        //     break;
+        case 'SLOPE_FILTER':
+          shouldSell = !point.isAbove360MA && 
+                     point.slopes.ma360 < -0.01 && 
+                     point.slopes.ma40 < -0.01 && 
+                     point.slopes.ma60 < -0.01;
+          break;   
+          default:
+            shouldSell = true;
+        }
