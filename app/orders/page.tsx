@@ -17,7 +17,9 @@ const SYMBOLS = [
   { symbol: 'KRW-ETH', name: '이더리움' },
   { symbol: 'KRW-XRP', name: '리플' },
   { symbol: 'KRW-STORJ', name: '스토리지' },
-  { symbol: 'KRW-ONDO', name: '온도' }
+  { symbol: 'KRW-ONDO', name: '온도' },
+  { symbol: 'KRW-VANA', name: '바나' },
+  { symbol: 'KRW-AUCTION', name: '옥션' }
 ];
 
 export default function OrdersPage() {

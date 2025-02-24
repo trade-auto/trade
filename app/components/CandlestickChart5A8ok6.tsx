@@ -372,14 +372,18 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   //const THRESHOLD_ANGLE_40 = 5;
  //const THRESHOLD_ANGLE_40_MINUS = -5;
 
- //SKY
-const THRESHOLD_ANGLE_360 = 5; // 360ma 기울기 높을때 매수   ,//1 근접시 매도  
-  const THRESHOLD_ANGLE_360_MINUS = -5; // 기울기 높을때 매수  //-1
-  // 40MA 각도 임계값 (5도 이상)
-  const THRESHOLD_ANGLE_40 = 5;
-    // 40MA 각도 임계값 (5도 이상)
-    const MIN_SLOPE_THRESHOLD = 1;
-    const THRESHOLD_ANGLE_40_MINUS = -5;
+ //SK
+// 360MA 관련 임계값
+const THRESHOLD_ANGLE_360 = 1;        // 360MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_360_MINUS = -5; // 360MA 매도 기준: 기울기가 -5도 이하일 때
+
+// 40MA 관련 임계값
+const THRESHOLD_ANGLE_40 = 5;         // 40MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_40_MINUS = -5;  // 40MA 매도 기준: 기울기가 -5도 이하일 때
+
+// 최소 기울기 임계값
+const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
+ 
   // 40MA의 특정 각도(5도 이상) 이상 지속 시간을 초 단위로 계산하는 함수,
   // 5초 미만이면 0을 반환하여 5초 이상 지속되는 경우에만 표시
   // const getSustainedDuration = (ma: LineData<Time>[], index: number, threshold: number): number => {
