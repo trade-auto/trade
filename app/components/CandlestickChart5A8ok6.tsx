@@ -313,8 +313,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (currentTime - lastActionTime < 120) continue;  // 120초 (2분)로 수정
       
       // SLOPE_FILTER 전략 조건만 적용
-      if (!isAbove360MA && slopes.ma360 > 0.01 && 
-          slopes.ma40 > 0.01 && slopes.ma60 > 0.01 && 
+      if (!isAbove360MA && slopes.ma360 > THRESHOLD_ANGLE_360 && 
+          slopes.ma40 > THRESHOLD_ANGLE_40 && slopes.ma60 > THRESHOLD_ANGLE_40 && 
           lastAction !== 'buy') {
           crossPoints.push({
             time: thirtyEMA[i].time,
@@ -326,8 +326,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         lastAction = 'buy';
         lastActionTime = currentTime;
         }
-      else if (isAbove360MA && slopes.ma360 < -0.01 && 
-               slopes.ma40 < -0.01 && slopes.ma60 < -0.01 && 
+      else if (isAbove360MA && 
+               slopes.ma40 < THRESHOLD_ANGLE_40_MINUS && 
+               slopes.ma60 < THRESHOLD_ANGLE_40_MINUS && 
                lastAction !== 'sell') {
         crossPoints.push({
           time: thirtyEMA[i].time,
@@ -374,12 +375,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
  //SK
 // 360MA 관련 임계값
-const THRESHOLD_ANGLE_360 = 1;        // 360MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_360_MINUS = -5; // 360MA 매도 기준: 기울기가 -5도 이하일 때
+const THRESHOLD_ANGLE_360 = 5;        // 360MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_360_MINUS = -1; // 360MA 매도 기준: 기울기가 -5도 이하일 때
 
 // 40MA 관련 임계값
 const THRESHOLD_ANGLE_40 = 5;         // 40MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_40_MINUS = -5;  // 40MA 매도 기준: 기울기가 -5도 이하일 때
+const THRESHOLD_ANGLE_40_MINUS = -1;  // 40MA 매도 기준: 기울기가 -5도 이하일 때
 
 // 최소 기울기 임계값
 const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
@@ -403,96 +404,36 @@ const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2
 
   const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
-    let tradeId = 1;
-    let inTrade = false;
-    let buyPoint: CrossPoint | null = null;
-  
-    const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
     
-    for (let i = 0; i < crossPoints.length; i++) {
-      const point = crossPoints[i];
-      const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
-      const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
-      const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
-      const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
-      //const sustainedDuration = getSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
-  
-      // 40MA와 360MA의 현재 값 비교 (값이 없으면 0 사용)
-      const validMa360Value = ma360Data[validMa360Index]?.value || 0;
-      const validMa40Value = ma40Data[validMa40Index]?.value || 0;
-      const positionText = validMa40Value > validMa360Value ? "40MA 상측" : "40MA 하측";
-  
-      console.log(`ma40Index: ${ma40Index}, ma40Data: ${ma40Data[ma40Index]?.value}`);
-      
-      if (!inTrade && point.position === 'buy') {
-        let shouldBuy = false;
-        switch (strategy) {
-          case 'SLOPE_FILTER':
-            shouldBuy = !point.isAbove360MA && 
-                       point.slopes.ma360 > THRESHOLD_ANGLE_360 && 
-                       point.slopes.ma40 > THRESHOLD_ANGLE_40 && 
-                       point.slopes.ma60 > THRESHOLD_ANGLE_40 &&
-                       Math.abs(point.slopes.ma360) > MIN_SLOPE_THRESHOLD && // 360MA 기울기 1도 이상
-                       Math.abs(point.slopes.ma120) > MIN_SLOPE_THRESHOLD;   // 120MA 기울기 1도 이상
-            break;
-          default:
-            shouldBuy = true;
-        }
-        const buySustainedDuration = getBuySustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
-        if (shouldBuy) {
-        buyPoint = point;
-        inTrade = true;
-        
+    crossPoints.forEach((point, index) => {
+      // 기울기 절대값 계산
+      const absSlopes = {
+        ma40: Math.abs(point.slopes.ma40),
+        ma60: Math.abs(point.slopes.ma60),
+        ma120: Math.abs(point.slopes.ma120),
+        ma360: Math.abs(point.slopes.ma360)
+      };
+
+      if (point.position === 'buy') {
         markers.push({
           time: point.time,
           position: 'belowBar',
           color: '#26a69a',
           shape: 'arrowUp',
-            text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(buySustainedDuration !== null && buySustainedDuration !== undefined) ? `, 지속: ${buySustainedDuration.toFixed(0)}초` : ''}`,
-          size: 4
+          text: `매수 (MA40: ${absSlopes.ma40.toFixed(2)}°, MA120: ${absSlopes.ma120.toFixed(2)}°)`,
+          size: 2
         });
-          
-
-          //await logBuyPoint(buyPoint); // Use 'await' instead of 'wait'
-        }
-        console.log('매도 신호 발생:', buyPoint);
-        console.log('매도 신호 발생:', buyPoint);
-        //log('매도 신호 발생:', buyPoint);
-      }
-      else if (inTrade && point.position === 'sell'  && buyPoint) {
-
-        let shouldSell = false;
-        
-        const STEEP_DECLINE_THRESHOLD = -0.02; // -2% 이상 하락 
-        
-        switch (strategy) {
-          case 'SLOPE_FILTER':
-            shouldSell = point.isAbove360MA && 
-                        point.slopes.ma360 < THRESHOLD_ANGLE_360_MINUS && 
-                        point.slopes.ma40 < THRESHOLD_ANGLE_40_MINUS && 
-                        point.slopes.ma60 < THRESHOLD_ANGLE_40_MINUS;
-            break;
-          default:
-            shouldSell = true;
-        }
-        const sellSustainedDuration = getSellSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40_MINUS);
-        if (shouldSell) {
+      } else {
         markers.push({
           time: point.time,
           position: 'aboveBar',
           color: '#ef5350',
           shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(sellSustainedDuration !== null && sellSustainedDuration !== undefined) ? `, 지속: ${sellSustainedDuration.toFixed(0)}초` : ''}`,
-          size: 4
+          text: `매도 (MA40: ${absSlopes.ma40.toFixed(2)}°, MA120: ${absSlopes.ma120.toFixed(2)}°)`,
+          size: 2
         });
-        
-        inTrade = false;
-        buyPoint = null;
-        tradeId++;
-        }
       }
-    }
+    });
     
     return markers;
   };
@@ -2696,14 +2637,14 @@ const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2
                         (trade.angles?.entryMa120 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
                         {trade.angles?.entryMa120
-                          ? `매수 ${index + 1} (120MA: ${trade.angles.entryMa120.toFixed(2)}%)`
+                          ? `매수 ${index + 1} (120MA: ${Math.abs(trade.angles.entryMa120).toFixed(2)}°)`
                           : '-'}
                       </td>
                       <td className={`px-4 py-2 ${
                         (trade.angles?.exitMa120 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
                         {trade.angles?.exitMa120
-                          ? `매도 ${index + 1} (120MA: ${trade.angles.exitMa120.toFixed(2)}%)`
+                          ? `매도 ${index + 1} (120MA: ${Math.abs(trade.angles.exitMa120).toFixed(2)}°)`
                           : '-'}
                       </td>
                     </tr>
