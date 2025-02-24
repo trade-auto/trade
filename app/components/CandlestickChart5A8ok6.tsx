@@ -363,7 +363,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 40MA 각도 임계값 (5도 이상)
   const THRESHOLD_ANGLE_40 = 5;
-  
+  const THRESHOLD_ANGLE_40_MINUS = -5;
   // 40MA의 특정 각도(5도 이상) 이상 지속 시간을 초 단위로 계산하는 함수,
   // 5초 미만이면 0을 반환하여 5초 이상 지속되는 경우에만 표시
   const getSustainedDuration = (ma: LineData<Time>[], index: number, threshold: number): number => {
@@ -397,7 +397,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
       const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
       const sustainedDuration = getSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40);
-  
+      const sustainedDuration_minus = getSustainedDuration(ma40Data, validMa40Index, THRESHOLD_ANGLE_40_MINUS);
       // 40MA와 360MA의 현재 값 비교 (값이 없으면 0 사용)
       const validMa360Value = ma360Data[validMa360Index]?.value || 0;
       const validMa40Value = ma40Data[validMa40Index]?.value || 0;
@@ -456,7 +456,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             position: 'aboveBar',
             color: '#ef5350',
             shape: 'arrowDown',
-            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(sustainedDuration !== null && sustainedDuration !== undefined) ? `, 지속: ${sustainedDuration.toFixed(0)}초` : ''}`,
+            text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°${(sustainedDuration_minus !== null && sustainedDuration_minus !== undefined) ? `, 지속: ${sustainedDuration_minus.toFixed(0)}초` : ''}`,
             size: 4
           });
           
