@@ -131,6 +131,18 @@ export default function OrdersPage() {
     if (quantity) setOrderQuantity(quantity);
   };
 
+  // // 코인별 임계값 설정
+  // const getThresholdForCoin = (symbol: string) => {
+  //   if (symbol.includes('XRP')) {
+  //     return { plus: 0.5, minus: -0.2 }; // 리플용 낮은 임계값
+  //   }
+  //   return { plus: MAX_SLOPE_THRESHOLD, minus: -MIN_SLOPE_THRESHOLD }; // 기본 임계값
+  // };
+
+  // const thresholds = getThresholdForCoin(selectedSymbol);
+  // const THRESHOLD_ANGLE_240_PLUS = thresholds.plus;
+  // const THRESHOLD_ANGLE_240_MINUS = thresholds.minus;
+
   return (
     <main className="min-h-screen p-8 bg-gray-900">
       <div className="max-w-7xl mx-auto">

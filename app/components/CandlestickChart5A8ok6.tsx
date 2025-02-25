@@ -69,6 +69,7 @@ interface CrossPoint {
     ma60: number;
     ma360: number;
     ma120: number;
+    ma240: number;
   };
 }
 
@@ -271,103 +272,50 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 매수/매도 신호 생성 로직 수정
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
+    const THRESHOLD_ANGLE_240_PLUS = MAX_SLOPE_THRESHOLD;
+    const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
+    const THRESHOLD_ANGLE_120_PLUS = MAX_SLOPE_THRESHOLD;
+    
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
-    const startTime = Math.floor(Date.now() / 1000) - 1500; // 현재 시간에서 25분 전 부터 매매
+    const startTime = Math.floor(Date.now() / 1000) - 1500;
     
     // 필요한 MA 데이터 가져오기
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
-    
-    // 조건 지속 시간 추적을 위한 변수들
-    let buyConditionStartTime: number | null = null;
-    let sellConditionStartTime: number | null = null;
-    const CONDITION_DURATION_THRESHOLD = 10; // 10초 지속 조건
-    
-    const MIN_TIME_BETWEEN_TRADES = 30; // 30초
-    
+    const MIN_TIME_BETWEEN_TRADES = 30;
+
     for (let i = 1; i < thirtyEMA.length; i++) {
       const currentTime = thirtyEMA[i].time as number;
-      
-      // 시작 시간 이전의 신호는 무시
       if (currentTime < startTime) continue;
-      
+      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;
+
+      const prevThirty = thirtyEMA[i - 1].value;
+      const prevForty = fortyEMA[i - 1].value;
+      const prevSixty = sixtyEMA[i - 1].value;
       const currThirty = thirtyEMA[i].value;
-      
-      // 240MA 관련 데이터 계산
-      const tolerance = 3; // 초 단위 허용 오차
-      const ma240Index = ma240Data ? ma240Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
-      const ma120Index = ma120Data ? ma120Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
-      
+      const currForty = fortyEMA[i].value;
+      const currSixty = sixtyEMA[i].value;
+
       // 기울기 계산
       const slopes = {
-        ma40: fortyEMA[i].value - fortyEMA[i-1].value,
-        ma60: sixtyEMA[i].value - sixtyEMA[i-1].value,
-        ma120: ma120Index !== undefined && ma120Index > 0 && ma120Data
-          ? ma120Data[ma120Index].value - ma120Data[ma120Index-1].value
-          : 0,
-        ma240: ma240Index !== undefined && ma240Index > 0 && ma240Data
-          ? ma240Data[ma240Index].value - ma240Data[ma240Index-1].value
-          : 0,
-        ma360: ma360Data && i < ma360Data.length && i > 0
-          ? ma360Data[i].value - ma360Data[i-1].value
-          : 0
+        ma40: currForty - prevForty,
+        ma60: currSixty - prevSixty,
+        ma120: ma120Data && i < ma120Data.length ? ma120Data[i].value - ma120Data[i-1].value : 0,
+        ma240: ma240Data && i < ma240Data.length ? ma240Data[i].value - ma240Data[i-1].value : 0,
+        ma360: ma360Data && i < ma360Data.length ? ma360Data[i].value - ma360Data[i-1].value : 0
       };
+
+      // 매수 조건: 두 가지 전략 중 하나라도 만족하면 매수
+      const strategy1BuyCondition = currThirty > currSixty && currForty > currSixty && 
+                                  prevThirty <= prevForty && currThirty > currForty;
       
-      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  // 30초 간격 유지
-// 파일 상단의 다른 임계값 상수들과 함께 추가
-const THRESHOLD_ANGLE_240_PLUS = MAX_SLOPE_THRESHOLD;        // 240MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;  
-      // 매수 기본 조건 확인 (240MA와 120MA의 기울기가 양수 임계값보다 큼)
-      const buyBaseCondition = 
-        slopes.ma240 > THRESHOLD_ANGLE_240_PLUS && 
-        slopes.ma120 > THRESHOLD_ANGLE_120_PLUS;
-      
-      // 매도 기본 조건 확인 (240MA와 120MA의 기울기가 음수 임계값보다 작음)
-      const sellBaseCondition = 
-        slopes.ma240 < THRESHOLD_ANGLE_240_MINUS && 
-        slopes.ma120 < THRESHOLD_ANGLE_120_MINUS;
-      
-      // 매수 추가 조건 확인
-      const buyAdditionalCondition = 
-        ma240Index >= 0 && 
-        ma120Index >= 0 && 
-        fortyEMA[i].value < ma240Data[ma240Index].value && 
-        fortyEMA[i].value > ma120Data[ma120Index].value;
-      
-      // 매도 추가 조건 확인
-      const sellAdditionalCondition = 
-        ma240Index >= 0 && 
-        ma120Index >= 0 && 
-        fortyEMA[i].value > ma240Data[ma240Index].value && 
-        fortyEMA[i].value < ma120Data[ma120Index].value;
-      
-      // 매수 조건 지속 시간 추적
-      if (buyBaseCondition) {
-        if (buyConditionStartTime === null) {
-          buyConditionStartTime = currentTime;
-        }
-      } else {
-        buyConditionStartTime = null;
-      }
-      
-      // 매도 조건 지속 시간 추적
-      if (sellBaseCondition) {
-        if (sellConditionStartTime === null) {
-          sellConditionStartTime = currentTime;
-        }
-      } else {
-        sellConditionStartTime = null;
-      }
-      
-      // 매수 신호 생성 (변경 없음)
-      if (lastAction !== 'buy' && (
-          (buyBaseCondition && buyConditionStartTime !== null && 
-           (currentTime - buyConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
-          (buyBaseCondition && buyAdditionalCondition)
-        )) {
+      const strategy2BuyCondition = slopes.ma240 > THRESHOLD_ANGLE_240_PLUS && 
+                                   slopes.ma120 > THRESHOLD_ANGLE_120_PLUS;
+
+      if (lastAction !== 'buy' && (strategy1BuyCondition || strategy2BuyCondition)) {
         crossPoints.push({
           time: thirtyEMA[i].time,
           position: 'buy',
@@ -377,15 +325,14 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
         });
         lastAction = 'buy';
         lastActionTime = currentTime;
-        buyConditionStartTime = null;
       }
+      // 매도 조건: 두 가지 전략 중 하나라도 만족하면 매도
+      const strategy1SellCondition = currThirty < currSixty && currForty < currSixty;
       
-      // 매도 신호 생성 (수정: lastAction이 'buy'일 때만 매도 신호 생성)
-      else if (lastAction === 'buy' && (
-          (sellBaseCondition && sellConditionStartTime !== null && 
-           (currentTime - sellConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
-          (sellBaseCondition && sellAdditionalCondition)
-        )) {
+      const strategy2SellCondition = slopes.ma240 < THRESHOLD_ANGLE_240_MINUS && 
+                                    slopes.ma120 < THRESHOLD_ANGLE_120_MINUS;
+
+      if (lastAction === 'buy' && (strategy1SellCondition || strategy2SellCondition)) {
         crossPoints.push({
           time: thirtyEMA[i].time,
           position: 'sell',
@@ -395,7 +342,6 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
         });
         lastAction = 'sell';
         lastActionTime = currentTime;
-        sellConditionStartTime = null;
       }
     }
     
@@ -442,7 +388,7 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
  //SKY
  // 최소 기울기 임계값
 const MIN_SLOPE_THRESHOLD = 2; 
-const MAX_SLOPE_THRESHOLD = 5;
+const MAX_SLOPE_THRESHOLD = 2; //5;
 // 360MA 관련 임계값
 const THRESHOLD_ANGLE_360 = MAX_SLOPE_THRESHOLD;        // 360MA 매수 기준: 기울기가 5도 이상일 때
 const THRESHOLD_ANGLE_360_MINUS = -MIN_SLOPE_THRESHOLD; // 360MA 매도 기준: 기울기가 -2도 이하일 때
@@ -2373,6 +2319,57 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       twoFortyEMASeriesRef.current.setData(twoFortyEMAData);
     }
   }, [candleSeriesRef, maPeriods.twoForty]);
+
+  // 컴포넌트 내부에 상태 추가 (다른 상태 변수들 근처에 추가)
+  const [marketList, setMarketList] = useState<{market: string, korean_name: string, english_name: string}[]>([]);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(symbol);
+
+  // 컴포넌트 마운트 시 거래 가능한 종목 목록 가져오기
+  useEffect(() => {
+    const fetchMarketList = async () => {
+      try {
+        const response = await fetch('https://api.upbit.com/v1/market/all?is_details=true');
+        if (!response.ok) throw new Error('마켓 목록 가져오기 실패');
+        
+        const data = await response.json();
+        // KRW 마켓만 필터링
+        const krwMarkets = data.filter((item: any) => item.market.startsWith('KRW-'));
+        setMarketList(krwMarkets);
+      } catch (error) {
+        console.error('마켓 목록 로딩 오류:', error);
+      }
+    };
+    
+    fetchMarketList();
+  }, []);
+
+  // 심볼 변경 핸들러
+  const handleSymbolChange = (newSymbol: string) => {
+    setSelectedSymbol(newSymbol);
+    // 차트 데이터 리셋 및 새 심볼로 데이터 로드
+    if (dateRange.startDate && dateRange.endDate) {
+      resetAndLoadData(dateRange.startDate, dateRange.endDate);
+    }
+  };
+
+  // JSX 부분에 심볼 선택 UI 추가 (다른 컨트롤 패널 근처에 추가)
+  // 예를 들어 "시작 날짜 설정 패널" 위에 추가
+  <div className="mb-4">
+    <div className="bg-gray-800 p-4 rounded-lg">
+      <div className="text-gray-400 text-sm mb-2">코인 선택</div>
+      <select
+        value={selectedSymbol}
+        onChange={(e) => handleSymbolChange(e.target.value)}
+        className="bg-gray-700 text-white p-2 rounded w-full"
+      >
+        {marketList.map((item) => (
+          <option key={item.market} value={item.market}>
+            {item.korean_name} ({item.market})
+          </option>
+        ))}
+      </select>
+    </div>
+  </div>
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
