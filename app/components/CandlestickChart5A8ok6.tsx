@@ -304,7 +304,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         ma360: ma360Index !== undefined && ma360Index > 0
           ? ma360Data[ma360Index].value - ma360Data[ma360Index-1].value
           : 0,
-        ma120: oneTwentyEMASeriesRef.current?.data()[i] && 'value' in oneTwentyEMASeriesRef.current?.data()[i] 
+        ma120: oneTwentyEMASeriesRef.current?.data()?.[i] && 'value' in oneTwentyEMASeriesRef.current?.data()[i] 
           ? (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value - 
             (oneTwentyEMASeriesRef.current?.data()[i-1] as LineData<Time>).value 
           : 0
@@ -331,6 +331,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       else if (isAbove360MA &&
                slopes.ma60 < THRESHOLD_ANGLE_60_MINUS &&   
                slopes.ma120 < THRESHOLD_ANGLE_120_MINUS &&  
+               // 60MA가 360MA 위에 있고 120MA보다 아래에 있는 조건 추가
+               fortyEMA[i].value > ma360Data[ma360Index].value && 
+               oneTwentyEMASeriesRef.current?.data()?.[i] && 'value' in oneTwentyEMASeriesRef.current?.data()[i] && fortyEMA[i].value < (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value &&
                lastAction !== 'sell') {
         crossPoints.push({
           time: thirtyEMA[i].time,
@@ -403,8 +406,10 @@ const THRESHOLD_ANGLE_60_MINUS = -MIN_SLOPE_THRESHOLD;  // 60MA 매도 기준: �
 // 120MA 관련 임계값 추가
 const THRESHOLD_ANGLE_120 = MAX_SLOPE_THRESHOLD;        // 120MA 매수 기준: 기울기가 5도 이상일 때
 const THRESHOLD_ANGLE_120_MINUS = -MIN_SLOPE_THRESHOLD; // 120MA 매도 기준: 기울기가 -2도 이하일 때
-
-      // 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
+ 
+ 
+  
+  // 다른 상태 변수들... 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
  
   // 40MA의 특정 각도(5도 이상) 이상 지속 시간을 초 단위로 계산하는 함수,
   // 5초 미만이면 0을 반환하여 5초 이상 지속되는 경우에만 표시
@@ -2842,22 +2847,7 @@ function getBuySustainedDuration(maData: LineData<Time>[], index: number, buyThr
   // 최대 30개의 과거 데이터만 확인 (약 30초)
   const lookbackLimit = Math.max(0, index - 15);
   
-  while (startIndex > lookbackLimit && maData[startIndex].value > buyThreshold) {
-    startIndex--;
-  }
-  
-  duration = (maData[index].time as number) - (maData[startIndex].time as number);
-  return duration >= 15 ? duration : 0; // 30초 미만이면 0으로 처리
-}
-
-function getSellSustainedDuration(maData: LineData<Time>[], index: number, sellThreshold: number): number {
-  let startIndex = index;
-  let duration = 0;
-  
-  // 최대 30개의 과거 데이터만 확인 (약 30초)
-  const lookbackLimit = Math.max(0, index - 15);
-  
-  while (startIndex > lookbackLimit && maData[startIndex].value < sellThreshold) {
+  while (startIndex > lookbackLimit && maData[startIndex].value < buyThreshold) {
     startIndex--;
   }
   
