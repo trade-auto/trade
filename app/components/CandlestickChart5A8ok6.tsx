@@ -313,28 +313,24 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       if (currentTime - lastActionTime < 120) continue;  // 120초 (2분)로 수정
       
       // SLOPE_FILTER 전략 조건만 적용
-      if (!isAbove360MA && slopes.ma360 > THRESHOLD_ANGLE_360 && 
-          slopes.ma40 > THRESHOLD_ANGLE_40 && slopes.ma60 > THRESHOLD_ANGLE_40 && 
-          Math.abs(slopes.ma360) > MIN_SLOPE_THRESHOLD && // 360MA 기울기 2도 이상
-          Math.abs(slopes.ma120) > MIN_SLOPE_THRESHOLD && // 120MA 기울기 2도 이상
-          Math.abs(slopes.ma60) > MIN_SLOPE_THRESHOLD &&  // 60MA 기울기 2도 이상
+      if (!isAbove360MA && 
+          slopes.ma360 > THRESHOLD_ANGLE_360 && 
+          slopes.ma60 > THRESHOLD_ANGLE_60 &&          
+          slopes.ma120 > THRESHOLD_ANGLE_120 &&         
           lastAction !== 'buy') {
           crossPoints.push({
             time: thirtyEMA[i].time,
             position: 'buy',
             price: currThirty,
-          isAbove360MA,
+            isAbove360MA,
             slopes
           });
-        lastAction = 'buy';
-        lastActionTime = currentTime;
-        }
-      else if (isAbove360MA &&
-               slopes.ma40 < THRESHOLD_ANGLE_40_MINUS && 
-               slopes.ma60 < THRESHOLD_ANGLE_40_MINUS && 
-               Math.abs(slopes.ma360) > MIN_SLOPE_THRESHOLD && // 360MA 기울기 2도 이상
-               Math.abs(slopes.ma120) > MIN_SLOPE_THRESHOLD && // 120MA 기울기 2도 이상
-               Math.abs(slopes.ma60) > MIN_SLOPE_THRESHOLD &&  // 60MA 기울기 2도 이상
+          lastAction = 'buy';
+          lastActionTime = currentTime;
+      }
+      else if (isAbove360MA && 
+               slopes.ma60 < THRESHOLD_ANGLE_60_MINUS &&   
+               slopes.ma120 < THRESHOLD_ANGLE_120_MINUS &&  
                lastAction !== 'sell') {
         crossPoints.push({
           time: thirtyEMA[i].time,
@@ -403,6 +399,10 @@ const THRESHOLD_ANGLE_40_MINUS = -MIN_SLOPE_THRESHOLD;  // 40MA 매도 기준: �
 // 60MA 관련 임계값 추가
 const THRESHOLD_ANGLE_60 = MAX_SLOPE_THRESHOLD;         // 60MA 매수 기준: 기울기가 5도 이상일 때
 const THRESHOLD_ANGLE_60_MINUS = -MIN_SLOPE_THRESHOLD;  // 60MA 매도 기준: 기울기가 -2도 이하일 때
+
+// 120MA 관련 임계값 추가
+const THRESHOLD_ANGLE_120 = MAX_SLOPE_THRESHOLD;        // 120MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_120_MINUS = -MIN_SLOPE_THRESHOLD; // 120MA 매도 기준: 기울기가 -2도 이하일 때
 
       // 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
  
