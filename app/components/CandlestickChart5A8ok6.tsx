@@ -309,14 +309,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             (oneTwentyEMASeriesRef.current?.data()[i-1] as LineData<Time>).value 
           : 0
       };
-
-      if (currentTime - lastActionTime < 120) continue;  // 120초 (2분)로 수정
+      //sky
+      const MIN_TIME_BETWEEN_TRADES = 30 //30초  로 수정
+      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  //30초 (2분)로 수정
       
       // SLOPE_FILTER 전략 조건만 적용
-      if (!isAbove360MA && 
-          slopes.ma360 > THRESHOLD_ANGLE_360 && 
-          slopes.ma60 > THRESHOLD_ANGLE_60 &&          
-          slopes.ma120 > THRESHOLD_ANGLE_120 &&         
+      // if (!isAbove360MA && 
+      //     slopes.ma360 > THRESHOLD_ANGLE_360 && 
+      //     slopes.ma60 > THRESHOLD_ANGLE_60 &&          
+      //     slopes.ma120 > THRESHOLD_ANGLE_120 &&    
+      else if (!isAbove360MA && // 가격이 360MA 아래에 있음
+        slopes.ma60 > THRESHOLD_ANGLE_60_PLUS && // 60MA 기울기가 양수 임계값보다 큼
+        slopes.ma120 > THRESHOLD_ANGLE_120_PLUS && // 120MA 기울기가 양수 임계값보다 큼
+        fortyEMA[i].value < ma360Data[ma360Index].value && // 40EMA가 360MA보다 아래에 있음
+        oneTwentyEMASeriesRef.current?.data()?.[i] && 
+        'value' in oneTwentyEMASeriesRef.current?.data()[i] && 
+        fortyEMA[i].value > (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value && // 40EMA가 120EMA보다 위에 있음
+    
           lastAction !== 'buy') {
           crossPoints.push({
             time: thirtyEMA[i].time,
@@ -407,7 +416,9 @@ const THRESHOLD_ANGLE_60_MINUS = -MIN_SLOPE_THRESHOLD;  // 60MA 매도 기준: �
 const THRESHOLD_ANGLE_120 = MAX_SLOPE_THRESHOLD;        // 120MA 매수 기준: 기울기가 5도 이상일 때
 const THRESHOLD_ANGLE_120_MINUS = -MIN_SLOPE_THRESHOLD; // 120MA 매도 기준: 기울기가 -2도 이하일 때
  
- 
+ // 파일 상단에 상수 추가
+const THRESHOLD_ANGLE_60_PLUS = THRESHOLD_ANGLE_60;  // 또는 원하는 값(예: 2)으로 설정
+const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   
   // 다른 상태 변수들... 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
  
