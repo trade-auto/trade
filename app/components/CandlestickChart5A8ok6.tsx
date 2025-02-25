@@ -120,8 +120,8 @@ interface Trade {
   mode: 'test' | 'test-auto' | 'live-auto';  // 'live'를 'live-auto'로 변경
   angles?: {
     entryMa40?: number;
-    entryMa360?: number;
     exitMa40?: number;
+    entryMa360?: number;
     exitMa360?: number;
     entryMa120?: number;
     exitMa120?: number;
@@ -277,9 +277,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // 360MA 데이터 가져오기
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
     
-    // 기울기 임계값 설정
-    const buyThreshold = 0.01;   // 1%
-    const sellThreshold = -0.01; // -1%
+    // 기존 임계값 설정 제거
+    // const buyThreshold = 0.01;   // 1%
+    // const sellThreshold = -0.01; // -1%
     
     for (let i = 1; i < thirtyEMA.length; i++) {
       const currentTime = thirtyEMA[i].time as number;
@@ -351,13 +351,22 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   // 새로운 각도 계산 함수 - 360MA 전용 (정규화)
   const calculateAngleNormalized = (ma: LineData<Time>[], index: number): number => {
     if (!ma || !ma[index] || index < 5) return 0;
+    
+    // 5개 데이터 포인트 사용 (현재 포인트와 이전 4개 포인트)
     const points = ma.slice(Math.max(0, index - 4), index + 1);
     const startPoint = points[0];
     const endPoint = points[points.length - 1];
+    
+    // x축은 시간 차이를 분 단위로 변환
     const dx = ((endPoint.time as number) - (startPoint.time as number)) / 60;
+    // y축은 가격 차이
     const dy = endPoint.value - startPoint.value;
+    
+    // 각도 계산 (라디안에서 도로 변환)
     const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    return ((angle + 180) % 180) - 90;  // 0도를 기준으로 -90 ~ 90도 범위로 정규화
+    
+    // -90도에서 90도 사이로 정규화
+    return ((angle + 180) % 180) - 90;
   };
 
   // 새로운 각도 계산 함수 - 40MA 전용 (원시 각도)
@@ -376,11 +385,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
  //SK
 // 360MA 관련 임계값
 const THRESHOLD_ANGLE_360 = 5;        // 360MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_360_MINUS = -1; // 360MA 매도 기준: 기울기가 -5도 이하일 때
+const THRESHOLD_ANGLE_360_MINUS = -2; // 360MA 매도 기준: 기울기가 -5도 이하일 때
 
 // 40MA 관련 임계값
 const THRESHOLD_ANGLE_40 = 5;         // 40MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_40_MINUS = -1;  // 40MA 매도 기준: 기울기가 -5도 이하일 때
+const THRESHOLD_ANGLE_40_MINUS = -2;  // 40MA 매도 기준: 기울기가 -5도 이하일 때
 
 // 최소 기울기 임계값
 const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
@@ -404,23 +413,28 @@ const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2
 
   const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
     const markers: SeriesMarker<Time>[] = [];
+    let tradeId = 1;
     
-    crossPoints.forEach((point, index) => {
-      // 기울기 절대값 계산
-      const absSlopes = {
-        ma40: Math.abs(point.slopes.ma40),
-        ma60: Math.abs(point.slopes.ma60),
-        ma120: Math.abs(point.slopes.ma120),
-        ma360: Math.abs(point.slopes.ma360)
-      };
-
+    const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
+    const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
+    const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
+    
+    crossPoints.forEach((point) => {
+      const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
+      const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
+      const ma120Index = ma120Data?.findIndex(d => d.time === point.time);
+      
+      const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
+      const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
+      const validMa120Index = ma120Index >= 0 ? ma120Index : 0;
+      
       if (point.position === 'buy') {
         markers.push({
           time: point.time,
           position: 'belowBar',
           color: '#26a69a',
           shape: 'arrowUp',
-          text: `매수 (MA40: ${absSlopes.ma40.toFixed(2)}°, MA120: ${absSlopes.ma120.toFixed(2)}°)`,
+          text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
           size: 2
         });
       } else {
@@ -429,9 +443,10 @@ const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2
           position: 'aboveBar',
           color: '#ef5350',
           shape: 'arrowDown',
-          text: `매도 (MA40: ${absSlopes.ma40.toFixed(2)}°, MA120: ${absSlopes.ma120.toFixed(2)}°)`,
+          text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
           size: 2
         });
+        tradeId++;
       }
     });
     
@@ -2564,6 +2579,8 @@ const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2
                   <th className="px-4 py-2">거래 모드</th>
                   <th className="px-4 py-2">매수 시 360MA 기울기</th>
                   <th className="px-4 py-2">매도 시 360MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 40MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 40MA 기울기</th>
                   <th className="px-4 py-2">매수 시 120MA 기울기</th>
                   <th className="px-4 py-2">매도 시 120MA 기울기</th>
                 </tr>
@@ -2623,14 +2640,28 @@ const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2
                         (trade.angles?.entryMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
                         {trade.angles?.entryMa360 
-                          ? `매수 ${index + 1} (360MA: ${trade.angles.entryMa360.toFixed(2)}%)`
+                          ? `매수 ${index + 1} (360MA: ${trade.angles.entryMa360.toFixed(1)}°)`
                           : '-'}
                       </td>
                       <td className={`px-4 py-2 ${
                         (trade.angles?.exitMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
                         {trade.angles?.exitMa360
-                          ? `매도 ${index + 1} (360MA: ${trade.angles.exitMa360.toFixed(2)}%)`
+                          ? `매도 ${index + 1} (360MA: ${trade.angles.exitMa360.toFixed(1)}°)`
+                          : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.angles?.entryMa40 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.angles?.entryMa40
+                          ? `매수 ${index + 1} (40MA: ${trade.angles.entryMa40.toFixed(1)}°)`
+                          : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.angles?.exitMa40 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.angles?.exitMa40
+                          ? `매도 ${index + 1} (40MA: ${trade.angles.exitMa40.toFixed(1)}°)`
                           : '-'}
                       </td>
                       <td className={`px-4 py-2 ${
