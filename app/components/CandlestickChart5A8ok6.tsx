@@ -317,15 +317,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       };
       
       if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  // 30초 간격 유지
-      
-      // 매수 기본 조건 확인
+// 파일 상단의 다른 임계값 상수들과 함께 추가
+const THRESHOLD_ANGLE_240_PLUS = MAX_SLOPE_THRESHOLD;        // 240MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;  
+      // 매수 기본 조건 확인 (240MA와 120MA의 기울기가 양수 임계값보다 큼)
       const buyBaseCondition = 
-        slopes.ma60 > THRESHOLD_ANGLE_60_PLUS && 
+        slopes.ma240 > THRESHOLD_ANGLE_240_PLUS && 
         slopes.ma120 > THRESHOLD_ANGLE_120_PLUS;
       
-      // 매도 기본 조건 확인
+      // 매도 기본 조건 확인 (240MA와 120MA의 기울기가 음수 임계값보다 작음)
       const sellBaseCondition = 
-        slopes.ma60 < THRESHOLD_ANGLE_60_MINUS && 
+        slopes.ma240 < THRESHOLD_ANGLE_240_MINUS && 
         slopes.ma120 < THRESHOLD_ANGLE_120_MINUS;
       
       // 매수 추가 조건 확인
@@ -491,18 +493,15 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma60Data = sixtyEMASeriesRef.current?.data() as LineData<Time>[];
     
     crossPoints.forEach((point) => {
       const ma240Index = ma240Data?.findIndex(d => d.time === point.time);
       const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
       const ma120Index = ma120Data?.findIndex(d => d.time === point.time);
-      const ma60Index = ma60Data?.findIndex(d => d.time === point.time);
       
       const validMa240Index = ma240Index >= 0 ? ma240Index : 0;
       const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
       const validMa120Index = ma120Index >= 0 ? ma120Index : 0;
-      const validMa60Index = ma60Index >= 0 ? ma60Index : 0;
       
       if (point.position === 'buy') {
         markers.push({
@@ -510,7 +509,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           position: 'belowBar',
           color: '#26a69a',
           shape: 'arrowUp',
-          text: `매수 ${tradeId} (60MA: ${calculateAngleRaw(ma60Data, validMa60Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
+          text: `매수 ${tradeId} (240MA: ${calculateAngleRaw(ma240Data, validMa240Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
           size: 2
         });
       } else {
@@ -519,7 +518,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           position: 'aboveBar',
           color: '#ef5350',
           shape: 'arrowDown',
-          text: `매도 ${tradeId} (60MA: ${calculateAngleRaw(ma60Data, validMa60Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
+          text: `매도 ${tradeId} (240MA: ${calculateAngleRaw(ma240Data, validMa240Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
           size: 2
         });
         tradeId++;
