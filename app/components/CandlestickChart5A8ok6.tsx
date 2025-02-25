@@ -362,44 +362,40 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
         sellConditionStartTime = null;
       }
       
-      // 매수 신호 생성
+      // 매수 신호 생성 (변경 없음)
       if (lastAction !== 'buy' && (
-          // 조건 1: 기본 조건이 10초 이상 지속
           (buyBaseCondition && buyConditionStartTime !== null && 
            (currentTime - buyConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
-          // 조건 2: 기본 조건 + 추가 조건
           (buyBaseCondition && buyAdditionalCondition)
         )) {
         crossPoints.push({
           time: thirtyEMA[i].time,
           position: 'buy',
           price: currThirty,
-          isAbove360MA: false, // 이 값은 이제 사용하지 않지만 타입 호환성을 위해 유지
+          isAbove360MA: false,
           slopes
         });
         lastAction = 'buy';
         lastActionTime = currentTime;
-        buyConditionStartTime = null; // 조건 리셋
+        buyConditionStartTime = null;
       }
       
-      // 매도 신호 생성
-      else if (lastAction !== 'sell' && (
-          // 조건 1: 기본 조건이 10초 이상 지속
+      // 매도 신호 생성 (수정: lastAction이 'buy'일 때만 매도 신호 생성)
+      else if (lastAction === 'buy' && (
           (sellBaseCondition && sellConditionStartTime !== null && 
            (currentTime - sellConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
-          // 조건 2: 기본 조건 + 추가 조건
           (sellBaseCondition && sellAdditionalCondition)
         )) {
         crossPoints.push({
           time: thirtyEMA[i].time,
           position: 'sell',
           price: currThirty,
-          isAbove360MA: false, // 이 값은 이제 사용하지 않지만 타입 호환성을 위해 유지
+          isAbove360MA: false,
           slopes
         });
         lastAction = 'sell';
         lastActionTime = currentTime;
-        sellConditionStartTime = null; // 조건 리셋
+        sellConditionStartTime = null;
       }
     }
     
