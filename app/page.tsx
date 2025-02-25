@@ -15,7 +15,8 @@ const SYMBOLS = [
   { symbol: 'KRW-ETH', name: '이더리움' },
   { symbol: 'KRW-XRP', name: '리플' },
   { symbol: 'KRW-STORJ', name: '스토리지' },
-  { symbol: 'KRW-ONDO', name: '온도' }
+  { symbol: 'KRW-ONDO', name: '온도' },
+  { symbol: 'KRW-DOGE', name: '도지코인' }
 ];
 
 const CHART_TYPES = [
@@ -28,8 +29,8 @@ const CHART_TYPES = [
   { value: '86400', label: '년봉' }
 ];
 
-// 추가: 차트 모드 상태 (combined vs non-combined)
-type ChartMode = "combined" | "non-combined";
+// 추가: 차트 모드 상태 (live vs test)
+type ChartMode = "live" | "test";
 
 // 계좌 정보 인터페이스 추가
 interface AccountInfo {
@@ -42,8 +43,8 @@ interface AccountInfo {
 export default function Home() {
   const [selectedSymbol, setSelectedSymbol] = useState('KRW-BTC');
   const [selectedChartType, setSelectedChartType] = useState('minutes/1');
-  // 추가: 차트 모드 상태 변수 (기본은 non-combined)
-  const [chartMode, setChartMode] = useState<ChartMode>("non-combined");
+  // 추가: 차트 모드 상태 변수 (기본은 test)
+  const [chartMode, setChartMode] = useState<ChartMode>("test");
   
   // 계좌 정보 상태 추가
   const [accounts, setAccounts] = useState<AccountInfo[]>([]);
@@ -69,6 +70,20 @@ export default function Home() {
       console.error('계좌 정보 로딩 오류:', error);
     } finally {
       setIsLoadingAccounts(false);
+    }
+  };
+
+  // Set the default mode to a valid value
+  const defaultMode: ChartMode = "test"; // or "live", depending on your default
+
+  // Define the handleOrder function with the correct signature
+  const handleOrder = async (params: { market: string; side: "bid" | "ask"; volume: string; price: string; ord_type: string; mode: string; }): Promise<void> => {
+    try {
+      // Implement your order handling logic here
+      console.log("Order parameters:", params);
+      // Example: await someOrderFunction(params);
+    } catch (error) {
+      console.error("Order handling error:", error);
     }
   };
 
@@ -116,28 +131,30 @@ export default function Home() {
         {/* 차트 모드 선택 버튼 */}
         <div className="flex space-x-4 mb-8">
           <button
-            onClick={() => setChartMode("non-combined")}
-            className={`px-4 py-2 rounded ${chartMode === "non-combined" ? "bg-blue-600" : "bg-gray-600"}`}
+            onClick={() => setChartMode("test")}
+            className={`px-4 py-2 rounded ${chartMode === "test" ? "bg-blue-600" : "bg-gray-600"}`}
           >
-            Non-Combined
+            Test
           </button>
           <button
-            onClick={() => setChartMode("combined")}
-            className={`px-4 py-2 rounded ${chartMode === "combined" ? "bg-blue-600" : "bg-gray-600"}`}
+            onClick={() => setChartMode("live")}
+            className={`px-4 py-2 rounded ${chartMode === "live" ? "bg-blue-600" : "bg-gray-600"}`}
           >
-            Combined
+            Live
           </button>
         </div>
 
         {/* 차트 그리드 또는 Combined 모드에 따른 단일 차트 렌더링 */}
-        {chartMode === "combined" ? (
+        {chartMode === "live" ? (
           <div className="bg-gray-800 p-4 rounded-lg mb-8">
             <h2 className="text-xl font-bold text-white mb-4">
-              {SYMBOLS.find(s => s.symbol === selectedSymbol)?.name} Combined Chart
+              {SYMBOLS.find(s => s.symbol === selectedSymbol)?.name} Live Chart
             </h2>
             <CandlestickChart 
               symbol={selectedSymbol} 
               chartType="combined"
+              mode={defaultMode}
+              handleOrder={handleOrder}
             />
           </div>
         ) : (
@@ -150,6 +167,8 @@ export default function Home() {
                 <CandlestickChart 
                   symbol={selectedSymbol} 
                   chartType={value}
+                  mode={defaultMode}
+                  handleOrder={handleOrder}
                 />
               </div>
             ))}

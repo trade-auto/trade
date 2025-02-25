@@ -322,13 +322,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             time: thirtyEMA[i].time,
             position: 'buy',
             price: currThirty,
-            isAbove360MA,
+          isAbove360MA,
             slopes
           });
-          lastAction = 'buy';
-          lastActionTime = currentTime;
-      }
-      else if (isAbove360MA && 
+        lastAction = 'buy';
+        lastActionTime = currentTime;
+        }
+      else if (isAbove360MA &&
                slopes.ma60 < THRESHOLD_ANGLE_60_MINUS &&   
                slopes.ma120 < THRESHOLD_ANGLE_120_MINUS &&  
                lastAction !== 'sell') {
