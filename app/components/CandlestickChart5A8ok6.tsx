@@ -315,6 +315,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // SLOPE_FILTER 전략 조건만 적용
       if (!isAbove360MA && slopes.ma360 > THRESHOLD_ANGLE_360 && 
           slopes.ma40 > THRESHOLD_ANGLE_40 && slopes.ma60 > THRESHOLD_ANGLE_40 && 
+          Math.abs(slopes.ma360) > MIN_SLOPE_THRESHOLD && // 360MA 기울기 2도 이상
+          Math.abs(slopes.ma120) > MIN_SLOPE_THRESHOLD && // 120MA 기울기 2도 이상
+          Math.abs(slopes.ma60) > MIN_SLOPE_THRESHOLD &&  // 60MA 기울기 2도 이상
           lastAction !== 'buy') {
           crossPoints.push({
             time: thirtyEMA[i].time,
@@ -326,9 +329,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         lastAction = 'buy';
         lastActionTime = currentTime;
         }
-      else if (isAbove360MA && 
+      else if (isAbove360MA &&
                slopes.ma40 < THRESHOLD_ANGLE_40_MINUS && 
                slopes.ma60 < THRESHOLD_ANGLE_40_MINUS && 
+               Math.abs(slopes.ma360) > MIN_SLOPE_THRESHOLD && // 360MA 기울기 2도 이상
+               Math.abs(slopes.ma120) > MIN_SLOPE_THRESHOLD && // 120MA 기울기 2도 이상
+               Math.abs(slopes.ma60) > MIN_SLOPE_THRESHOLD &&  // 60MA 기울기 2도 이상
                lastAction !== 'sell') {
         crossPoints.push({
           time: thirtyEMA[i].time,
@@ -382,17 +388,23 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   //const THRESHOLD_ANGLE_40 = 5;
  //const THRESHOLD_ANGLE_40_MINUS = -5;
 
- //SK
+ //SKY
+ // 최소 기울기 임계값
+const MIN_SLOPE_THRESHOLD = 2; 
+const MAX_SLOPE_THRESHOLD = 5;
 // 360MA 관련 임계값
-const THRESHOLD_ANGLE_360 = 5;        // 360MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_360_MINUS = -2; // 360MA 매도 기준: 기울기가 -5도 이하일 때
+const THRESHOLD_ANGLE_360 = MAX_SLOPE_THRESHOLD;        // 360MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_360_MINUS = -MIN_SLOPE_THRESHOLD; // 360MA 매도 기준: 기울기가 -2도 이하일 때
 
 // 40MA 관련 임계값
-const THRESHOLD_ANGLE_40 = 5;         // 40MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_40_MINUS = -2;  // 40MA 매도 기준: 기울기가 -5도 이하일 때
+const THRESHOLD_ANGLE_40 = MAX_SLOPE_THRESHOLD;         // 40MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_40_MINUS = -MIN_SLOPE_THRESHOLD;  // 40MA 매도 기준: 기울기가 -2도 이하일 때
 
-// 최소 기울기 임계값
-const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
+// 60MA 관련 임계값 추가
+const THRESHOLD_ANGLE_60 = MAX_SLOPE_THRESHOLD;         // 60MA 매수 기준: 기울기가 5도 이상일 때
+const THRESHOLD_ANGLE_60_MINUS = -MIN_SLOPE_THRESHOLD;  // 60MA 매도 기준: 기울기가 -2도 이하일 때
+
+      // 360MA와 120MA의 기울기가 각각 2도 이상일 때만 매매 신호 발생
  
   // 40MA의 특정 각도(5도 이상) 이상 지속 시간을 초 단위로 계산하는 함수,
   // 5초 미만이면 0을 반환하여 5초 이상 지속되는 경우에만 표시
@@ -447,7 +459,7 @@ const MIN_SLOPE_THRESHOLD = 2;        // 360MA와 120MA의 기울기가 각각 2
           size: 2
         });
         tradeId++;
-      }
+        }
     });
     
     return markers;
