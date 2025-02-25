@@ -48,6 +48,16 @@ interface TradeState {
 // TradeStrategy 타입을 export
 export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
+// maPeriods의 타입 정의
+interface MAType {
+  thirty: number;
+  forty: number;
+  sixty: number;
+  oneTwenty: number;
+  threeHundredSixty: number;
+  twoForty: number;
+}
+
 interface UpbitStore {
   prices: Record<string, PriceData>;
   tickers: Record<string, TickerData>;
@@ -70,22 +80,17 @@ interface UpbitStore {
     minOrderPrice: number;
     maxOrderPrice: number;
   };
-  maPeriods: {
-    thirty: number;
-    forty: number;
-    sixty: number;
-    oneTwenty: number;
-    threeHundredSixty: number;
-  };
-  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'threeHundredSixty', value: number) => void;
+  maPeriods: MAType;
+  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty', value: number) => void;
   showMA: {
     thirty: boolean;
     forty: boolean;
     sixty: boolean;
     oneTwenty: boolean;
+    twoForty: boolean;
     threeHundredSixty: boolean;
   };
-  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'threeHundredSixty') => void;
+  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty') => void;
   tradeStrategy: TradeStrategy;
   updateTradeStrategy: (strategy: TradeStrategy) => void;
 }
@@ -164,6 +169,7 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     forty: 40,
     sixty: 60,
     oneTwenty: 120,
+    twoForty:240,
     threeHundredSixty: 360,
   },
 
@@ -179,6 +185,7 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     forty: true,
     sixty: true,
     oneTwenty: true,
+    twoForty: true,
     threeHundredSixty: true,
   },
 
