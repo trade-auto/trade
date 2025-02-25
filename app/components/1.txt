@@ -356,3 +356,25 @@ else:
 6. 마지막 거래가 매도가 아니어야 함 (lastAction !== 'sell')
 추가 제약:
 연속 거래 사이에 최소 30초의 간격이 있어야 함
+
+매매조건 A5
+// 매수 조건:
+ 
+// 1. 60MA 기울기가 양수 임계값보다 큼 (slopes.ma60 > THRESHOLD_ANGLE_60_PLUS)
+// 2. 120MA 기울기가 양수 임계값보다 큼 (slopes.ma120 > THRESHOLD_ANGLE_120_PLUS)
+ 이고 10초이상 지속되면 매수 또는 
+위1,2조건이고 
+// 3. 40EMA가 240MA보다 아래에 있음 (fortyEMA[i].value < ma240Data[ma240Index].value)
+// 4. 40EMA가 120EMA보다 위에 있음 (fortyEMA[i].value > 120EMA 값)
+// 5. 마지막 거래가 매수가 아닐 때 (lastAction !== 'buy')
+ 
+ 
+// 매도 조건:
+ 
+// 1. 60MA 기울기가 음수 임계값보다 작음 (slopes.ma60 < THRESHOLD_ANGLE_60_MINUS)
+// 2. 120MA 기울기가 음수 임계값보다 작음 (slopes.ma120 < THRESHOLD_ANGLE_120_MINUS)
+ 이고 10초이상 지속되면 매도 또는
+위1,2조건이고 
+// 4. 40EMA가 240MA보다 위에 있음 (fortyEMA[i].value > ma240Data[ma240Index].value)
+// 5. 40EMA가 120EMA보다 아래에 있음 (fortyEMA[i].value < 120EMA 값)
+// 6. 마지막 거래가 매도가 아닐 때 (lastAction !== 'sell')

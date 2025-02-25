@@ -276,12 +276,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     let lastActionTime: number = 0;
     const startTime = Math.floor(Date.now() / 1000) - 1500; // 현재 시간에서 25분 전 부터 매매
     
-    // 360MA 데이터 가져오기
+    // 필요한 MA 데이터 가져오기
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
+    const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
+    const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
     
-    // 기존 임계값 설정 제거
-    // const buyThreshold = 0.01;   // 1%
-    // const sellThreshold = -0.01; // -1%
+    // 조건 지속 시간 추적을 위한 변수들
+    let buyConditionStartTime: number | null = null;
+    let sellConditionStartTime: number | null = null;
+    const CONDITION_DURATION_THRESHOLD = 10; // 10초 지속 조건
+    
+    const MIN_TIME_BETWEEN_TRADES = 30; // 30초
     
     for (let i = 1; i < thirtyEMA.length; i++) {
       const currentTime = thirtyEMA[i].time as number;
@@ -291,83 +296,108 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       
       const currThirty = thirtyEMA[i].value;
       
-      // 360MA 관련 데이터 계산
+      // 240MA 관련 데이터 계산
       const tolerance = 3; // 초 단위 허용 오차
-      const ma360Index = ma360Data ? ma360Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
-      
-      const isAbove360MA = ma360Index !== undefined && ma360Index >= 0 
-        ? currThirty > ma360Data[ma360Index].value
-        : false;
+      const ma240Index = ma240Data ? ma240Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
+      const ma120Index = ma120Data ? ma120Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
       
       // 기울기 계산
       const slopes = {
         ma40: fortyEMA[i].value - fortyEMA[i-1].value,
         ma60: sixtyEMA[i].value - sixtyEMA[i-1].value,
-        ma360: ma360Index !== undefined && ma360Index > 0
-          ? ma360Data[ma360Index].value - ma360Data[ma360Index-1].value
+        ma120: ma120Index !== undefined && ma120Index > 0 && ma120Data
+          ? ma120Data[ma120Index].value - ma120Data[ma120Index-1].value
           : 0,
-        ma120: oneTwentyEMASeriesRef.current?.data()?.[i] && 'value' in oneTwentyEMASeriesRef.current?.data()[i] 
-          ? (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value - 
-            (oneTwentyEMASeriesRef.current?.data()[i-1] as LineData<Time>).value 
+        ma240: ma240Index !== undefined && ma240Index > 0 && ma240Data
+          ? ma240Data[ma240Index].value - ma240Data[ma240Index-1].value
           : 0,
-        ma240: twoFortyEMASeriesRef.current?.data()?.[i] && 'value' in twoFortyEMASeriesRef.current?.data()[i]
-          ? (twoFortyEMASeriesRef.current?.data()[i] as LineData<Time>).value -
-            (twoFortyEMASeriesRef.current?.data()[i-1] as LineData<Time>).value
+        ma360: ma360Data && i < ma360Data.length && i > 0
+          ? ma360Data[i].value - ma360Data[i-1].value
           : 0
       };
-      //sky
-      const MIN_TIME_BETWEEN_TRADES = 30 //30초  로 수정
-      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  //30초 (2분)로 수정
       
-// 매수 조건:
-// 1. 가격이 360MA 아래에 있음 (!isAbove360MA)
-// 2. 60MA 기울기가 양수 임계값보다 큼 (slopes.ma60 > THRESHOLD_ANGLE_60_PLUS)
-// 3. 120MA 기울기가 양수 임계값보다 큼 (slopes.ma120 > THRESHOLD_ANGLE_120_PLUS)
-// 4. 40EMA가 360MA보다 아래에 있음 (fortyEMA[i].value < ma360Data[ma360Index].value)
-// 5. 40EMA가 120EMA보다 위에 있음 (fortyEMA[i].value > 120EMA 값)
-// 6. 마지막 거래가 매수가 아닐 때 (lastAction !== 'buy') 
-      else if (!isAbove360MA && // 가격이 360MA 아래에 있음
-        slopes.ma60 > THRESHOLD_ANGLE_60_PLUS && // 60MA 기울기가 양수 임계값보다 큼
-        slopes.ma120 > THRESHOLD_ANGLE_120_PLUS && // 120MA 기울기가 양수 임계값보다 큼
-        fortyEMA[i].value < ma360Data[ma360Index].value && // 40EMA가 360MA보다 아래에 있음
-        oneTwentyEMASeriesRef.current?.data()?.[i] && 
-        'value' in oneTwentyEMASeriesRef.current?.data()[i] && 
-        fortyEMA[i].value > (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value && // 40EMA가 120EMA보다 위에 있음
-        lastAction !== 'buy') {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'buy',
-            price: currThirty,
-          isAbove360MA,
-            slopes
-          });
+      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  // 30초 간격 유지
+      
+      // 매수 기본 조건 확인
+      const buyBaseCondition = 
+        slopes.ma60 > THRESHOLD_ANGLE_60_PLUS && 
+        slopes.ma120 > THRESHOLD_ANGLE_120_PLUS;
+      
+      // 매도 기본 조건 확인
+      const sellBaseCondition = 
+        slopes.ma60 < THRESHOLD_ANGLE_60_MINUS && 
+        slopes.ma120 < THRESHOLD_ANGLE_120_MINUS;
+      
+      // 매수 추가 조건 확인
+      const buyAdditionalCondition = 
+        ma240Index >= 0 && 
+        ma120Index >= 0 && 
+        fortyEMA[i].value < ma240Data[ma240Index].value && 
+        fortyEMA[i].value > ma120Data[ma120Index].value;
+      
+      // 매도 추가 조건 확인
+      const sellAdditionalCondition = 
+        ma240Index >= 0 && 
+        ma120Index >= 0 && 
+        fortyEMA[i].value > ma240Data[ma240Index].value && 
+        fortyEMA[i].value < ma120Data[ma120Index].value;
+      
+      // 매수 조건 지속 시간 추적
+      if (buyBaseCondition) {
+        if (buyConditionStartTime === null) {
+          buyConditionStartTime = currentTime;
+        }
+      } else {
+        buyConditionStartTime = null;
+      }
+      
+      // 매도 조건 지속 시간 추적
+      if (sellBaseCondition) {
+        if (sellConditionStartTime === null) {
+          sellConditionStartTime = currentTime;
+        }
+      } else {
+        sellConditionStartTime = null;
+      }
+      
+      // 매수 신호 생성
+      if (lastAction !== 'buy' && (
+          // 조건 1: 기본 조건이 10초 이상 지속
+          (buyBaseCondition && buyConditionStartTime !== null && 
+           (currentTime - buyConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
+          // 조건 2: 기본 조건 + 추가 조건
+          (buyBaseCondition && buyAdditionalCondition)
+        )) {
+        crossPoints.push({
+          time: thirtyEMA[i].time,
+          position: 'buy',
+          price: currThirty,
+          isAbove360MA: false, // 이 값은 이제 사용하지 않지만 타입 호환성을 위해 유지
+          slopes
+        });
         lastAction = 'buy';
         lastActionTime = currentTime;
-        }
-      // 매도 조건:
-      // 1. 가격이 360MA 위에 있고 (isAbove360MA)
-      // 2. 60MA 기울기가 음수 임계값보다 작고 (하락세)
-      // 3. 120MA 기울기가 음수 임계값보다 작고 (하락세)
-      // 4. 40EMA가 360MA보다 위에 있고
-      // 5. 40EMA가 120EMA보다 아래에 있고
-      // 6. 마지막 거래가 매도가 아닐 때
-      else if (isAbove360MA &&
-        slopes.ma60 < THRESHOLD_ANGLE_60_MINUS &&   
-        slopes.ma120 < THRESHOLD_ANGLE_120_MINUS &&  
-        fortyEMA[i].value > ma360Data[ma360Index].value && 
-        oneTwentyEMASeriesRef.current?.data()?.[i] && 
-        'value' in oneTwentyEMASeriesRef.current?.data()[i] && 
-        fortyEMA[i].value < (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value &&
-        lastAction !== 'sell') {
+        buyConditionStartTime = null; // 조건 리셋
+      }
+      
+      // 매도 신호 생성
+      else if (lastAction !== 'sell' && (
+          // 조건 1: 기본 조건이 10초 이상 지속
+          (sellBaseCondition && sellConditionStartTime !== null && 
+           (currentTime - sellConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
+          // 조건 2: 기본 조건 + 추가 조건
+          (sellBaseCondition && sellAdditionalCondition)
+        )) {
         crossPoints.push({
           time: thirtyEMA[i].time,
           position: 'sell',
           price: currThirty,
-          isAbove360MA,
+          isAbove360MA: false, // 이 값은 이제 사용하지 않지만 타입 호환성을 위해 유지
           slopes
         });
         lastAction = 'sell';
         lastActionTime = currentTime;
+        sellConditionStartTime = null; // 조건 리셋
       }
     }
     
@@ -458,20 +488,21 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const markers: SeriesMarker<Time>[] = [];
     let tradeId = 1;
     
-    const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
+    const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
+    const ma60Data = sixtyEMASeriesRef.current?.data() as LineData<Time>[];
     
     crossPoints.forEach((point) => {
-      const ma360Index = ma360Data?.findIndex(d => d.time === point.time);
+      const ma240Index = ma240Data?.findIndex(d => d.time === point.time);
       const ma40Index = ma40Data?.findIndex(d => d.time === point.time);
       const ma120Index = ma120Data?.findIndex(d => d.time === point.time);
-      const ma240Index = ma240Data?.findIndex(d => d.time === point.time);
-      const validMa360Index = ma360Index >= 0 ? ma360Index : 0;
+      const ma60Index = ma60Data?.findIndex(d => d.time === point.time);
+      
+      const validMa240Index = ma240Index >= 0 ? ma240Index : 0;
       const validMa40Index = ma40Index >= 0 ? ma40Index : 0;
       const validMa120Index = ma120Index >= 0 ? ma120Index : 0;
-      const validMa240Index = ma240Index >= 0 ? ma240Index : 0;
+      const validMa60Index = ma60Index >= 0 ? ma60Index : 0;
       
       if (point.position === 'buy') {
         markers.push({
@@ -479,7 +510,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           position: 'belowBar',
           color: '#26a69a',
           shape: 'arrowUp',
-          text: `매수 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
+          text: `매수 ${tradeId} (60MA: ${calculateAngleRaw(ma60Data, validMa60Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
           size: 2
         });
       } else {
@@ -488,11 +519,11 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           position: 'aboveBar',
           color: '#ef5350',
           shape: 'arrowDown',
-          text: `매도 ${tradeId} (360MA: ${calculateAngleNormalized(ma360Data, validMa360Index).toFixed(1)}°, 40MA: ${calculateAngleRaw(ma40Data, validMa40Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
+          text: `매도 ${tradeId} (60MA: ${calculateAngleRaw(ma60Data, validMa60Index).toFixed(1)}°, 120MA: ${calculateAngleRaw(ma120Data, validMa120Index).toFixed(1)}°)`,
           size: 2
         });
         tradeId++;
-        }
+      }
     });
     
     return markers;
