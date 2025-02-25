@@ -319,11 +319,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const MIN_TIME_BETWEEN_TRADES = 30 //30초  로 수정
       if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  //30초 (2분)로 수정
       
-      // SLOPE_FILTER 전략 조건만 적용
-      // if (!isAbove360MA && 
-      //     slopes.ma360 > THRESHOLD_ANGLE_360 && 
-      //     slopes.ma60 > THRESHOLD_ANGLE_60 &&          
-      //     slopes.ma120 > THRESHOLD_ANGLE_120 &&    
+// 매수 조건:
+// 1. 가격이 360MA 아래에 있음 (!isAbove360MA)
+// 2. 60MA 기울기가 양수 임계값보다 큼 (slopes.ma60 > THRESHOLD_ANGLE_60_PLUS)
+// 3. 120MA 기울기가 양수 임계값보다 큼 (slopes.ma120 > THRESHOLD_ANGLE_120_PLUS)
+// 4. 40EMA가 360MA보다 아래에 있음 (fortyEMA[i].value < ma360Data[ma360Index].value)
+// 5. 40EMA가 120EMA보다 위에 있음 (fortyEMA[i].value > 120EMA 값)
+// 6. 마지막 거래가 매수가 아닐 때 (lastAction !== 'buy') 
       else if (!isAbove360MA && // 가격이 360MA 아래에 있음
         slopes.ma60 > THRESHOLD_ANGLE_60_PLUS && // 60MA 기울기가 양수 임계값보다 큼
         slopes.ma120 > THRESHOLD_ANGLE_120_PLUS && // 120MA 기울기가 양수 임계값보다 큼
@@ -331,7 +333,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         oneTwentyEMASeriesRef.current?.data()?.[i] && 
         'value' in oneTwentyEMASeriesRef.current?.data()[i] && 
         fortyEMA[i].value > (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value && // 40EMA가 120EMA보다 위에 있음
-              lastAction !== 'buy') {
+        lastAction !== 'buy') {
           crossPoints.push({
             time: thirtyEMA[i].time,
             position: 'buy',
@@ -350,12 +352,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 5. 40EMA가 120EMA보다 아래에 있고
       // 6. 마지막 거래가 매도가 아닐 때
       else if (isAbove360MA &&
-               slopes.ma60 < THRESHOLD_ANGLE_60_MINUS &&   
-               slopes.ma120 < THRESHOLD_ANGLE_120_MINUS &&  
-               // 60MA가 360MA 위에 있고 120MA보다 아래에 있는 조건 추가
-               fortyEMA[i].value > ma360Data[ma360Index].value && 
-               oneTwentyEMASeriesRef.current?.data()?.[i] && 'value' in oneTwentyEMASeriesRef.current?.data()[i] && fortyEMA[i].value < (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value &&
-               lastAction !== 'sell') {
+        slopes.ma60 < THRESHOLD_ANGLE_60_MINUS &&   
+        slopes.ma120 < THRESHOLD_ANGLE_120_MINUS &&  
+        fortyEMA[i].value > ma360Data[ma360Index].value && 
+        oneTwentyEMASeriesRef.current?.data()?.[i] && 
+        'value' in oneTwentyEMASeriesRef.current?.data()[i] && 
+        fortyEMA[i].value < (oneTwentyEMASeriesRef.current?.data()[i] as LineData<Time>).value &&
+        lastAction !== 'sell') {
         crossPoints.push({
           time: thirtyEMA[i].time,
           position: 'sell',
