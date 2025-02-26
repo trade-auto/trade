@@ -2578,42 +2578,42 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
               onClick={() => updateShowMA('ten')}
               className={`px-1 py-0.5 text-xs rounded ${showMA.ten ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.ten ? '10숨기기' : '10보이기'}
+              {showMA.ten ? '✓ 10숨기기' : '10보이기'}
             </button>
 
             <button
               onClick={() => updateShowMA('twenty')}
               className={`px-1 py-0.5 text-xs rounded ${showMA.twenty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.twenty ? '20숨기기' : '20보이기'}
+              {showMA.twenty ? '✓ 20숨기기' : '20보이기'}
             </button>
 
             <button
               onClick={() => updateShowMA('fifty')}
               className={`px-1 py-0.5 text-xs rounded ${showMA.fifty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.fifty ? '50숨기기' : '50보이기'}
+              {showMA.fifty ? '✓ 50숨기기' : '50보이기'}
             </button>
 
             <button
               onClick={() => updateShowMA('oneTwenty')}
               className={`px-1 py-0.5 text-xs rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.oneTwenty ? '120숨기기' : '120보이기'}
+              {showMA.oneTwenty ? '✓ 120숨기기' : '120보이기'}
             </button>
 
             <button
               onClick={() => updateShowMA('twoForty')}
               className={`px-1 py-0.5 text-xs rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.twoForty ? '240숨기기' : '240보이기'}
+              {showMA.twoForty ? '✓ 240숨기기' : '240보이기'}
             </button>
 
             <button
               onClick={() => updateShowMA('threeHundredSixty')}
               className={`px-1 py-0.5 text-xs rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.threeHundredSixty ? '360숨기기' : '360보이기'}
+              {showMA.threeHundredSixty ? '✓ 360숨기기' : '360보이기'}
             </button>
  
           </div>
