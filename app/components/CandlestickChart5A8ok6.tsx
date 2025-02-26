@@ -76,8 +76,10 @@ interface BacktestResult {
   totalTrades: number;
   successfulTrades: number;
   totalReturn: number;
+  totalNetReturn: number; // 수수료 제외 총 수익률 추가
   successRate: number;
   averageReturn: number;
+  averageNetReturn: number; // 수수료 제외 평균 수익률 추가
   trades: Trade[];  // Trade 인터페이스를 사용하도록 변경
 }
 
@@ -368,13 +370,13 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
            (currentTime - buyConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
           (buyBaseCondition && buyAdditionalCondition)
         )) {
-        crossPoints.push({
-          time: thirtyEMA[i].time,
-          position: 'buy',
-          price: currThirty,
+          crossPoints.push({
+            time: thirtyEMA[i].time,
+            position: 'buy',
+            price: currThirty,
           isAbove360MA: false,
-          slopes
-        });
+            slopes
+          });
         lastAction = 'buy';
         lastActionTime = currentTime;
         buyConditionStartTime = null;
@@ -518,15 +520,40 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           size: 2
         });
         tradeId++;
-      }
+        }
     });
     
     return markers;
   };
 
   // MA 기간 변경 핸들러
-  const handleMAChange = (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'threeHundredSixty' | 'twoForty', value: number) => {
-    updateMAPeriod(type as 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'threeHundredSixty' | 'twoForty', value);
+  const handleMAChange = (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty', value: number) => {
+    updateMAPeriod(type, value);
+    
+    // MA 데이터 업데이트
+    if (candleSeriesRef.current) {
+      const candleData = candleSeriesRef.current.data() as ExtendedCandlestickData[];
+      
+      if (type === 'thirty' && thirtyEMASeriesRef.current) {
+        const thirtyEMAData = calculateEMA(candleData, value);
+        thirtyEMASeriesRef.current.setData(thirtyEMAData);
+      } else if (type === 'forty' && fortyEMASeriesRef.current) {
+        const fortyEMAData = calculateEMA(candleData, value);
+        fortyEMASeriesRef.current.setData(fortyEMAData);
+      } else if (type === 'sixty' && sixtyEMASeriesRef.current) {
+        const sixtyEMAData = calculateEMA(candleData, value);
+        sixtyEMASeriesRef.current.setData(sixtyEMAData);
+      } else if (type === 'oneTwenty' && oneTwentyEMASeriesRef.current) {
+        const oneTwentyEMAData = calculateEMA(candleData, value);
+        oneTwentyEMASeriesRef.current.setData(oneTwentyEMAData);
+      } else if (type === 'twoForty' && twoFortyEMASeriesRef.current) {
+        const twoFortyEMAData = calculateEMA(candleData, value);
+        twoFortyEMASeriesRef.current.setData(twoFortyEMAData);
+      } else if (type === 'threeHundredSixty' && threeHundredSixtyEMASeriesRef.current) {
+        const threeHundredSixtyEMAData = calculateEMA(candleData, value);
+        threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMAData);
+      }
+    }
   };
 
   // 차트 타입에 따른 API 엔드포인트 결정
@@ -944,6 +971,9 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const trades: Trade[] = [];
     let buyPoint: CrossPoint | null = null;
     
+    // 수수료율 변경 (0.1% -> 0.05%)
+    const feeRate = 0.0005; // 0.05%
+    
     for (let i = 0; i < crossPoints.length; i++) {
       const point = crossPoints[i];
       
@@ -977,12 +1007,23 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     }
 
     // 나머지 코드는 동일...
+    const totalTrades = trades.length;
+    const successfulTrades = trades.filter(trade => trade.isSuccess).length;
+    
+    // 수수료 제외 총 수익률 (매수+매도 수수료 고려)
+    const totalReturn = trades.reduce((sum, trade) => sum + trade.return, 0);
+    
+    // 수수료 포함 순수익률 계산 (각 거래마다 매수+매도 수수료 차감)
+    const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - (feeRate * 2)), 0);
+    
     return {
-      totalTrades: trades.length,
-      successfulTrades: trades.filter(t => t.isSuccess).length,
-      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
-      successRate: (trades.filter(t => t.isSuccess).length / trades.length) * 100,
-      averageReturn: trades.reduce((sum, t) => sum + t.return, 0) / trades.length,
+      totalTrades,
+      successfulTrades,
+      totalReturn,
+      totalNetReturn,
+      successRate: totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0,
+      averageReturn: totalTrades > 0 ? totalReturn / totalTrades : 0,
+      averageNetReturn: totalTrades > 0 ? totalNetReturn / totalTrades : 0,
       trades
     };
   };
@@ -2028,7 +2069,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       twoFortyEMASeriesRef.current.applyOptions({
         color: 'rgba(255, 165, 0, 0.8)', // 오렌지색
         lineWidth: 2,
-      });       
+      });
     }
     if (showMA.threeHundredSixty) {
       threeHundredSixtyEMASeriesRef.current = chartRef.current.addSeries(LineSeries);
@@ -2374,6 +2415,18 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     }
   }, [candleSeriesRef, maPeriods.twoForty]);
 
+  // formatTime 함수 추가
+  const formatTime = (time: Time): string => {
+    if (typeof time === 'number') {
+      return new Date(time * 1000).toLocaleString();
+    } else if (typeof time === 'object' && time !== null) {
+      // BusinessDay 객체인 경우
+      const businessDay = time as BusinessDay;
+      return new Date(businessDay.year, businessDay.month - 1, businessDay.day).toLocaleDateString();
+    }
+    return String(time);
+  };
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
@@ -2475,129 +2528,51 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         </div>
       )}
 
-      {/* MA 설정 패널 */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 30 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={maPeriods.thirty}
-              onChange={(e) => handleMAChange('thirty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.thirty}</div>
+      {/* MA 설정 패널 - 가로 정렬 */}
+      <div className="grid grid-cols-3 gap-4 bg-gray-800 p-4 rounded-lg mb-4">
+        {/* MA 30 설정 */}
+        <div className="bg-gray-700 p-3 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">MA 설정</div>
+          <div className="flex items-center space-x-2">
+ 
+   
             <button
               onClick={() => updateShowMA('thirty')}
-              className={`px-3 py-1 rounded ${showMA.thirty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${showMA.thirty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.thirty ? '숨기기' : '보이기'}
+              {showMA.thirty ? '✓ 30MA 보기' : '30MA 숨김'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 40 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={maPeriods.forty}
-              onChange={(e) => handleMAChange('forty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.forty}</div>
-            <button
+             <button
               onClick={() => updateShowMA('forty')}
-              className={`px-3 py-1 rounded ${showMA.forty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${showMA.forty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.forty ? '숨기기' : '보이기'}
+              {showMA.forty ? '✓ 40MA 보기' : '40MA 숨김'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 60 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={maPeriods.sixty}
-              onChange={(e) => handleMAChange('sixty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.sixty}</div>
-            <button
+             <button
               onClick={() => updateShowMA('sixty')}
-              className={`px-3 py-1 rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.sixty ? '숨기기' : '보이기'}
+              {showMA.sixty ? '✓ 60MA 보기' : '60MA 숨김'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 120 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="60"
-              max="200"
-              value={maPeriods.oneTwenty}
-              onChange={(e) => handleMAChange('oneTwenty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.oneTwenty}</div>
-            <button
+             <button
               onClick={() => updateShowMA('oneTwenty')}
-              className={`px-3 py-1 rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.oneTwenty ? '숨기기' : '보이기'}
+              {showMA.oneTwenty ? '✓ 120MA 보기' : '120MA 숨김'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 240 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="120"
-              max="360"
-              value={maPeriods.twoForty}
-              onChange={(e) => handleMAChange('twoForty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.twoForty}</div>
-            <button
+             <button
               onClick={() => updateShowMA('twoForty')}
-              className={`px-3 py-1 rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.twoForty ? '숨기기' : '보이기'}
+              {showMA.twoForty ? '✓ 240MA 보기' : '240MA 숨김'}
+            </button>
+             <button
+              onClick={() => updateShowMA('threeHundredSixty')}
+              className={`px-2 py-1 rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.threeHundredSixty ? '✓ 360MA 보기' : '360MA 숨김'}
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* MA 시리즈 ref 추가/수정 */}
-      <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">MA 360 기간</div>
-        <div className="flex items-center space-x-4">
-          <input
-            type="range"
-            min="200"
-            max="500"
-            value={maPeriods.threeHundredSixty}
-            onChange={(e) => handleMAChange('threeHundredSixty', parseInt(e.target.value))}
-            className="flex-1"
-          />
-          <div className="text-white font-bold w-12 text-center">{maPeriods.threeHundredSixty}</div>
-          <button
-            onClick={() => updateShowMA('threeHundredSixty')}
-            className={`px-3 py-1 rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
-          >
-            {showMA.threeHundredSixty ? '숨기기' : '보이기'}
-          </button>
         </div>
       </div>
 
@@ -2720,114 +2695,56 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                 <tr className="text-gray-400">
                   <th className="px-4 py-2">진입 시간</th>
                   <th className="px-4 py-2">청산 시간</th>
-                  <th className="px-4 py-2">진입 가격 (3MA)</th>
-                  <th className="px-4 py-2">매수 가격</th>
-                  <th className="px-4 py-2">청산 가격 (3MA)</th>
-                  <th className="px-4 py-2">매도 가격</th>
+                  <th className="px-4 py-2">진입 가격</th>
+                  <th className="px-4 py-2">청산 가격</th>
                   <th className="px-4 py-2">수익률</th>
+                  <th className="px-4 py-2">매수 수수료</th>
+                  <th className="px-4 py-2">매도 수수료</th>
+                  <th className="px-4 py-2">순수익률</th>
                   <th className="px-4 py-2">100만원 투자시 수익</th>
-                  <th className="px-4 py-2">체결 상태</th>
-                  <th className="px-4 py-2">거래 모드</th>
-                  <th className="px-4 py-2">매수 시 360MA 기울기</th>
-                  <th className="px-4 py-2">매도 시 360MA 기울기</th>
-                  <th className="px-4 py-2">매수 시 40MA 기울기</th>
-                  <th className="px-4 py-2">매도 시 40MA 기울기</th>
-                  <th className="px-4 py-2">매수 시 120MA 기울기</th>
-                  <th className="px-4 py-2">매도 시 120MA 기울기</th>
+                  <th className="px-4 py-2">100만원 투자시 순수익</th>
                 </tr>
               </thead>
               <tbody>
                 {backtestResult.trades.map((trade, index) => {
+                  const feeRate = 0.0005; // 0.05%
+                  const buyFee = feeRate * 100; // 매수 수수료 (%)
+                  const sellFee = feeRate * 100; // 매도 수수료 (%)
+                  const netReturn = trade.return - (feeRate * 2); // 매수+매도 수수료 차감
                   const profitAmount = 1000000 * trade.return;
-                  const currentTime = new Date().getTime() / 1000;
-                  const exitTime = trade.exitTime as number;
-                  const showStatus = exitTime > currentTime;
+                  const netProfitAmount = 1000000 * netReturn;
                   
                   return (
                     <tr key={index} className="border-t border-gray-700">
                       <td className="px-4 py-2">
-                        {new Date((trade.entryTime as number) * 1000).toLocaleString()}
+                        {formatTime(trade.entryTime)}
                       </td>
                       <td className="px-4 py-2">
-                        {new Date(exitTime * 1000).toLocaleString()}
+                        {formatTime(trade.exitTime)}
                       </td>
-                      <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
-                      <td className="px-4 py-2">{(trade.entryPrice * 1.0).toLocaleString()}</td>
-                      <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
-                      <td className="px-4 py-2">{(trade.exitPrice * 1.0).toLocaleString()}</td>
+                      <td className="px-4 py-2">
+                        {trade.entryPrice.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        {trade.exitPrice.toLocaleString()}
+                      </td>
                       <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {(trade.return * 100).toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-2 text-red-500">
+                        {buyFee.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-2 text-red-500">
+                        {sellFee.toFixed(2)}%
+                      </td>
+                      <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {(netReturn * 100).toFixed(2)}%
                       </td>
                       <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {profitAmount.toLocaleString()}원
                       </td>
-                      <td className={`px-4 py-2 ${
-                        showStatus ? (
-                          !exitTime 
-                            ? 'text-yellow-500' 
-                            : trade.return >= 0 
-                              ? 'text-red-500' 
-                              : 'text-blue-500'
-                        ) : ''
-                      }`}>
-                        {showStatus ? (!exitTime ? '미체결' : '체결완료') : ''}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          trade.mode === 'live-auto' 
-                            ? 'bg-red-500 text-white'
-                            : trade.mode === 'test-auto'
-                              ? 'bg-green-500 text-white'
-                              : 'bg-blue-500 text-white'
-                        }`}>
-                          {trade.mode === 'live-auto' 
-                            ? '실전자동' 
-                            : trade.mode === 'test-auto'
-                              ? '테스트 자동'
-                              : '테스트'}
-                        </span>
-                      </td>
-                      <td className={`px-4 py-2 ${
-                        (trade.angles?.entryMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
-                      }`}>
-                        {trade.angles?.entryMa360 
-                          ? `매수 ${index + 1} (360MA: ${trade.angles.entryMa360.toFixed(1)}°)`
-                          : '-'}
-                      </td>
-                      <td className={`px-4 py-2 ${
-                        (trade.angles?.exitMa360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
-                      }`}>
-                        {trade.angles?.exitMa360
-                          ? `매도 ${index + 1} (360MA: ${trade.angles.exitMa360.toFixed(1)}°)`
-                          : '-'}
-                      </td>
-                      <td className={`px-4 py-2 ${
-                        (trade.angles?.entryMa40 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
-                      }`}>
-                        {trade.angles?.entryMa40
-                          ? `매수 ${index + 1} (40MA: ${trade.angles.entryMa40.toFixed(1)}°)`
-                          : '-'}
-                      </td>
-                      <td className={`px-4 py-2 ${
-                        (trade.angles?.exitMa40 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
-                      }`}>
-                        {trade.angles?.exitMa40
-                          ? `매도 ${index + 1} (40MA: ${trade.angles.exitMa40.toFixed(1)}°)`
-                          : '-'}
-                      </td>
-                      <td className={`px-4 py-2 ${
-                        (trade.angles?.entryMa120 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
-                      }`}>
-                        {trade.angles?.entryMa120
-                          ? `매수 ${index + 1} (120MA: ${Math.abs(trade.angles.entryMa120).toFixed(2)}°)`
-                          : '-'}
-                      </td>
-                      <td className={`px-4 py-2 ${
-                        (trade.angles?.exitMa120 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
-                      }`}>
-                        {trade.angles?.exitMa120
-                          ? `매도 ${index + 1} (120MA: ${Math.abs(trade.angles.exitMa120).toFixed(2)}°)`
-                          : '-'}
+                      <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {netProfitAmount.toLocaleString()}원
                       </td>
                     </tr>
                   );

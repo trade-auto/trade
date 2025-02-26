@@ -95,6 +95,55 @@ interface UpbitStore {
   updateTradeStrategy: (strategy: TradeStrategy) => void;
 }
 
+// 로컬 스토리지에서 MA 설정 불러오기
+const loadMASettings = () => {
+  try {
+    const savedShowMA = localStorage.getItem('showMA');
+    const savedMAPeriods = localStorage.getItem('maPeriods');
+    
+    return {
+      showMA: savedShowMA ? JSON.parse(savedShowMA) : {
+        thirty: true,
+        forty: true,
+        sixty: true,
+        oneTwenty: true,
+        twoForty: true,
+        threeHundredSixty: true,
+      },
+      maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : {
+        thirty: 30,
+        forty: 40,
+        sixty: 60,
+        oneTwenty: 120,
+        twoForty: 240,
+        threeHundredSixty: 360,
+      }
+    };
+  } catch (error) {
+    console.error('MA 설정 로드 오류:', error);
+    return {
+      showMA: {
+        thirty: true,
+        forty: true,
+        sixty: true,
+        oneTwenty: true,
+        twoForty: true,
+        threeHundredSixty: true,
+      },
+      maPeriods: {
+        thirty: 30,
+        forty: 40,
+        sixty: 60,
+        oneTwenty: 120,
+        twoForty: 240,
+        threeHundredSixty: 360,
+      }
+    };
+  }
+};
+
+const savedSettings = loadMASettings();
+
 export const useUpbitStore = create<UpbitStore>()((set) => ({
   prices: {},
   tickers: {},
@@ -164,37 +213,33 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     maxOrderPrice: 1000000000
   },
 
-  maPeriods: {
-    thirty: 30,
-    forty: 40,
-    sixty: 60,
-    oneTwenty: 120,
-    twoForty:240,
-    threeHundredSixty: 360,
-  },
+  maPeriods: savedSettings.maPeriods,
 
-  updateMAPeriod: (type, value) => set((state) => ({
-    maPeriods: {
+  updateMAPeriod: (type, value) => set((state) => {
+    const newMAPeriods = {
       ...state.maPeriods,
       [type]: value,
-    },
-  })),
+    };
+    
+    // 로컬 스토리지에 저장
+    localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
+    
+    return { maPeriods: newMAPeriods };
+  }),
 
-  showMA: {
-    thirty: true,
-    forty: true,
-    sixty: true,
-    oneTwenty: true,
-    twoForty: true,
-    threeHundredSixty: true,
-  },
+  showMA: savedSettings.showMA,
 
-  updateShowMA: (type) => set((state) => ({
-    showMA: {
+  updateShowMA: (type) => set((state) => {
+    const newShowMA = {
       ...state.showMA,
       [type]: !state.showMA[type],
-    },
-  })),
+    };
+    
+    // 로컬 스토리지에 저장
+    localStorage.setItem('showMA', JSON.stringify(newShowMA));
+    
+    return { showMA: newShowMA };
+  }),
 
   // 로컬 스토리지에서 마지막 전략 불러오기 또는 기본값 설정
   tradeStrategy: (localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER',
