@@ -387,8 +387,8 @@ else:
 // 3. 50EMA 기울기가 양수 임계값보다 큼 (slopes.ma50 > THRESHOLD_ANGLE_50_PLUS)
  이고 10초이상 지속되면 매수 또는 
 위1,2,3조건이고 
-// 4. 10EMA가 50EMA보다 아래에 있음 (fortyEMA[i].value < ma5Data[ma50Index].value)
-// 5. 10EMA가 20EMA보다 위에 있음 (fortyEMA[i].value > 20EMA 값)
+// 4. 10EMA가 50EMA보다 아래에 있고 (fortyEMA[i].value < ma5Data[ma50Index].value)
+// 5. 10EMA가 20EMA보다 위로 통과할때 (fortyEMA[i].value > 20EMA 값)
 // 5. 마지막 거래가 매수가 아닐 때 (lastAction !== 'buy')
  
  
@@ -398,7 +398,10 @@ else:
 // 2. 20EMA 기울기가 음수 임계값보다 작음 (slopes.ma20 < THRESHOLD_ANGLE_20_MINUS)
 // 2. 50EMA 기울기가 음수 임계값보다 작음 (slopes.ma50 < THRESHOLD_ANGLE_50_MINUS)
  이고 10초이상 지속되면 매도 또는
-위1,2조건이고 
-// 4. 10EMA가 50MA보다 위에 있음 (fortyEMA[i].value > ma50Data[ma50Index].value)
-// 5. 10EMA가 20EMA보다 아래에 있음 (fortyEMA[i].value < 20EMA 값)
+위1,2,3조건이고 
+// 4. 10EMA가 50MA보다 위에 있고 (fortyEMA[i].value > ma50Data[ma50Index].value)
+// 5. 10EMA가 20EMA를 아래로 통과할때 (fortyEMA[i].value < 20EMA 값)
 // 6. 마지막 거래가 매도가 아닐 때 (lastAction !== 'sell')
+
+이렇게 하면 모든 thirtyEMA, fortyEMA, sixtyEMA 참조가 각각 tenEMA, twentyEMA, fiftyEMA로 변경됩니다.
+thirty' | 'forty' | 'sixty 이것도 바꿔줘 

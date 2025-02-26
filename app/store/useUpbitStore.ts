@@ -56,6 +56,9 @@ interface MAType {
   oneTwenty: number;
   threeHundredSixty: number;
   twoForty: number;
+  ten: number;
+  twenty: number;
+  fifty: number;  
 }
 
 interface UpbitStore {
@@ -81,7 +84,7 @@ interface UpbitStore {
     maxOrderPrice: number;
   };
   maPeriods: MAType;
-  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty', value: number) => void;
+  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'ten' | 'twenty' | 'fifty', value: number) => void;
   showMA: {
     thirty: boolean;
     forty: boolean;
@@ -89,8 +92,11 @@ interface UpbitStore {
     oneTwenty: boolean;
     twoForty: boolean;
     threeHundredSixty: boolean;
+    ten: boolean;   
+    twenty: boolean;
+    fifty: boolean;
   };
-  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty') => void;
+  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'ten' | 'twenty' | 'fifty') => void;
   tradeStrategy: TradeStrategy;
   updateTradeStrategy: (strategy: TradeStrategy) => void;
 }
@@ -171,6 +177,9 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     oneTwenty: 120,
     twoForty:240,
     threeHundredSixty: 360,
+    ten: 10,
+    twenty: 20,
+    fifty: 50,
   },
 
   updateMAPeriod: (type, value) => set((state) => ({
@@ -187,6 +196,9 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     oneTwenty: true,
     twoForty: true,
     threeHundredSixty: true,
+    ten: true,
+    twenty: true,
+    fifty: true,
   },
 
   updateShowMA: (type) => set((state) => ({
