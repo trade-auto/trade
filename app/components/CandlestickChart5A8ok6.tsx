@@ -2471,18 +2471,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white`}
             >
-              {isAutoUpdate ? '자동 업데이트 활성화됨' : '자동 업데이트 비활성화됨'}
-            </button>
-            
-            <button
-              onClick={handleWebSocketToggle}
-              className={`px-4 py-2 rounded-lg font-bold ${
-                isWebSocketEnabled 
-                  ? 'bg-purple-600 hover:bg-purple-700' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              } text-white`}
-            >
-              {isWebSocketEnabled ? '실시간 데이터 활성화됨' : '실시간 데이터 비활성화됨'}
+              {isAutoUpdate ? '✓ 자동 업데이트' : '자동 업데이트'}
             </button>
             
             <button
@@ -2493,7 +2482,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white`}
             >
-              {isRealtimeAPIEnabled ? '실시간API업데이트 활성화됨' : '실시간API업데이트 비활성화됨'}
+              {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
             </button>
           </div>
         </div>
@@ -2800,10 +2789,10 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                               : 'bg-blue-500 text-white'
                         }`}>
                           {trade.mode === 'live-auto' 
-                            ? '실전자동' 
+                            ? '✓ 실전자동' 
                             : trade.mode === 'test-auto'
-                              ? '테스트 자동'
-                              : '테스트'}
+                              ? '✓ 테스트 자동'
+                              : '✓ 테스트'}
                         </span>
                       </td>
                       <td className={`px-4 py-2 ${

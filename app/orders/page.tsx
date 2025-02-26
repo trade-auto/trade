@@ -55,6 +55,24 @@ export default function OrdersPage() {
       mode: string;
     }) => Promise<void> 
   }>(null);
+  const [autoRefresh, setAutoRefresh] = useState(() => {
+    const saved = localStorage.getItem('autoRefreshBalance');
+    return saved ? JSON.parse(saved) : false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('autoRefreshBalance', JSON.stringify(autoRefresh));
+  }, [autoRefresh]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    
+    const interval = setInterval(() => {
+      loadBalance();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [autoRefresh]);
 
   // WebSocket을 통해 실시간 가격 업데이트
   useEffect(() => {
@@ -150,7 +168,7 @@ export default function OrdersPage() {
                       : 'text-gray-400'
                   }`}
                 >
-                  테스트
+                  {mode === 'test' ? '✓ 테스트' : '테스트'}
                 </button>
                 <button
                   onClick={() => setMode('live')}
@@ -160,7 +178,7 @@ export default function OrdersPage() {
                       : 'text-gray-400'
                   }`}
                 >
-                  실전
+                  {mode === 'live' ? '✓ 실전' : '실전'}
                 </button>
               </div>
             </div>
@@ -229,12 +247,24 @@ export default function OrdersPage() {
           <div className="bg-gray-800 p-4 rounded-lg">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-white">매매코인 잔고</h2>
-              <button
-                onClick={loadBalance}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-              >
-                새로고침
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  className={`px-4 py-2 ${
+                    autoRefresh 
+                      ? 'bg-green-600 hover:bg-green-700' 
+                      : 'bg-gray-600 hover:bg-gray-700'
+                  } text-white rounded-lg`}
+                >
+                  {autoRefresh ? '✓ 자동 새로고침' : '자동 새로고침'}
+                </button>
+                <button
+                  onClick={loadBalance}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                >
+                  새로고침
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>

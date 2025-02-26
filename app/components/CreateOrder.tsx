@@ -172,19 +172,21 @@ export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
 >(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }, ref) => {
-  const { tradeState, updateTradeState, maPeriods, tradeStrategy, updateTradeStrategy } = useUpbitStore();
+  const { tradeState, updateTradeState, maPeriods, tradeStrategy, updateTradeStrategy, uiSettings, updateUISettings } = useUpbitStore();
   
-  const [side, setSide] = useState<'bid' | 'ask'>('bid');
+  // 로컬 상태 대신 스토어 상태 사용
+  const [side, setSide] = useState<'bid' | 'ask'>(uiSettings.side);
   const [volume, setVolume] = useState('');
   const [price, setPrice] = useState('');
-  const [ordType, setOrdType] = useState<'limit' | 'price' | 'market'>('limit');
+  const [ordType, setOrdType] = useState<'limit' | 'price' | 'market'>(uiSettings.ordType);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [ma3Price, setMa3Price] = useState<number | null>(null);
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
-  const [autoTrading, setAutoTrading] = useState(false);
+  const [activePercent, setActivePercent] = useState(uiSettings.activePercent);
+  const [autoTrading, setAutoTrading] = useState(uiSettings.autoTrading);
   const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
   const [isTradeComplete, setIsTradeComplete] = useState(false);
   const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
@@ -285,9 +287,6 @@ export const CreateOrder = forwardRef<
     }
   };
 
-  // 활성화된 퍼센트 상태 추가
-  const [activePercent, setActivePercent] = useState(25);
-
   // 25% 금액에 해당하는 수량 계산 함수
   const calculatePercentVolume = () => {
     if (ma3Price && orderLimits.maxOrderPrice) {
@@ -312,6 +311,7 @@ export const CreateOrder = forwardRef<
       const calculatedVolume = (amount / ma3Price).toFixed(4);
       setVolume(calculatedVolume);
     }
+    updateUISettings({ activePercent: percent });
   };
 
   const handleReset = () => {
@@ -733,31 +733,9 @@ export const CreateOrder = forwardRef<
 
   // 자동 거래 토글 버튼 클릭 핸들러 수정
   const handleAutoTradingToggle = () => {
-    if (!autoTrading) {
-      const now = new Date();
-      setElapsedTime(0); // 자동 거래 시작 시 경과 시간 리셋
-      setCurrentCycle('waiting_buy'); // 항상 매수 대기로 시작
-      setTradeCycles([]); // 거래 사이클 초기화
-      
-      updateTradeState({
-        lastTradeType: null,
-        statusChangeTime: now.toLocaleTimeString('ko-KR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        }),
-        actionStartTime: now,
-        isTrading: true,
-        missedFirstCycle: false
-      });
-    } else {
-      updateTradeState({
-        actionStartTime: null,
-        isTrading: false,
-        missedFirstCycle: false
-      });
-    }
-    setAutoTrading(!autoTrading);
+    const newAutoTrading = !autoTrading;
+    setAutoTrading(newAutoTrading);
+    updateUISettings({ autoTrading: newAutoTrading });
   };
 
   // 매매 사이클 상태를 표시하는 함수 추가
@@ -880,28 +858,28 @@ export const CreateOrder = forwardRef<
           {/* 주문 종류 선택 */}
           <div>
             <label className="block text-gray-400 mb-2">주문 종류</label>
-            <div className="flex space-x-2">
+            <div className="flex space-x-2 mb-4">
               <button
                 type="button"
                 onClick={() => setSide('bid')}
-                className={`flex-1 px-4 py-2 rounded ${
+                className={`px-4 py-2 rounded-lg ${
                   side === 'bid' 
                     ? 'bg-green-600 text-white' 
                     : 'bg-gray-700 text-gray-300'
                 }`}
               >
-                매수
+                {side === 'bid' ? '✓ 매수' : '매수'}
               </button>
               <button
                 type="button"
                 onClick={() => setSide('ask')}
-                className={`flex-1 px-4 py-2 rounded ${
+                className={`px-4 py-2 rounded-lg ${
                   side === 'ask' 
                     ? 'bg-red-600 text-white' 
                     : 'bg-gray-700 text-gray-300'
                 }`}
               >
-                매도
+                {side === 'ask' ? '✓ 매도' : '매도'}
               </button>
             </div>
           </div>
@@ -909,15 +887,41 @@ export const CreateOrder = forwardRef<
           {/* 주문 방식 선택 */}
           <div>
             <label className="block text-gray-400 mb-2">주문 방식</label>
-            <select
-              value={ordType}
-              onChange={(e) => setOrdType(e.target.value as 'limit' | 'price' | 'market')}
-              className="w-full px-4 py-2 bg-gray-700 text-white rounded"
-            >
-              <option value="limit">지정가</option>
-              <option value="price">시장가(매수)</option>
-              <option value="market">시장가(매도)</option>
-            </select>
+            <div className="flex space-x-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setOrdType('limit')}
+                className={`px-4 py-2 rounded-lg ${
+                  ordType === 'limit' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                {ordType === 'limit' ? '✓ 지정가' : '지정가'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrdType('price')}
+                className={`px-4 py-2 rounded-lg ${
+                  ordType === 'price' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                {ordType === 'price' ? '✓ 시장가(KRW)' : '시장가(KRW)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrdType('market')}
+                className={`px-4 py-2 rounded-lg ${
+                  ordType === 'market' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                {ordType === 'market' ? '✓ 시장가(수량)' : '시장가(수량)'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1030,7 +1034,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              최대
+              {activePercent === 100 ? '✓ 최대' : '최대'}
             </button>
             <button
               type="button"
@@ -1041,7 +1045,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              50%
+              {activePercent === 50 ? '✓ 50%' : '50%'}
             </button>
             <button
               type="button"
@@ -1052,7 +1056,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              25%
+              {activePercent === 25 ? '✓ 25%' : '25%'}
             </button>
             <button
               type="button"
@@ -1063,7 +1067,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              10%
+              {activePercent === 10 ? '✓ 10%' : '10%'}
             </button>
             <button
               type="button"

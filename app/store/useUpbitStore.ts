@@ -99,6 +99,13 @@ interface UpbitStore {
   updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'ten' | 'twenty' | 'fifty') => void;
   tradeStrategy: TradeStrategy;
   updateTradeStrategy: (strategy: TradeStrategy) => void;
+  uiSettings: {
+    activePercent: number;
+    side: 'bid' | 'ask';
+    ordType: 'limit' | 'price' | 'market';
+    autoTrading: boolean;
+  };
+  updateUISettings: (settings: Partial<UpbitStore['uiSettings']>) => void;
 }
 
 // 로컬 스토리지에서 MA 설정 불러오기
@@ -161,6 +168,30 @@ const loadMASettings = () => {
 };
 
 const savedSettings = loadMASettings();
+
+// 로컬 스토리지에서 UI 설정 불러오기
+const loadUISettings = () => {
+  try {
+    const savedUISettings = localStorage.getItem('uiSettings');
+    
+    return savedUISettings ? JSON.parse(savedUISettings) : {
+      activePercent: 0,
+      side: 'bid',
+      ordType: 'limit',
+      autoTrading: false
+    };
+  } catch (error) {
+    console.error('UI 설정 로드 오류:', error);
+    return {
+      activePercent: 0,
+      side: 'bid',
+      ordType: 'limit',
+      autoTrading: false
+    };
+  }
+};
+
+const savedUISettings = loadUISettings();
 
 export const useUpbitStore = create<UpbitStore>()((set) => ({
   prices: {},
@@ -261,4 +292,19 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     localStorage.setItem('lastTradeStrategy', strategy);
     set({ tradeStrategy: strategy });
   },
+
+  // UI 설정 상태 및 액션 추가
+  uiSettings: savedUISettings,
+  
+  updateUISettings: (settings) => set((state) => {
+    const newSettings = {
+      ...state.uiSettings,
+      ...settings
+    };
+    
+    // 로컬 스토리지에 저장
+    localStorage.setItem('uiSettings', JSON.stringify(newSettings));
+    
+    return { uiSettings: newSettings };
+  }),
 })); 
