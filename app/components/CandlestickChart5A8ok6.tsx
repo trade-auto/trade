@@ -23,6 +23,7 @@ import {
   HistogramStyleOptions,
   SeriesOptionsCommon,
   SeriesOptions,
+  CrosshairMode,
 } from 'lightweight-charts';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
@@ -76,8 +77,10 @@ interface BacktestResult {
   totalTrades: number;
   successfulTrades: number;
   totalReturn: number;
+  totalNetReturn: number; // 추가
   successRate: number;
   averageReturn: number;
+  averageNetReturn: number; // 추가
   trades: Trade[];  // Trade 인터페이스를 사용하도록 변경
 }
 
@@ -756,6 +759,57 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     await loadAllData(start, end);
   }, [loadAllData]);
 
+  // 차트 초기화 함수 추가
+  const initializeChart = () => {
+    if (!container.current) return;
+    
+    // 차트 생성
+    chartRef.current = createChart(container.current, {
+      width: container.current.clientWidth,
+      height: chartHeight,
+      layout: {
+        background: { color: '#1E222D' },
+        textColor: '#DDD',
+      },
+      grid: {
+        vertLines: { color: '#2B2B43' },
+        horzLines: { color: '#2B2B43' },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+      },
+      rightPriceScale: {
+        borderColor: '#2B2B43',
+      },
+      timeScale: {
+        borderColor: '#2B2B43',
+        timeVisible: true,
+      },
+    });
+
+    // 캔들스틱 시리즈 생성
+    candleSeriesRef.current = (chartRef.current as any).addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+    
+    // 다른 시리즈 생성 코드...
+    
+    // 차트 크기 조절 이벤트 리스너 추가
+    const handleResize = () => {
+      if (chartRef.current && container.current) {
+        chartRef.current.applyOptions({
+          width: container.current.clientWidth,
+        });
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+  };
+
   // 차트 초기화
   useEffect(() => {
     if (!container.current) return;
@@ -1040,14 +1094,21 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         buyPoint = null;
       }
     }
-
-    // 나머지 코드는 동일...
+    
+    const totalTrades = trades.length;
+    const successfulTrades = trades.filter(trade => trade.return > 0).length;
+    const totalReturn = trades.reduce((sum, trade) => sum + trade.return, 0);
+    const feeRate = 0.001;
+    const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - feeRate), 0);
+    
     return {
-      totalTrades: trades.length,
-      successfulTrades: trades.filter(t => t.isSuccess).length,
-      totalReturn: trades.reduce((sum, t) => sum + t.return, 0),
-      successRate: (trades.filter(t => t.isSuccess).length / trades.length) * 100,
-      averageReturn: trades.reduce((sum, t) => sum + t.return, 0) / trades.length,
+      totalTrades,
+      successfulTrades,
+      totalReturn,
+      totalNetReturn,
+      successRate: totalTrades > 0 ? successfulTrades / totalTrades : 0,
+      averageReturn: totalTrades > 0 ? totalReturn / totalTrades : 0,
+      averageNetReturn: totalTrades > 0 ? totalNetReturn / totalTrades : 0,
       trades
     };
   };
@@ -1300,7 +1361,11 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
       // 백테스트 결과 업데이트
       const result = calculateBacktestResult(candleData, crossPoints);
-      setBacktestResult(result);
+      if (result.trades.length > 0) {
+        setBacktestResult(result);
+      } else {
+        setBacktestResult(null);
+      }
 
       // 마지막 가격 설정
       setChartPrice(candleData[candleData.length - 1].close);
@@ -1820,16 +1885,35 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     setIsWebSocketEnabled(!isWebSocketEnabled);
   };
 
-  // 자동 업데이트 토글 핸들러 수정
+  // 자동 업데이트 토글 함수 수정
   const handleAutoUpdateToggle = () => {
     if (!isAutoUpdate) {
-      // 자동 업데이트 활성화 시 웹소켓 비활성화
-      if (isWebSocketEnabled) {
-        disconnectWebSocket();
-        setIsWebSocketEnabled(false);
+      // 차트 완전히 리셋하기
+      if (chartRef.current) {
+        // 기존 시리즈 제거
+        candleSeriesRef.current = null;
+        tenEMASeriesRef.current = null;
+        twentyEMASeriesRef.current = null;
+        fiftyEMASeriesRef.current = null;
+        oneTwentyEMASeriesRef.current = null;
+        twoFortyEMASeriesRef.current = null;
+        threeHundredSixtyEMASeriesRef.current = null;
+        volumeSeriesRef.current = null;
+        
+        // 차트 제거 및 다시 생성
+        chartRef.current.remove();
+        chartRef.current = null;
+        
+        // 차트 다시 초기화
+        initializeChart();
+        
+        // 데이터 다시 로드
+        loadChartData();
       }
     }
+    
     setIsAutoUpdate(!isAutoUpdate);
+    localStorage.setItem('chartAutoUpdate', (!isAutoUpdate).toString());
   };
 
   // 상태 추가
@@ -1908,100 +1992,32 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
   const handleRealtimeAPIToggle = () => {
     if (!isRealtimeAPIEnabled) {
-      // 다른 업데이트 모드 비활성화
-      setIsAutoUpdate(false);
-      setIsWebSocketEnabled(false);
-      if (isWebSocketEnabled) {
-        disconnectWebSocket();
-      }
-      
-      // 자동 업데이트와 유사한 구조로 수정
-      apiIntervalRef.current = setInterval(async () => {
-        try {
-          // 초봉 데이터 한 개만 가져오기
-          const response = await fetch(
-            `https://api.upbit.com/v1/candles/seconds?market=${symbol}&count=1`
-          );
-          const data = await response.json();
-          
-          if (data && data[0]) {
-            const existingData = Array.from(candleSeriesRef.current?.data() ?? []) as ExtendedCandlestickData[];
-            const lastDataTime = existingData.length > 0 ? new Date(existingData[existingData.length - 1].time as string).getTime() : 0;
-            const newDataTime = new Date(data[0].candle_date_time_kst).getTime();
-
-            // 새로운 데이터인 경우에만 추가
-            if (newDataTime > lastDataTime) {
-              const newCandle = {
-                time: Math.floor(new Date(data[0].candle_date_time_kst).getTime() / 1000) as Time,
-                open: data[0].opening_price,
-                high: data[0].high_price,
-                low: data[0].low_price,
-                close: data[0].trade_price,
-                volume: data[0].candle_acc_trade_volume
-              };
-
-              const updatedData = existingData.filter(candle => 
-                (candle.time as number) !== Math.floor(newDataTime / 1000)
-              ).concat(newCandle)
-                .sort((a, b) => (a.time as number) - (b.time as number));
-
-              candleSeriesRef.current?.setData(updatedData);
-              
-              // MA 데이터 업데이트
-              const tenEMAData = calculateEMA(updatedData, maPeriods.ten);
-              const twentyEMAData = calculateEMA(updatedData, maPeriods.twenty);
-              const fiftyEMAData = calculateEMA(updatedData, maPeriods.fifty);
-              const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
-              const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
-              tenEMASeriesRef.current?.setData(tenEMAData);
-              twentyEMASeriesRef.current?.setData(twentyEMAData);
-              fiftyEMASeriesRef.current?.setData(fiftyEMAData);
-              oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
-              twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
-              // 크로스 포인트 및 마커 업데이트
-              const crossPoints = findCrossPoints(tenEMAData, twentyEMAData, fiftyEMAData);
-              crossPointsRef.current = crossPoints;
-              const markers = createTradeMarkers(crossPoints, tradeStrategy);
-              if (candleSeriesRef.current) {
-                updateTradeMarkers(candleSeriesRef.current, markers);
-                const lastCrossPoint = crossPoints[crossPoints.length - 1];
-                const timestampInSeconds = Math.floor(data[0].timestamp / 1000);
-                if (lastCrossPoint && Math.abs(Number(lastCrossPoint.time) - timestampInSeconds) <= 1) {
-                  console.log('크로스 포인트 감지:', lastCrossPoint.position);
-                  try {
-                    await handleOrder({
-                      market: symbol,
-                      side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
-                      volume: calculateOrderVolume(data[0].trade_price),
-                      price: data[0].trade_price.toString(),
-                      ord_type: 'limit',
-                      mode: mode
-                    });
-                  } catch (error) {
-                    console.error('주문 실행 중 오류:', error);
-                  }
-                }
-                
-                // 크로스 포인트 및 마커 업데이트
-                if (candleSeriesRef.current) {
-                  updateTradeMarkers(candleSeriesRef.current, markers);
-                }
-              }
-              setCurrentPrice(data[0].trade_price);
-            }
-          }
-        } catch (error) {
-          console.error('실시간 API 업데이트 중 오류:', error);
-        }
-      }, 1000);  // 1초마다 업데이트
-    } else {
-      // interval 정리
-      if (apiIntervalRef.current) {
-        clearInterval(apiIntervalRef.current);
-        apiIntervalRef.current = null;
+      // 차트 완전히 리셋하기
+      if (chartRef.current) {
+        // 기존 시리즈 제거
+        candleSeriesRef.current = null;
+        tenEMASeriesRef.current = null;
+        twentyEMASeriesRef.current = null;
+        fiftyEMASeriesRef.current = null;
+        oneTwentyEMASeriesRef.current = null;
+        twoFortyEMASeriesRef.current = null;
+        threeHundredSixtyEMASeriesRef.current = null;
+        volumeSeriesRef.current = null;
+        
+        // 차트 제거 및 다시 생성
+        chartRef.current.remove();
+        chartRef.current = null;
+        
+        // 차트 다시 초기화
+        initializeChart();
+        
+        // 데이터 다시 로드
+        loadChartData();
       }
     }
-    setIsRealtimeAPIEnabled((prev) => !prev);
+    
+    setIsRealtimeAPIEnabled(!isRealtimeAPIEnabled);
+    localStorage.setItem('realtimeAPIEnabled', (!isRealtimeAPIEnabled).toString());
   };
 
   // 컴포넌트 언마운트 시 정리
@@ -2456,6 +2472,51 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     }
   }, [candleSeriesRef, maPeriods.twoForty]);
 
+  // 두 매개변수를 사용하여 거래 목록을 생성하는 함수 추가
+  const generateTrades = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): Trade[] => {
+    const trades: Trade[] = [];
+    let buyPoint: CrossPoint | null = null;
+    
+    for (let i = 0; i < crossPoints.length; i++) {
+      const point = crossPoints[i];
+      
+      if (point.position === 'buy') {
+        buyPoint = point;
+      } else if (point.position === 'sell' && buyPoint) {
+        const entryPrice = buyPoint.price;
+        const exitPrice = point.price;
+        const returnRate = (exitPrice - entryPrice) / entryPrice;
+        
+        trades.push({
+          entryTime: buyPoint.time,
+          exitTime: point.time,
+          entryPrice,
+          exitPrice,
+          return: returnRate,
+          isSuccess: returnRate > 0,
+          mode: mode === 'test' ? 'test-auto' : 'live-auto',
+          angles: {
+            entryMa10: buyPoint.slopes.ma10,
+            exitMa10: point.slopes.ma10,
+            entryMa20: buyPoint.slopes.ma20,
+            exitMa20: point.slopes.ma20,
+            entryMa50: buyPoint.slopes.ma50,
+            exitMa50: point.slopes.ma50,
+            entryMa120: buyPoint.slopes.ma120,
+            exitMa120: point.slopes.ma120
+          }
+        });
+        
+        buyPoint = null;
+      }
+    }
+    
+    return trades;
+  }
+
+  // 함수 호출 수정
+ // const result = calculateBacktestResult(generateTrades(formattedData, crossPoints));
+
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
@@ -2670,7 +2731,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         />
       </div>
 
-      {/* 백테스팅 결과 표시 */}
+      {/* 백테스트 결과 표시 */}
       {backtestResult && (
         <div className="grid grid-cols-5 gap-4 mt-4">
           <div className="bg-gray-800 p-4 rounded-lg">
@@ -2728,12 +2789,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                 <tr className="text-gray-400">
                   <th className="px-4 py-2">진입 시간</th>
                   <th className="px-4 py-2">청산 시간</th>
-                  <th className="px-4 py-2">진입 가격 (3MA)</th>
-                  <th className="px-4 py-2">매수 가격</th>
-                  <th className="px-4 py-2">청산 가격 (3MA)</th>
-                  <th className="px-4 py-2">매도 가격</th>
-                  <th className="px-4 py-2">수익률</th>
-                  <th className="px-4 py-2">100만원 투자시 수익</th>
+                  <th className="px-4 py-2">진입 가격</th>
+                  <th className="px-4 py-2">청산 가격</th>
+                  <th className="px-4 py-2">수익률(수수료 제외)</th>
+                  <th className="px-4 py-2">수수료</th>
+                  <th className="px-4 py-2">순수익률(수수료 포함)</th>
+                  <th className="px-4 py-2">100만원 투자시 순수익</th>
                   <th className="px-4 py-2">체결 상태</th>
                   <th className="px-4 py-2">거래 모드</th>
                   <th className="px-4 py-2">매수 시 10MA 기울기</th>
@@ -2746,10 +2807,18 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
               </thead>
               <tbody>
                 {backtestResult.trades.map((trade, index) => {
-                  const profitAmount = 1000000 * trade.return;
-                  const currentTime = new Date().getTime() / 1000;
-                  const exitTime = trade.exitTime as number;
-                  const showStatus = exitTime > currentTime;
+                  // 수수료 계산 (매수 0.05%, 매도 0.05%, 총 0.1%)
+                  const feeRate = 0.001; // 0.1%
+                  const feeAmount = 1000000 * feeRate;
+                  
+                  // 수수료 제외 수익률 (기존 계산)
+                  const grossReturn = trade.return;
+                  
+                  // 수수료 포함 순수익률
+                  const netReturn = grossReturn - feeRate;
+                  
+                  // 순수익 금액
+                  const netProfitAmount = 1000000 * netReturn;
                   
                   return (
                     <tr key={index} className="border-t border-gray-700">
@@ -2757,28 +2826,26 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                         {new Date((trade.entryTime as number) * 1000).toLocaleString()}
                       </td>
                       <td className="px-4 py-2">
-                        {new Date(exitTime * 1000).toLocaleString()}
+                        {new Date((trade.exitTime as number) * 1000).toLocaleString()}
                       </td>
                       <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
-                      <td className="px-4 py-2">{(trade.entryPrice * 1.0).toLocaleString()}</td>
                       <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
-                      <td className="px-4 py-2">{(trade.exitPrice * 1.0).toLocaleString()}</td>
-                      <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {(trade.return * 100).toFixed(2)}%
+                      <td className={`px-4 py-2 ${grossReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {(grossReturn * 100).toFixed(2)}%
                       </td>
-                      <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {profitAmount.toLocaleString()}원
+                      <td className="px-4 py-2 text-red-500">
+                        -{(feeRate * 100).toFixed(2)}%
+                      </td>
+                      <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {(netReturn * 100).toFixed(2)}%
+                      </td>
+                      <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {netProfitAmount.toLocaleString()}원
                       </td>
                       <td className={`px-4 py-2 ${
-                        showStatus ? (
-                          !exitTime 
-                            ? 'text-yellow-500' 
-                            : trade.return >= 0 
-                              ? 'text-red-500' 
-                              : 'text-blue-500'
-                        ) : ''
+                        trade.return >= 0 ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {showStatus ? (!exitTime ? '미체결' : '체결완료') : ''}
+                        {trade.return >= 0 ? '체결완료' : '미체결'}
                       </td>
                       <td className="px-4 py-2">
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
