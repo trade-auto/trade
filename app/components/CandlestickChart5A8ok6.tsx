@@ -2486,129 +2486,55 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         </div>
       )}
 
-      {/* MA 설정 패널 */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 30 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={maPeriods.thirty}
-              onChange={(e) => handleMAChange('thirty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.thirty}</div>
+      {/* MA 설정 패널 - 가로 정렬 (input 버튼 제외) */}
+      <div className="grid grid-cols-6 gap-2 bg-gray-800 p-4 rounded-lg mb-4">
+        {/* MA 30 */}
+        <div>
+          <div className="text-gray-400 text-sm mb-1">MA 버튼</div>
+          <div className="flex justify-between items-center">
+ 
             <button
               onClick={() => updateShowMA('thirty')}
-              className={`px-3 py-1 rounded ${showMA.thirty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-1 py-0.5 text-xs rounded ${showMA.thirty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.thirty ? '숨기기' : '보이기'}
+              {showMA.thirty ? '30숨기기' : '30보이기'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 40 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={maPeriods.forty}
-              onChange={(e) => handleMAChange('forty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.forty}</div>
+ 
             <button
               onClick={() => updateShowMA('forty')}
-              className={`px-3 py-1 rounded ${showMA.forty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-1 py-0.5 text-xs rounded ${showMA.forty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.forty ? '숨기기' : '보이기'}
+              {showMA.forty ? '40숨기기' : '40보이기'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 60 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={maPeriods.sixty}
-              onChange={(e) => handleMAChange('sixty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.sixty}</div>
+         
             <button
               onClick={() => updateShowMA('sixty')}
-              className={`px-3 py-1 rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-1 py-0.5 text-xs rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.sixty ? '숨기기' : '보이기'}
+              {showMA.sixty ? '60숨기기' : '60보이기'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 120 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="60"
-              max="200"
-              value={maPeriods.oneTwenty}
-              onChange={(e) => handleMAChange('oneTwenty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.oneTwenty}</div>
+           
             <button
               onClick={() => updateShowMA('oneTwenty')}
-              className={`px-3 py-1 rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-1 py-0.5 text-xs rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.oneTwenty ? '숨기기' : '보이기'}
+              {showMA.oneTwenty ? '120숨기기' : '120보이기'}
             </button>
-          </div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 240 기간</div>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min="120"
-              max="360"
-              value={maPeriods.twoForty}
-              onChange={(e) => handleMAChange('twoForty', parseInt(e.target.value))}
-              className="flex-1"
-            />
-            <div className="text-white font-bold w-12 text-center">{maPeriods.twoForty}</div>
+           
             <button
               onClick={() => updateShowMA('twoForty')}
-              className={`px-3 py-1 rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-1 py-0.5 text-xs rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.twoForty ? '숨기기' : '보이기'}
+              {showMA.twoForty ? '240숨기기' : '240보이기'}
+            </button>
+          
+            <button
+              onClick={() => updateShowMA('threeHundredSixty')}
+              className={`px-1 py-0.5 text-xs rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.threeHundredSixty ? '360숨기기' : '360보이기'}
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* MA 시리즈 ref 추가/수정 */}
-      <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">MA 360 기간</div>
-        <div className="flex items-center space-x-4">
-          <input
-            type="range"
-            min="200"
-            max="500"
-            value={maPeriods.threeHundredSixty}
-            onChange={(e) => handleMAChange('threeHundredSixty', parseInt(e.target.value))}
-            className="flex-1"
-          />
-          <div className="text-white font-bold w-12 text-center">{maPeriods.threeHundredSixty}</div>
-          <button
-            onClick={() => updateShowMA('threeHundredSixty')}
-            className={`px-3 py-1 rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
-          >
-            {showMA.threeHundredSixty ? '숨기기' : '보이기'}
-          </button>
         </div>
       </div>
 
