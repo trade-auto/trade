@@ -23,6 +23,7 @@ import {
   HistogramStyleOptions,
   SeriesOptionsCommon,
   SeriesOptions,
+  CrosshairMode,
 } from 'lightweight-charts';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
@@ -127,6 +128,8 @@ interface Trade {
   angles?: {
     entryMa40?: number;
     exitMa40?: number;
+    entryMa60?: number;
+    exitMa60?: number;
     entryMa360?: number;
     exitMa360?: number;
     entryMa120?: number;
@@ -274,6 +277,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 자동 업데이트 상태 추가
   const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
+
+  // interval ref 추가
+  const autoUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // const apiIntervalRef = useRef<NodeJS.Timeout | null>(null); // 이미 선언되어 있으므로 제거
 
   // 매수/매도 신호 생성 로직 수정
   const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
@@ -773,6 +780,50 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     // 데이터 새로 로드
     await loadAllData(start, end);
   }, [loadAllData]);
+  const initializeChart = () => {
+    if (!container.current) return;
+    
+    try {
+      // 방법 1: 기존 코드의 방식을 사용
+      chartRef.current = createChart(container.current, {
+        width: container.current.clientWidth,
+        height: chartHeight,
+        layout: {
+          background: { color: '#1E222D' },
+          textColor: '#DDD',
+        },
+        grid: {
+          vertLines: { color: '#2B2B43' },
+          horzLines: { color: '#2B2B43' },
+        },
+        crosshair: {
+          mode: 1, // CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+          borderColor: '#2B2B43',
+        },
+        timeScale: {
+          borderColor: '#2B2B43',
+          timeVisible: true,
+        },
+      });
+      
+      // 타입 단언을 사용하여 addCandlestickSeries 호출
+      // @ts-ignore - 타입 오류 무시
+      candleSeriesRef.current = chartRef.current.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350',
+      });
+      
+      console.log('차트 초기화 성공');
+    } catch (error) {
+      console.error('차트 초기화 중 오류 발생:', error);
+    }
+  };
+
 
   // 차트 초기화
   useEffect(() => {
@@ -989,7 +1040,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   }, [currentPrice, chartType]);
 
   // EMA 계산 함수
-  const calculateEMA = (data: ExtendedCandlestickData[], period: number): LineData<Time>[] => {
+  const calculateEMA = (data: CandlestickData<Time>[] | ExtendedCandlestickData[], period: number): LineData<Time>[] => {
     if (!data || data.length === 0) return [];
     
     const k = 2 / (period + 1);
@@ -1308,7 +1359,11 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
       // 백테스트 결과 업데이트
       const result = calculateBacktestResult(candleData, crossPoints);
-      setBacktestResult(result);
+      if (result.trades.length > 0) {
+        setBacktestResult(result);
+      } else {
+        setBacktestResult(null);
+      }
 
       // 마지막 가격 설정
       setChartPrice(candleData[candleData.length - 1].close);
@@ -1828,16 +1883,24 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     setIsWebSocketEnabled(!isWebSocketEnabled);
   };
 
-  // 자동 업데이트 토글 핸들러 수정
-  const handleAutoUpdateToggle = () => {
-    if (!isAutoUpdate) {
-      // 자동 업데이트 활성화 시 웹소켓 비활성화
-      if (isWebSocketEnabled) {
-        disconnectWebSocket();
-        setIsWebSocketEnabled(false);
-      }
+  const resetChartData = () => {
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.setData([]);
     }
+    // 다른 시리즈도 초기화
+    
+    // 데이터 다시 로드
+    loadChartData();
+  };
+
+  // handleAutoUpdateToggle, handleRealtimeAPIToggle 수정
+  const handleAutoUpdateToggle = () => {
     setIsAutoUpdate(!isAutoUpdate);
+    
+    if (!isAutoUpdate) {
+      // 데이터만 초기화
+      resetChartData();
+    }
   };
 
   // 상태 추가
@@ -1916,102 +1979,33 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
   const handleRealtimeAPIToggle = () => {
     if (!isRealtimeAPIEnabled) {
-      // 다른 업데이트 모드 비활성화
-      setIsAutoUpdate(false);
-      setIsWebSocketEnabled(false);
-      if (isWebSocketEnabled) {
-        disconnectWebSocket();
-      }
-      
-      // 자동 업데이트와 유사한 구조로 수정
-      apiIntervalRef.current = setInterval(async () => {
-        try {
-          // 초봉 데이터 한 개만 가져오기
-          const response = await fetch(
-            `https://api.upbit.com/v1/candles/seconds?market=${symbol}&count=1`
-          );
-          const data = await response.json();
-          
-          if (data && data[0]) {
-            const existingData = Array.from(candleSeriesRef.current?.data() ?? []) as ExtendedCandlestickData[];
-            const lastDataTime = existingData.length > 0 ? new Date(existingData[existingData.length - 1].time as string).getTime() : 0;
-            const newDataTime = new Date(data[0].candle_date_time_kst).getTime();
-
-            // 새로운 데이터인 경우에만 추가
-            if (newDataTime > lastDataTime) {
-              const newCandle = {
-                time: Math.floor(new Date(data[0].candle_date_time_kst).getTime() / 1000) as Time,
-                open: data[0].opening_price,
-                high: data[0].high_price,
-                low: data[0].low_price,
-                close: data[0].trade_price,
-                volume: data[0].candle_acc_trade_volume
-              };
-
-              const updatedData = existingData.filter(candle => 
-                (candle.time as number) !== Math.floor(newDataTime / 1000)
-              ).concat(newCandle)
-                .sort((a, b) => (a.time as number) - (b.time as number));
-
-              candleSeriesRef.current?.setData(updatedData);
-              
-              // MA 데이터 업데이트
-              const thirtyEMAData = calculateEMA(updatedData, maPeriods.thirty);
-              const fortyEMAData = calculateEMA(updatedData, maPeriods.forty);
-              const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
-              const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
-              const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
-              thirtyEMASeriesRef.current?.setData(thirtyEMAData);
-              fortyEMASeriesRef.current?.setData(fortyEMAData);
-              sixtyEMASeriesRef.current?.setData(sixtyEMAData);
-              oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
-              twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
-              // 크로스 포인트 및 마커 업데이트
-              const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
-              crossPointsRef.current = crossPoints;
-              const markers = createTradeMarkers(crossPoints, tradeStrategy);
-              if (candleSeriesRef.current) {
-                updateTradeMarkers(candleSeriesRef.current, markers);
-                const lastCrossPoint = crossPoints[crossPoints.length - 1];
-                const timestampInSeconds = Math.floor(data[0].timestamp / 1000);
-                if (lastCrossPoint && Math.abs(Number(lastCrossPoint.time) - timestampInSeconds) <= 1) {
-                  console.log('크로스 포인트 감지:', lastCrossPoint.position);
-                  try {
-                    await handleOrder({
-                      market: symbol,
-                      side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
-                      volume: calculateOrderVolume(data[0].trade_price),
-                      price: data[0].trade_price.toString(),
-                      ord_type: 'limit',
-                      mode: mode
-                    });
-                  } catch (error) {
-                    console.error('주문 실행 중 오류:', error);
-                  }
-                }
-                
-                // 크로스 포인트 및 마커 업데이트
-                if (candleSeriesRef.current) {
-                  updateTradeMarkers(candleSeriesRef.current, markers);
-                }
-              }
-              setCurrentPrice(data[0].trade_price);
-            }
-          }
-        } catch (error) {
-          console.error('실시간 API 업데이트 중 오류:', error);
-        }
-      }, 1000);  // 1초마다 업데이트
-    } else {
-      // interval 정리
-      if (apiIntervalRef.current) {
-        clearInterval(apiIntervalRef.current);
-        apiIntervalRef.current = null;
+      // 차트 완전히 리셋하기
+      if (chartRef.current) {
+        // 기존 시리즈 제거
+        candleSeriesRef.current = null;
+       // tenEMASeriesRef.current = null;
+        twentyEMASeriesRef.current = null;
+       // fiftyEMASeriesRef.current = null;
+        oneTwentyEMASeriesRef.current = null;
+        twoFortyEMASeriesRef.current = null;
+        threeHundredSixtyEMASeriesRef.current = null;
+        volumeSeriesRef.current = null;
+        
+        // 차트 제거 및 다시 생성
+        chartRef.current.remove();
+        chartRef.current = null;
+        
+        // 차트 다시 초기화
+        initializeChart();
+        
+        // 데이터 다시 로드
+        loadChartData();
       }
     }
-    setIsRealtimeAPIEnabled((prev) => !prev);
+    
+    setIsRealtimeAPIEnabled(!isRealtimeAPIEnabled);
+    localStorage.setItem('realtimeAPIEnabled', (!isRealtimeAPIEnabled).toString());
   };
-
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
@@ -2450,167 +2444,199 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     }
   }, [candleSeriesRef, maPeriods.twoForty]);
 
-  // formatTime 함수 추가
-  const formatTime = (time: Time): string => {
-    if (typeof time === 'number') {
-      return new Date(time * 1000).toLocaleString();
-    } else if (typeof time === 'object' && time !== null) {
-      // BusinessDay 객체인 경우
-      const businessDay = time as BusinessDay;
-      return new Date(businessDay.year, businessDay.month - 1, businessDay.day).toLocaleDateString();
+ // 두 매개변수를 사용하여 거래 목록을 생성하는 함수 추가
+ const generateTrades = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): Trade[] => {
+  const trades: Trade[] = [];
+  let buyPoint: CrossPoint | null = null;
+  
+  for (let i = 0; i < crossPoints.length; i++) {
+    const point = crossPoints[i];
+    
+    if (point.position === 'buy') {
+      buyPoint = point;
+    } else if (point.position === 'sell' && buyPoint) {
+      const entryPrice = buyPoint.price;
+      const exitPrice = point.price;
+      const returnRate = (exitPrice - entryPrice) / entryPrice;
+      
+      trades.push({
+        entryTime: buyPoint.time,
+        exitTime: point.time,
+        entryPrice,
+        exitPrice,
+        return: returnRate,
+        isSuccess: returnRate > 0,
+        mode: mode === 'test' ? 'test-auto' : 'live-auto',
+        angles: {
+          entryMa40: buyPoint.slopes.ma40,
+          exitMa40: point.slopes.ma40,
+          entryMa60: buyPoint.slopes.ma60,
+          exitMa60: point.slopes.ma60,
+          entryMa360: buyPoint.slopes.ma360,
+          exitMa360: point.slopes.ma360,
+          entryMa120: buyPoint.slopes.ma120,
+          exitMa120: point.slopes.ma120
+        }
+      });
+      
+      buyPoint = null;
     }
-    return String(time);
-  };
-
-  return (
-    <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
-      {/* 데이터 로딩 제어 버튼 */}
-      <div className="mb-4">
-        <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
-          <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
-          <div className="flex space-x-4">
-            <button
-              onClick={handleAutoUpdateToggle}
-              className={`px-4 py-2 rounded-lg font-bold ${
-                isAutoUpdate 
-                  ? 'bg-green-600 hover:bg-green-700' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              } text-white`}
-            >
-              {isAutoUpdate ? '✓ 자동 업데이트' : '자동 업데이트'}
-            </button>
-            
-            <button
-              onClick={handleRealtimeAPIToggle}
-              className={`px-4 py-2 rounded-lg font-bold ${
-                isRealtimeAPIEnabled 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              } text-white`}
-            >
-              {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
-            </button>
-          </div>
+  }
+  
+  return trades;
+}
+return (
+  <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
+    {/* 데이터 로딩 제어 버튼 */}
+    <div className="mb-4">
+      <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
+        <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
+        <div className="flex space-x-4">
+          <button
+            onClick={handleAutoUpdateToggle}
+            className={`px-4 py-2 rounded-lg font-bold ${
+              isAutoUpdate 
+                ? 'bg-green-600 hover:bg-green-700' 
+                : 'bg-gray-600 hover:bg-gray-700'
+            } text-white`}
+          >
+            {isAutoUpdate ? '✓ 자동 업데이트' : '자동 업데이트'}
+          </button>
+          
+          <button
+            onClick={handleRealtimeAPIToggle}
+            className={`px-4 py-2 rounded-lg font-bold ${
+              isRealtimeAPIEnabled 
+                ? 'bg-blue-600 hover:bg-blue-700' 
+                : 'bg-gray-600 hover:bg-gray-700'
+            } text-white`}
+          >
+            {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
+          </button>
         </div>
       </div>
+    </div>
 
-      {/* 시작 날짜 설정 패널 */}
-      <div className="mb-4">
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
-          <DatePicker
-            selected={dateRange.startDate}
-            onChange={(date: Date | null) => {
-              if (date) handleDateRangeChange(date);
-            }}
-            showTimeSelect
-            timeFormat="HH:mm"
-            timeIntervals={1}
-            timeCaption="시간"
-            dateFormat="yyyy-MM-dd HH:mm"
-            maxDate={new Date()}
-            className="bg-gray-700 text-white p-2 rounded w-full"
-            popperClassName="react-datepicker-popper"
-            popperPlacement="right-start"
-            withPortal
-            portalId="datepicker-portal"
-          />
-        </div>
+    {/* 시작 날짜 설정 패널 */}
+    <div className="mb-4">
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
+        <DatePicker
+          selected={dateRange.startDate}
+          onChange={(date: Date | null) => {
+            if (date) handleDateRangeChange(date);
+          }}
+          showTimeSelect
+          timeFormat="HH:mm"
+          timeIntervals={1}
+          timeCaption="시간"
+          dateFormat="yyyy-MM-dd HH:mm"
+          maxDate={new Date()}
+          className="bg-gray-700 text-white p-2 rounded w-full"
+          popperClassName="react-datepicker-popper"
+          popperPlacement="right-start"
+          withPortal
+          portalId="datepicker-portal"
+        />
       </div>
+    </div>
 
-      {/* 종료 날짜 설정 패널 */}
-      <div className="mb-4">
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">종료 날짜</div>
-          <DatePicker
-            selected={
-              dateRange.endDate && dateRange.startDate &&
-              dateRange.endDate.getTime() === new Date(dateRange.startDate.getTime() + 30 * 60 * 1000).getTime()
-                ? null
-                : dateRange.endDate
+    {/* 종료 날짜 설정 패널 */}
+    <div className="mb-4">
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm mb-2">종료 날짜</div>
+        <DatePicker
+          selected={
+            dateRange.endDate && dateRange.startDate &&
+            dateRange.endDate.getTime() === new Date(dateRange.startDate.getTime() + 30 * 60 * 1000).getTime()
+              ? null
+              : dateRange.endDate
+          }
+          onChange={(date: Date | null) => {
+            if (date) {
+              handleEndDateChange(date);
             }
-            onChange={(date: Date | null) => {
-              if (date) {
-                handleEndDateChange(date);
-              }
-            }}
-            showTimeSelect
-            timeFormat="HH:mm"
-            timeIntervals={1}
-            timeCaption="시간"
-            dateFormat="yyyy-MM-dd HH:mm"
-            maxDate={new Date()}
-            className="bg-gray-700 text-white p-2 rounded w-full"
-            popperClassName="react-datepicker-popper"
-            popperPlacement="right-start"
-            withPortal
-            portalId="datepicker-portal"
-            placeholderText="종료 날짜 선택"
-          />
+          }}
+          showTimeSelect
+          timeFormat="HH:mm"
+          timeIntervals={1}
+          timeCaption="시간"
+          dateFormat="yyyy-MM-dd HH:mm"
+          maxDate={new Date()}
+          className="bg-gray-700 text-white p-2 rounded w-full"
+          popperClassName="react-datepicker-popper"
+          popperPlacement="right-start"
+          withPortal
+          portalId="datepicker-portal"
+          placeholderText="종료 날짜 선택"
+        />
+      </div>
+    </div>
+
+    {/* 로딩 프로그레스 바 */}
+    {isLoading && (
+      <div className="mb-4">
+        <div className="text-gray-400 text-sm mb-2">데이터 로딩 중... {progress.toFixed(1)}%</div>
+        <div className="w-full bg-gray-700 rounded-full h-2.5">
+          <div
+            className="bg-blue-600 h-2.5 rounded-full"
+            style={{ width: `${progress}%` }}
+          ></div>
         </div>
       </div>
+    )}
 
-      {/* 로딩 프로그레스 바 */}
-      {isLoading && (
-        <div className="mb-4">
-          <div className="text-gray-400 text-sm mb-2">데이터 로딩 중... {progress.toFixed(1)}%</div>
-          <div className="w-full bg-gray-700 rounded-full h-2.5">
-            <div
-              className="bg-blue-600 h-2.5 rounded-full"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-        </div>
-      )}
+    {/* MA 설정 패널 - 가로 정렬 (input 버튼 제외) */}
+    <div className="grid grid-cols-9 gap-2 bg-gray-800 p-4 rounded-lg mb-4">
+      {/* MA 버튼 */}
+      <div>
+        <div className="text-gray-400 text-sm mb-1">MA 버튼</div>
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => updateShowMA('thirty')}
+            className={`px-1 py-0.5 text-xs rounded ${showMA.thirty ? 'bg-blue-600' : 'bg-gray-600'}`}
+          >
+            {showMA.thirty ? '✓ 30숨기기' : '30보이기'}
+          </button>
 
-      {/* MA 설정 패널 - 가로 정렬 */}
-      <div className="grid grid-cols-3 gap-4 bg-gray-800 p-4 rounded-lg mb-4">
-        {/* MA 30 설정 */}
-        <div className="bg-gray-700 p-3 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 설정</div>
-          <div className="flex items-center space-x-2">
- 
-   
-            <button
-              onClick={() => updateShowMA('thirty')}
-              className={`px-2 py-1 rounded ${showMA.thirty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.thirty ? '✓ 30MA 보기' : '30MA 숨김'}
-            </button>
-             <button
-              onClick={() => updateShowMA('forty')}
-              className={`px-2 py-1 rounded ${showMA.forty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.forty ? '✓ 40MA 보기' : '40MA 숨김'}
-            </button>
-             <button
-              onClick={() => updateShowMA('sixty')}
-              className={`px-2 py-1 rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.sixty ? '✓ 60MA 보기' : '60MA 숨김'}
-            </button>
-             <button
-              onClick={() => updateShowMA('oneTwenty')}
-              className={`px-2 py-1 rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.oneTwenty ? '✓ 120MA 보기' : '120MA 숨김'}
-            </button>
-             <button
-              onClick={() => updateShowMA('twoForty')}
-              className={`px-2 py-1 rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.twoForty ? '✓ 240MA 보기' : '240MA 숨김'}
-            </button>
-             <button
-              onClick={() => updateShowMA('threeHundredSixty')}
-              className={`px-2 py-1 rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.threeHundredSixty ? '✓ 360MA 보기' : '360MA 숨김'}
-            </button>
-          </div>
+          <button
+            onClick={() => updateShowMA('forty')}
+            className={`px-1 py-0.5 text-xs rounded ${showMA.forty ? 'bg-blue-600' : 'bg-gray-600'}`}
+          >
+            {showMA.forty ? '✓ 40숨기기' : '40보이기'}
+          </button>
+
+          <button
+            onClick={() => updateShowMA('sixty')}
+            className={`px-1 py-0.5 text-xs rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+          >
+            {showMA.sixty ? '✓ 60숨기기' : '60보이기'}
+          </button>
+
+          <button
+            onClick={() => updateShowMA('oneTwenty')}
+            className={`px-1 py-0.5 text-xs rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
+          >
+            {showMA.oneTwenty ? '✓ 120숨기기' : '120보이기'}
+          </button>
+
+          <button
+            onClick={() => updateShowMA('twoForty')}
+            className={`px-1 py-0.5 text-xs rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
+          >
+            {showMA.twoForty ? '✓ 240숨기기' : '240보이기'}
+          </button>
+
+          <button
+            onClick={() => updateShowMA('threeHundredSixty')}
+            className={`px-1 py-0.5 text-xs rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+          >
+            {showMA.threeHundredSixty ? '✓ 360숨기기' : '360보이기'}
+          </button>
+
         </div>
       </div>
-
+    </div>
       {/* 시세 비교 정보 */}
       <div className="grid grid-cols-4 gap-4 mb-4">
         <div className="bg-gray-800 p-4 rounded-lg">
@@ -2677,45 +2703,45 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         <div className="mt-4">
           <div className="text-white text-lg font-bold mb-4">백테스트 결과</div>
           <div className="grid grid-cols-6 gap-4">
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <div className="text-gray-400 text-sm">총 거래 횟수</div>
-              <div className="text-white text-lg font-bold">
-                {backtestResult.totalTrades}회
-              </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">총 거래 횟수</div>
+            <div className="text-white text-lg font-bold">
+              {backtestResult.totalTrades}회
             </div>
-            <div className="bg-gray-800 p-4 rounded-lg">
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
               <div className="text-gray-400 text-sm">성공 거래 횟수</div>
-              <div className="text-white text-lg font-bold">
-                {backtestResult.successfulTrades}회
-              </div>
+            <div className="text-white text-lg font-bold">
+              {backtestResult.successfulTrades}회
             </div>
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <div className="text-gray-400 text-sm">성공률</div>
-              <div className="text-white text-lg font-bold">
-                {backtestResult.successRate.toFixed(2)}%
-              </div>
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">성공률</div>
+            <div className="text-white text-lg font-bold">
+              {backtestResult.successRate.toFixed(2)}%
             </div>
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <div className="text-gray-400 text-sm">총 수익률</div>
-              <div className={`text-lg font-bold ${
-                backtestResult.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
-                {(backtestResult.totalReturn * 100).toFixed(2)}%
-              </div>
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <div className="text-gray-400 text-sm">총 수익률</div>
+            <div className={`text-lg font-bold ${
+              backtestResult.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {(backtestResult.totalReturn * 100).toFixed(2)}%
             </div>
-            <div className="bg-gray-800 p-4 rounded-lg">
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
               <div className="text-gray-400 text-sm">총 순수익률</div>
-              <div className={`text-lg font-bold ${
+            <div className={`text-lg font-bold ${
                 backtestResult.totalNetReturn >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
+            }`}>
                 {(backtestResult.totalNetReturn * 100).toFixed(2)}%
-              </div>
             </div>
+          </div>
             <div className="bg-gray-800 p-4 rounded-lg">
               <div className="text-gray-400 text-sm">평균 수익률</div>
-              <div className={`text-lg font-bold ${
+            <div className={`text-lg font-bold ${
                 backtestResult.averageReturn >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
+            }`}>
                 {(backtestResult.averageReturn * 100).toFixed(2)}%
               </div>
             </div>
@@ -2755,10 +2781,10 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                   return (
                     <tr key={index} className="border-t border-gray-700">
                       <td className="px-4 py-2">
-                        {formatTime(trade.entryTime)}
+                      {new Date((trade.entryTime as number) * 1000).toLocaleString()}
                       </td>
                       <td className="px-4 py-2">
-                        {formatTime(trade.exitTime)}
+                      {new Date((trade.exitTime as number) * 1000).toLocaleString()}
                       </td>
                       <td className="px-4 py-2">
                         {trade.entryPrice.toLocaleString()}
