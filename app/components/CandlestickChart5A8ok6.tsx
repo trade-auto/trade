@@ -67,9 +67,10 @@ interface CrossPoint {
   isAbove360MA: boolean;
   slopes: {
     ma40: number;
-    ma60: number;
-    ma360: number;
+   // ma60: number;
+   // ma360: number;
     ma120: number;
+    ma240: number;
   };
   deviations?: { // 이격도 정보 추가
     ma120: number;
@@ -134,6 +135,8 @@ interface Trade {
     exitMa360?: number;
     entryMa120?: number;
     exitMa120?: number;
+    entryMa240?: number;
+    exitMa240?:number;
   };
 }
 
@@ -283,14 +286,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   // const apiIntervalRef = useRef<NodeJS.Timeout | null>(null); // 이미 선언되어 있으므로 제거
 
   // 매수/매도 신호 생성 로직 수정
-  const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
+  const findCrossPoints = (fortyEMA: LineData<Time>[], onetwentyEMA: LineData<Time>[], twofortyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
     const startTime = Math.floor(Date.now() / 1000) - 1500; // 현재 시간에서 25분 전 부터 매매
     
     // 필요한 MA 데이터 가져오기
-    const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
+    const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
     
@@ -309,19 +312,19 @@ const THRESHOLD_ANGLE_120_MINUS = -0.05; // 120MA 매도 기준 기울기 임계
     const DEVIATION_THRESHOLD_BUY = 1.5; // 매수 시 이격도 임계값 (%)
     const DEVIATION_THRESHOLD_SELL = -1.5; // 매도 시 이격도 임계값 (%)
     
-    for (let i = 1; i < thirtyEMA.length; i++) {
-      const currentTime = thirtyEMA[i].time as number;
+    for (let i = 1; i < fortyEMA.length; i++) {
+      const currentTime = fortyEMA[i].time as number;
       
       // 시작 시간 이전의 신호는 무시
       if (currentTime < startTime) continue;
       
-      const currThirty = thirtyEMA[i].value;
+      const currThirty = fortyEMA[i].value;
       const currPrice = currThirty; // 현재 가격으로 30MA 값 사용
       
       // 240MA 관련 데이터 계산
       const tolerance = 3; // 초 단위 허용 오차
-      const ma240Index = ma240Data ? ma240Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
-      const ma120Index = ma120Data ? ma120Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
+      const ma240Index = ma240Data ? ma240Data.findIndex(d => Math.abs((d.time as number) - (fortyEMA[i].time as number)) < tolerance) : -1;
+      const ma120Index = ma120Data ? ma120Data.findIndex(d => Math.abs((d.time as number) - (fortyEMA[i].time as number)) < tolerance) : -1;
       
       // 이격도 계산
       let deviation120 = 0;
@@ -338,16 +341,16 @@ const THRESHOLD_ANGLE_120_MINUS = -0.05; // 120MA 매도 기준 기울기 임계
       // 기울기 계산
       const slopes = {
         ma40: fortyEMA[i].value - fortyEMA[i-1].value,
-        ma60: sixtyEMA[i].value - sixtyEMA[i-1].value,
+        //ma60: sixtyEMA[i].value - sixtyEMA[i-1].value,
         ma120: ma120Index !== undefined && ma120Index > 0 && ma120Data
           ? ma120Data[ma120Index].value - ma120Data[ma120Index-1].value
           : 0,
         ma240: ma240Index !== undefined && ma240Index > 0 && ma240Data
           ? ma240Data[ma240Index].value - ma240Data[ma240Index-1].value
           : 0,
-        ma360: ma360Data && i < ma360Data.length && i > 0
-          ? ma360Data[i].value - ma360Data[i-1].value
-          : 0
+        // ma360: ma360Data && i < ma360Data.length && i > 0
+        //   ? ma360Data[i].value - ma360Data[i-1].value
+        //   : 0
       };
       
       if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  // 30초 간격 유지
@@ -405,7 +408,7 @@ const THRESHOLD_ANGLE_120_MINUS = -0.05; // 120MA 매도 기준 기울기 임계
           (buyBaseCondition && buyDeviationCondition && buyAdditionalCondition)
         )) {
           crossPoints.push({
-            time: thirtyEMA[i].time,
+            time: fortyEMA[i].time,
             position: 'buy',
             price: currThirty,
             isAbove360MA: false,
@@ -427,7 +430,7 @@ const THRESHOLD_ANGLE_120_MINUS = -0.05; // 120MA 매도 기준 기울기 임계
           (sellBaseCondition && sellDeviationCondition && sellAdditionalCondition)
         )) {
         crossPoints.push({
-          time: thirtyEMA[i].time,
+          time: fortyEMA[i].time,
           position: 'sell',
           price: currThirty,
           isAbove360MA: false,
@@ -717,12 +720,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       }
           
       // 거래 신호 업데이트
-      const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
+      const crossPoints = findCrossPoints(fortyEMAData, oneTwentyEMAData, twoFortyEMAData);
           crossPointsRef.current = crossPoints;
           
       // 통합된 마커 업데이트 함수 사용
+      //findCrossPoints(crossPoints);
       updateChartMarkers(crossPoints);
-
         // 백테스팅 결과 업데이트
       const result = calculateBacktestResult(formattedData, crossPoints);
       if (result.trades.length > 0) {
@@ -752,15 +755,15 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     if (volumeSeriesRef.current) {
       volumeSeriesRef.current.setData([]);
     }
-    if (thirtyEMASeriesRef.current) {
-      thirtyEMASeriesRef.current.setData([]);
-    }
+    // if (thirtyEMASeriesRef.current) {
+    //   thirtyEMASeriesRef.current.setData([]);
+    // }
     if (fortyEMASeriesRef.current) {
       fortyEMASeriesRef.current.setData([]);
     }
-    if (sixtyEMASeriesRef.current) {
-      sixtyEMASeriesRef.current.setData([]);
-    }
+    // if (sixtyEMASeriesRef.current) {
+    //   sixtyEMASeriesRef.current.setData([]);
+    // }
     if (twentyEMASeriesRef.current) {
       twentyEMASeriesRef.current.setData([]);
     }
@@ -1080,11 +1083,13 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           mode: mode === 'test' ? 'test-auto' : 'live-auto',
           angles: {
             entryMa40: buyPoint.slopes.ma40,
-            entryMa360: buyPoint.slopes.ma360,
+           // entryMa360: buyPoint.slopes.ma360,
             exitMa40: point.slopes.ma40,
-            exitMa360: point.slopes.ma360,
+           // exitMa360: point.slopes.ma360,
             entryMa120: buyPoint.slopes.ma120,
-            exitMa120: point.slopes.ma120
+            exitMa120: point.slopes.ma120,
+            entryMa240: buyPoint.slopes.ma240,
+            exitMa240: point.slopes.ma240
           }
         });
         
@@ -1360,7 +1365,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       // 백테스트 결과 업데이트
       const result = calculateBacktestResult(candleData, crossPoints);
       if (result.trades.length > 0) {
-        setBacktestResult(result);
+      setBacktestResult(result);
       } else {
         setBacktestResult(null);
       }
@@ -1978,14 +1983,109 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   const apiIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleRealtimeAPIToggle = () => {
+  //   const newValue = !isRealtimeAPIEnabled;
+  //   setIsRealtimeAPIEnabled(newValue);
+    
+  //   if (newValue) {
+  //     // 다른 업데이트 모드 비활성화
+  //     setIsAutoUpdate(false);
+  //     if (autoUpdateIntervalRef.current) {
+  //       clearInterval(autoUpdateIntervalRef.current);
+  //       autoUpdateIntervalRef.current = null;
+  //     }
+      
+  //     // 차트를 다시 생성하지 않고 데이터만 초기화하고 다시 로드
+  //     if (candleSeriesRef.current) {
+  //       // 실시간 API 업데이트 시작
+  //       apiIntervalRef.current = setInterval(async () => {
+  //         try {
+  //           // 초봉 데이터 한 개만 가져오기
+  //           const response = await fetch(
+  //             `https://api.upbit.com/v1/candles/${getApiEndpoint(chartType)}?market=${symbol}&count=1`
+  //           );
+            
+  //           if (!response.ok) {
+  //             throw new Error(`API 요청 실패: ${response.status}`);
+  //           }
+            
+  //           const data = await response.json();
+            
+  //           if (data && data[0]) {
+  //             const candle = data[0];
+              
+  //             // 캔들 데이터 변환
+  //             const newCandle: CandlestickData<Time> = {
+  //               time: Math.floor(new Date(candle.candle_date_time_utc).getTime() / 1000) as Time,
+  //               open: candle.opening_price,
+  //               high: candle.high_price,
+  //               low: candle.low_price,
+  //               close: candle.trade_price
+  //             };
+              
+  //             // 현재 데이터 가져오기
+  //             if (candleSeriesRef.current) {
+  //               const currentData = candleSeriesRef.current.data();
+                
+  //               // 같은 시간대의 캔들이 있으면 업데이트, 없으면 새로 추가
+  //               const existingCandleIndex = currentData.findIndex(
+  //                 (c) => c.time === newCandle.time
+  //               );
+                
+  //               if (existingCandleIndex >= 0) {
+  //                 // 기존 캔들 업데이트
+  //                 candleSeriesRef.current.update(newCandle);
+  //               } else {
+  //                 // 새 캔들 추가
+  //                 candleSeriesRef.current.update(newCandle);
+  //               }
+                
+  //               // 차트 가격 업데이트
+  //               setChartPrice(newCandle.close);
+                
+  //               // 필터링된 데이터로 MA 업데이트
+  //               const filteredData = currentData
+  //                 .filter((d): d is CandlestickData<Time> => 
+  //                   'open' in d && 'high' in d && 'low' in d && 'close' in d
+  //                 )
+  //                 .concat(newCandle);
+                
+  //               updateMAData(filteredData);
+  //             }
+  //           }
+  //         } catch (error) {
+  //           console.error('실시간 API 업데이트 중 오류:', error);
+  //         }
+  //       }, 1000); // 1초마다 업데이트
+  //     }
+  //   } else {
+  //     // 실시간 API 업데이트 중지
+  //     if (apiIntervalRef.current) {
+  //       clearInterval(apiIntervalRef.current);
+  //       apiIntervalRef.current = null;
+  //     }
+  //   }
+  // };
+
+  // // API 엔드포인트 헬퍼 함수 추가
+  // const getApiEndpoint = (type: string) => {
+  //   if (type.includes('seconds')) return 'minutes/1';
+  //   if (type.includes('minutes')) return type;
+  //   if (type === 'day') return 'days';
+  //   return type;
+  // };
+  const handleRealtimeAPIToggle = () => {
     if (!isRealtimeAPIEnabled) {
       // 차트 완전히 리셋하기
       if (chartRef.current) {
         // 기존 시리즈 제거
         candleSeriesRef.current = null;
-       // tenEMASeriesRef.current = null;
-        twentyEMASeriesRef.current = null;
-       // fiftyEMASeriesRef.current = null;
+    //    tenEMASeriesRef.current = null;
+      fortyEMASeriesRef.current = null;
+    //  sixtyEMASeriesRef.current = null;
+
+    twentyEMASeriesRef.current = null;
+
+     //   fiftyEMASeriesRef.current = null;
         oneTwentyEMASeriesRef.current = null;
         twoFortyEMASeriesRef.current = null;
         threeHundredSixtyEMASeriesRef.current = null;
@@ -2006,6 +2106,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     setIsRealtimeAPIEnabled(!isRealtimeAPIEnabled);
     localStorage.setItem('realtimeAPIEnabled', (!isRealtimeAPIEnabled).toString());
   };
+
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
@@ -2212,7 +2313,9 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           exitMa40: 0,
           exitMa360: 0,
           entryMa120: 0,
-          exitMa120: 0
+          exitMa120: 0,
+          entryMa240:0,
+          exitMa240:0
         }
       };
     }
@@ -2332,7 +2435,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   </div>
 
   // 마커 업데이트를 위한 함수 통합
-  const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
+  const findCrossPoints = useCallback((crossPoints: CrossPoint[]) => {
     if (!candleSeriesRef.current) return;
     
     try {
@@ -2470,12 +2573,14 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         angles: {
           entryMa40: buyPoint.slopes.ma40,
           exitMa40: point.slopes.ma40,
-          entryMa60: buyPoint.slopes.ma60,
-          exitMa60: point.slopes.ma60,
-          entryMa360: buyPoint.slopes.ma360,
-          exitMa360: point.slopes.ma360,
+          // entryMa60: buyPoint.slopes.ma60,
+          // exitMa60: point.slopes.ma60,
+          // entryMa360: buyPoint.slopes.ma360,
+          // exitMa360: point.slopes.ma360,
           entryMa120: buyPoint.slopes.ma120,
-          exitMa120: point.slopes.ma120
+          exitMa120: point.slopes.ma120,
+          entryMa240: buyPoint.slopes.ma240,    
+          exitMa240: point.slopes.ma240
         }
       });
       
@@ -2485,106 +2590,106 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   
   return trades;
 }
-return (
-  <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
-    {/* 데이터 로딩 제어 버튼 */}
-    <div className="mb-4">
-      <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
-        <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
-        <div className="flex space-x-4">
-          <button
-            onClick={handleAutoUpdateToggle}
-            className={`px-4 py-2 rounded-lg font-bold ${
-              isAutoUpdate 
-                ? 'bg-green-600 hover:bg-green-700' 
-                : 'bg-gray-600 hover:bg-gray-700'
-            } text-white`}
-          >
-            {isAutoUpdate ? '✓ 자동 업데이트' : '자동 업데이트'}
-          </button>
-          
-          <button
-            onClick={handleRealtimeAPIToggle}
-            className={`px-4 py-2 rounded-lg font-bold ${
-              isRealtimeAPIEnabled 
-                ? 'bg-blue-600 hover:bg-blue-700' 
-                : 'bg-gray-600 hover:bg-gray-700'
-            } text-white`}
-          >
-            {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    {/* 시작 날짜 설정 패널 */}
-    <div className="mb-4">
-      <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
-        <DatePicker
-          selected={dateRange.startDate}
-          onChange={(date: Date | null) => {
-            if (date) handleDateRangeChange(date);
-          }}
-          showTimeSelect
-          timeFormat="HH:mm"
-          timeIntervals={1}
-          timeCaption="시간"
-          dateFormat="yyyy-MM-dd HH:mm"
-          maxDate={new Date()}
-          className="bg-gray-700 text-white p-2 rounded w-full"
-          popperClassName="react-datepicker-popper"
-          popperPlacement="right-start"
-          withPortal
-          portalId="datepicker-portal"
-        />
-      </div>
-    </div>
-
-    {/* 종료 날짜 설정 패널 */}
-    <div className="mb-4">
-      <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">종료 날짜</div>
-        <DatePicker
-          selected={
-            dateRange.endDate && dateRange.startDate &&
-            dateRange.endDate.getTime() === new Date(dateRange.startDate.getTime() + 30 * 60 * 1000).getTime()
-              ? null
-              : dateRange.endDate
-          }
-          onChange={(date: Date | null) => {
-            if (date) {
-              handleEndDateChange(date);
-            }
-          }}
-          showTimeSelect
-          timeFormat="HH:mm"
-          timeIntervals={1}
-          timeCaption="시간"
-          dateFormat="yyyy-MM-dd HH:mm"
-          maxDate={new Date()}
-          className="bg-gray-700 text-white p-2 rounded w-full"
-          popperClassName="react-datepicker-popper"
-          popperPlacement="right-start"
-          withPortal
-          portalId="datepicker-portal"
-          placeholderText="종료 날짜 선택"
-        />
-      </div>
-    </div>
-
-    {/* 로딩 프로그레스 바 */}
-    {isLoading && (
+  return (
+    <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
+      {/* 데이터 로딩 제어 버튼 */}
       <div className="mb-4">
-        <div className="text-gray-400 text-sm mb-2">데이터 로딩 중... {progress.toFixed(1)}%</div>
-        <div className="w-full bg-gray-700 rounded-full h-2.5">
-          <div
-            className="bg-blue-600 h-2.5 rounded-full"
-            style={{ width: `${progress}%` }}
-          ></div>
+        <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
+          <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
+          <div className="flex space-x-4">
+            <button
+              onClick={handleAutoUpdateToggle}
+              className={`px-4 py-2 rounded-lg font-bold ${
+                isAutoUpdate 
+                  ? 'bg-green-600 hover:bg-green-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white`}
+            >
+            {isAutoUpdate ? '✓ 자동 업데이트' : '자동 업데이트'}
+            </button>
+            
+            <button
+              onClick={handleRealtimeAPIToggle}
+              className={`px-4 py-2 rounded-lg font-bold ${
+                isRealtimeAPIEnabled 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white`}
+            >
+            {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
+            </button>
+          </div>
         </div>
       </div>
-    )}
+
+      {/* 시작 날짜 설정 패널 */}
+      <div className="mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
+          <DatePicker
+            selected={dateRange.startDate}
+            onChange={(date: Date | null) => {
+              if (date) handleDateRangeChange(date);
+            }}
+            showTimeSelect
+            timeFormat="HH:mm"
+            timeIntervals={1}
+            timeCaption="시간"
+            dateFormat="yyyy-MM-dd HH:mm"
+            maxDate={new Date()}
+            className="bg-gray-700 text-white p-2 rounded w-full"
+            popperClassName="react-datepicker-popper"
+            popperPlacement="right-start"
+            withPortal
+            portalId="datepicker-portal"
+          />
+        </div>
+      </div>
+
+      {/* 종료 날짜 설정 패널 */}
+      <div className="mb-4">
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">종료 날짜</div>
+          <DatePicker
+            selected={
+              dateRange.endDate && dateRange.startDate &&
+              dateRange.endDate.getTime() === new Date(dateRange.startDate.getTime() + 30 * 60 * 1000).getTime()
+                ? null
+                : dateRange.endDate
+            }
+            onChange={(date: Date | null) => {
+              if (date) {
+                handleEndDateChange(date);
+              }
+            }}
+            showTimeSelect
+            timeFormat="HH:mm"
+            timeIntervals={1}
+            timeCaption="시간"
+            dateFormat="yyyy-MM-dd HH:mm"
+            maxDate={new Date()}
+            className="bg-gray-700 text-white p-2 rounded w-full"
+            popperClassName="react-datepicker-popper"
+            popperPlacement="right-start"
+            withPortal
+            portalId="datepicker-portal"
+            placeholderText="종료 날짜 선택"
+          />
+        </div>
+      </div>
+
+      {/* 로딩 프로그레스 바 */}
+      {isLoading && (
+        <div className="mb-4">
+          <div className="text-gray-400 text-sm mb-2">데이터 로딩 중... {progress.toFixed(1)}%</div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5">
+            <div
+              className="bg-blue-600 h-2.5 rounded-full"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
 
     {/* MA 설정 패널 - 가로 정렬 (input 버튼 제외) */}
     <div className="grid grid-cols-9 gap-2 bg-gray-800 p-4 rounded-lg mb-4">
@@ -2592,33 +2697,33 @@ return (
       <div>
         <div className="text-gray-400 text-sm mb-1">MA 버튼</div>
         <div className="flex justify-between items-center">
-          <button
-            onClick={() => updateShowMA('thirty')}
+            <button
+              onClick={() => updateShowMA('thirty')}
             className={`px-1 py-0.5 text-xs rounded ${showMA.thirty ? 'bg-blue-600' : 'bg-gray-600'}`}
-          >
+            >
             {showMA.thirty ? '✓ 30숨기기' : '30보이기'}
-          </button>
+            </button>
 
-          <button
-            onClick={() => updateShowMA('forty')}
+            <button
+              onClick={() => updateShowMA('forty')}
             className={`px-1 py-0.5 text-xs rounded ${showMA.forty ? 'bg-blue-600' : 'bg-gray-600'}`}
-          >
+            >
             {showMA.forty ? '✓ 40숨기기' : '40보이기'}
-          </button>
+            </button>
 
-          <button
-            onClick={() => updateShowMA('sixty')}
+            <button
+              onClick={() => updateShowMA('sixty')}
             className={`px-1 py-0.5 text-xs rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
-          >
+            >
             {showMA.sixty ? '✓ 60숨기기' : '60보이기'}
-          </button>
+            </button>
 
-          <button
-            onClick={() => updateShowMA('oneTwenty')}
+            <button
+              onClick={() => updateShowMA('oneTwenty')}
             className={`px-1 py-0.5 text-xs rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
-          >
+            >
             {showMA.oneTwenty ? '✓ 120숨기기' : '120보이기'}
-          </button>
+            </button>
 
           <button
             onClick={() => updateShowMA('twoForty')}
@@ -2767,6 +2872,15 @@ return (
                   <th className="px-4 py-2">순수익률</th>
                   <th className="px-4 py-2">100만원 투자시 수익</th>
                   <th className="px-4 py-2">100만원 투자시 순수익</th>
+                  <th className="px-4 py-2">체결 상태</th>
+                  <th className="px-4 py-2">거래 모드</th>
+                  <th className="px-4 py-2">매수 시 10MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 10MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 20MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 20MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 50MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 50MA 기울기</th>
+
                 </tr>
               </thead>
               <tbody>
@@ -2781,7 +2895,7 @@ return (
                   return (
                     <tr key={index} className="border-t border-gray-700">
                       <td className="px-4 py-2">
-                      {new Date((trade.entryTime as number) * 1000).toLocaleString()}
+                        {new Date((trade.entryTime as number) * 1000).toLocaleString()}
                       </td>
                       <td className="px-4 py-2">
                       {new Date((trade.exitTime as number) * 1000).toLocaleString()}
@@ -2810,6 +2924,48 @@ return (
                       <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {netProfitAmount.toLocaleString()}원
                       </td>
+                      <td className={`px-4 py-2 ${
+                        trade.return >= 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.return >= 0 ? '체결완료' : '미체결'}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          trade.mode === 'live-auto' 
+                            ? 'bg-red-500 text-white'
+                            : trade.mode === 'test-auto'
+                              ? 'bg-green-500 text-white'
+                              : 'bg-blue-500 text-white'
+                        }`}>
+                          {trade.mode === 'live-auto' 
+                            ? '✓ 실전자동' 
+                            : trade.mode === 'test-auto'
+                              ? '✓ 테스트 자동'
+                              : '✓ 테스트'}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.angles?.entryMa40 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.angles?.entryMa40
+                          ? `매수 ${index + 1} (10MA: ${trade.angles.entryMa40.toFixed(1)}°)`
+                          : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.angles?.exitMa120 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.angles?.exitMa120
+                          ? `매도 ${index + 1} (10MA: ${trade.angles.exitMa120.toFixed(1)}°)`
+                          : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${
+                        (trade.angles?.entryMa240 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {trade.angles?.entryMa240
+                          ? `매수 ${index + 1} (40MA: ${trade.angles.entryMa240.toFixed(1)}°)`
+                          : '-'}
+                      </td>
+                       
                     </tr>
                   );
                 })}
@@ -2953,4 +3109,5 @@ return (
       </div>
     </div>
   );
-}; 
+  }
+}; // 여기에 닫는 중괄호와 세미콜론 추가
