@@ -150,7 +150,7 @@ export default function OrdersPage() {
                       : 'text-gray-400'
                   }`}
                 >
-                  테스트
+                  {mode === 'test' ? '✓ 테스트' : '테스트'}
                 </button>
                 <button
                   onClick={() => setMode('live')}
@@ -160,7 +160,7 @@ export default function OrdersPage() {
                       : 'text-gray-400'
                   }`}
                 >
-                  실전
+                  {mode === 'live' ? '✓ 실전' : '실전'}
                 </button>
               </div>
             </div>

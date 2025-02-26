@@ -890,7 +890,7 @@ export const CreateOrder = forwardRef<
                     : 'bg-gray-700 text-gray-300'
                 }`}
               >
-                매수
+                {side === 'bid' ? '✓ 매수' : '매수'}
               </button>
               <button
                 type="button"
@@ -901,7 +901,7 @@ export const CreateOrder = forwardRef<
                     : 'bg-gray-700 text-gray-300'
                 }`}
               >
-                매도
+                {side === 'ask' ? '✓ 매도' : '매도'}
               </button>
             </div>
           </div>
@@ -909,15 +909,41 @@ export const CreateOrder = forwardRef<
           {/* 주문 방식 선택 */}
           <div>
             <label className="block text-gray-400 mb-2">주문 방식</label>
-            <select
-              value={ordType}
-              onChange={(e) => setOrdType(e.target.value as 'limit' | 'price' | 'market')}
-              className="w-full px-4 py-2 bg-gray-700 text-white rounded"
-            >
-              <option value="limit">지정가</option>
-              <option value="price">시장가(매수)</option>
-              <option value="market">시장가(매도)</option>
-            </select>
+            <div className="flex space-x-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setOrdType('limit')}
+                className={`px-4 py-2 rounded-lg ${
+                  ordType === 'limit' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                {ordType === 'limit' ? '✓ 지정가' : '지정가'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrdType('price')}
+                className={`px-4 py-2 rounded-lg ${
+                  ordType === 'price' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                {ordType === 'price' ? '✓ 시장가(KRW)' : '시장가(KRW)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrdType('market')}
+                className={`px-4 py-2 rounded-lg ${
+                  ordType === 'market' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                {ordType === 'market' ? '✓ 시장가(수량)' : '시장가(수량)'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1030,7 +1056,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              최대
+              {activePercent === 100 ? '✓ 최대' : '최대'}
             </button>
             <button
               type="button"
@@ -1041,7 +1067,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              50%
+              {activePercent === 50 ? '✓ 50%' : '50%'}
             </button>
             <button
               type="button"
@@ -1052,7 +1078,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              25%
+              {activePercent === 25 ? '✓ 25%' : '25%'}
             </button>
             <button
               type="button"
@@ -1063,7 +1089,7 @@ export const CreateOrder = forwardRef<
                   : 'bg-gray-600 hover:bg-gray-700'
               } text-white rounded`}
             >
-              10%
+              {activePercent === 10 ? '✓ 10%' : '10%'}
             </button>
             <button
               type="button"
