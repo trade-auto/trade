@@ -2637,49 +2637,52 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         />
       </div>
 
-      {/* 백테스팅 결과 표시 */}
+      {/* 백테스트 결과 요약 */}
       {backtestResult && (
-        <div className="grid grid-cols-5 gap-4 mt-4">
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-gray-400 text-sm">총 거래 횟수</div>
-            <div className="text-white text-lg font-bold">
-              {backtestResult.totalTrades}회
+        <div className="mt-4">
+          <div className="text-white text-lg font-bold mb-4">백테스트 결과</div>
+          <div className="grid grid-cols-6 gap-4">
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="text-gray-400 text-sm">총 거래 횟수</div>
+              <div className="text-white text-lg font-bold">
+                {backtestResult.totalTrades}회
+              </div>
             </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-gray-400 text-sm">성공 거래</div>
-            <div className="text-white text-lg font-bold">
-              {backtestResult.successfulTrades}회
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="text-gray-400 text-sm">성공 거래 횟수</div>
+              <div className="text-white text-lg font-bold">
+                {backtestResult.successfulTrades}회
+              </div>
             </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-gray-400 text-sm">성공률</div>
-            <div className="text-white text-lg font-bold">
-              {backtestResult.successRate.toFixed(2)}%
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="text-gray-400 text-sm">성공률</div>
+              <div className="text-white text-lg font-bold">
+                {backtestResult.successRate.toFixed(2)}%
+              </div>
             </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-gray-400 text-sm">총 수익률</div>
-            <div className={`text-lg font-bold ${
-              backtestResult.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'
-            }`}>
-              {(backtestResult.totalReturn * 100).toFixed(2)}%
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="text-gray-400 text-sm">총 수익률</div>
+              <div className={`text-lg font-bold ${
+                backtestResult.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {(backtestResult.totalReturn * 100).toFixed(2)}%
+              </div>
             </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg">
-            <div className="text-gray-400 text-sm">평균 수익률</div>
-            <div className={`text-lg font-bold ${
-              backtestResult.averageReturn >= 0 ? 'text-green-500' : 'text-red-500'
-            }`}>
-              {(backtestResult.averageReturn * 100).toFixed(2)}%
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="text-gray-400 text-sm">총 순수익률</div>
+              <div className={`text-lg font-bold ${
+                backtestResult.totalNetReturn >= 0 ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {(backtestResult.totalNetReturn * 100).toFixed(2)}%
+              </div>
             </div>
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg col-span-5">
-            <div className="text-gray-400 text-sm">100만원 투자 시 누적 수익</div>
-            <div className={`text-lg font-bold ${
-              backtestResult.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'
-            }`}>
-              {((1000000 * (1 + backtestResult.totalReturn)) - 1000000).toLocaleString()}원
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="text-gray-400 text-sm">평균 수익률</div>
+              <div className={`text-lg font-bold ${
+                backtestResult.averageReturn >= 0 ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {(backtestResult.averageReturn * 100).toFixed(2)}%
+              </div>
             </div>
           </div>
         </div>
