@@ -2747,12 +2747,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                   <th className="px-4 py-2">100만원 투자시 수익</th>
                   <th className="px-4 py-2">체결 상태</th>
                   <th className="px-4 py-2">거래 모드</th>
-                  <th className="px-4 py-2">매수 시 360MA 기울기</th>
-                  <th className="px-4 py-2">매도 시 360MA 기울기</th>
-                  <th className="px-4 py-2">매수 시 40MA 기울기</th>
-                  <th className="px-4 py-2">매도 시 40MA 기울기</th>
-                  <th className="px-4 py-2">매수 시 120MA 기울기</th>
-                  <th className="px-4 py-2">매도 시 120MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 10MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 10MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 20MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 20MA 기울기</th>
+                  <th className="px-4 py-2">매수 시 50MA 기울기</th>
+                  <th className="px-4 py-2">매도 시 50MA 기울기</th>
                 </tr>
               </thead>
               <tbody>
