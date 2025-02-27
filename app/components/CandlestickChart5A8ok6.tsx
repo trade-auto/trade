@@ -142,7 +142,6 @@ interface BusinessDay {
   month: number;
   day: number;
 }
-
 /**
  * chartType에 따라 초기 날짜 범위를 반환한다.
  * chartType이 "seconds/"이면 최근 10분, "일봉", "월봉", "년봉" 문자열 포함 여부로 처리
@@ -302,7 +301,26 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const tolerance = 3; // 초 단위 허용 오차
       const ma240Index = ma240Data ? ma240Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
       const ma120Index = ma120Data ? ma120Data.findIndex(d => Math.abs((d.time as number) - (thirtyEMA[i].time as number)) < tolerance) : -1;
-      
+      // 이격도 계산
+let deviation120 = 0;
+let deviation240 = 0;
+
+if (ma120Index >= 0 && ma120Data) {
+  deviation120 = ((currThirty / ma120Data[ma120Index].value) * 100) - 100;
+}
+
+if (ma240Index >= 0 && ma240Data) {
+  deviation240 = ((currThirty / ma240Data[ma240Index].value) * 100) - 100;
+}
+
+// 이격도 임계값 설정
+const DEVIATION_THRESHOLD_BUY = 1.5; // 매수 시 이격도 임계값 (%)
+const DEVIATION_THRESHOLD_SELL = -1.5; // 매도 시 이격도 임계값 (%)
+
+// 이격도 조건 추가
+const buyDeviationCondition = deviation120 > DEVIATION_THRESHOLD_BUY && deviation240 > DEVIATION_THRESHOLD_BUY;
+const sellDeviationCondition = deviation120 < DEVIATION_THRESHOLD_SELL && deviation240 < DEVIATION_THRESHOLD_SELL;
+
       // 기울기 계산
       const slopes = {
         ma40: fortyEMA[i].value - fortyEMA[i-1].value,
@@ -2634,7 +2652,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       {backtestResult && (
         <div className="mt-4">
           <div className="text-white text-lg font-bold mb-4">백테스트 결과</div>
-          <div className="grid grid-cols-7 gap-4">
+          <div className="grid grid-cols-6 gap-4">
             <div className="bg-gray-800 p-4 rounded-lg">
               <div className="text-gray-400 text-sm">총 거래 횟수</div>
               <div className="text-white text-lg font-bold">
@@ -2675,14 +2693,6 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                 backtestResult.averageReturn >= 0 ? 'text-green-500' : 'text-red-500'
               }`}>
                 {(backtestResult.averageReturn * 100).toFixed(2)}%
-              </div>
-            </div>
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <div className="text-gray-400 text-sm">100만원 투자시 총순수익</div>
-              <div className={`text-lg font-bold ${
-                backtestResult.totalNetReturn >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
-                {(1000000 * backtestResult.totalNetReturn).toLocaleString()}원
               </div>
             </div>
           </div>
