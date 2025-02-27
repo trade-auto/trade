@@ -382,19 +382,15 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
         sellConditionStartTime = null;
       }
       
-      // 매수 신호 생성 (변경 없음)
-      if (lastAction !== 'buy' && (
-          (buyBaseCondition && buyConditionStartTime !== null && 
-           (currentTime - buyConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
-          (buyBaseCondition && buyAdditionalCondition)
-        )) {
-          crossPoints.push({
-            time: thirtyEMA[i].time,
-            position: 'buy',
-            price: currThirty,
+      // 매수 신호 생성 조건 수정 - 항상 buyAdditionalCondition 필요
+      if (lastAction !== 'buy' && buyBaseCondition && buyAdditionalCondition) {
+        crossPoints.push({
+          time: thirtyEMA[i].time,
+          position: 'buy',
+          price: currThirty,
           isAbove360MA: false,
-            slopes
-          });
+          slopes
+        });
         lastAction = 'buy';
         lastActionTime = currentTime;
         buyConditionStartTime = null;
