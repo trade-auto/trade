@@ -357,12 +357,10 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
         fortyEMA[i].value < ma240Data[ma240Index].value && 
         fortyEMA[i].value > ma120Data[ma120Index].value;
       
-      // 매도 추가 조건 확인
+      // 매도 추가 조건 확인 수정
       const sellAdditionalCondition = 
         ma240Index >= 0 && 
-        ma120Index >= 0 && 
-        fortyEMA[i].value > ma240Data[ma240Index].value && 
-        fortyEMA[i].value < ma120Data[ma120Index].value;
+        fortyEMA[i].value < ma240Data[ma240Index].value;
       
       // 매수 조건 지속 시간 추적
       if (buyBaseCondition) {
