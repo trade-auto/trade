@@ -1859,17 +1859,10 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   // 마커 업데이트 함수 추가
   const updateTradeMarkers = (candleSeries: ISeriesApi<"Candlestick">, markers: SeriesMarker<Time>[]) => {
     try {
-      // 마커 업데이트 전에 차트 다시 그리기
-      const currentData = [...candleSeries.data()];
-      candleSeries.setData([]);
-      candleSeries.setData(currentData);
-      
-      // 새로운 마커 추가
-      if (markers.length > 0) {
-        createSeriesMarkers(candleSeries, markers);
-      }
-      
+      // 기존 마커들을 모두 대체
+      (candleSeries as any).setMarkers(markers);
     } catch (error) {
+      console.error('마커 업데이트 실패:', error);
     }
   };
 
