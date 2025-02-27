@@ -2634,7 +2634,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       {backtestResult && (
         <div className="mt-4">
           <div className="text-white text-lg font-bold mb-4">백테스트 결과</div>
-          <div className="grid grid-cols-6 gap-4">
+          <div className="grid grid-cols-7 gap-4">
             <div className="bg-gray-800 p-4 rounded-lg">
               <div className="text-gray-400 text-sm">총 거래 횟수</div>
               <div className="text-white text-lg font-bold">
@@ -2675,6 +2675,14 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                 backtestResult.averageReturn >= 0 ? 'text-green-500' : 'text-red-500'
               }`}>
                 {(backtestResult.averageReturn * 100).toFixed(2)}%
+              </div>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <div className="text-gray-400 text-sm">100만원 투자시 총순수익</div>
+              <div className={`text-lg font-bold ${
+                backtestResult.totalNetReturn >= 0 ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {(1000000 * backtestResult.totalNetReturn).toLocaleString()}원
               </div>
             </div>
           </div>
