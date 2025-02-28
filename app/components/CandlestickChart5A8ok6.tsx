@@ -275,21 +275,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
 
   // 매수/매도 신호 생성 로직 수정
-  const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[], oneTwentyEMA: LineData<Time>[], twoFortyEMA: LineData<Time>[], threeHundredSixtyEMA: LineData<Time>[]): CrossPoint[] => {
+  const findCrossPoints = (thirtyEMA: LineData<Time>[], fortyEMA: LineData<Time>[], sixtyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
     const startTime = Math.floor(Date.now() / 1000) - 1500; // 현재 시간에서 25분 전 부터 매매
     
     // 필요한 MA 데이터 가져오기
-
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma60Data = sixtyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma40Data = fortyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma30Data = thirtyEMASeriesRef.current?.data() as LineData<Time>[];
-
+    
     // 조건 지속 시간 추적을 위한 변수들
     let buyConditionStartTime: number | null = null;
     let sellConditionStartTime: number | null = null;
@@ -693,7 +689,9 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       if (sixtyEMASeriesRef.current) {
         sixtyEMASeriesRef.current.setData(sixtyEMAData);
       }
- 
+      if (twentyEMASeriesRef.current) {
+        twentyEMASeriesRef.current.setData(oneTwentyEMAData);
+      }
       if (oneTwentyEMASeriesRef.current) {
         oneTwentyEMASeriesRef.current.setData(oneTwentyEMAData);
       }
@@ -705,7 +703,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       }
           
       // 거래 신호 업데이트
-      const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
+      const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
           crossPointsRef.current = crossPoints;
           
       // 통합된 마커 업데이트 함수 사용
@@ -1272,7 +1270,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       const threeHundredSixtyEMAData = calculateEMA(candleData, maPeriods.threeHundredSixty);
 
       // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
+      const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
       crossPointsRef.current = crossPoints;
 
       // 데이터 설정
@@ -1793,11 +1791,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           const thirtyEMAData = calculateEMA(candleHistory, maPeriods.thirty);
           const fortyEMAData = calculateEMA(candleHistory, maPeriods.forty);
           const sixtyEMAData = calculateEMA(candleHistory, maPeriods.sixty);
-          const oneTwentyEMAData = calculateEMA(candleHistory, maPeriods.oneTwenty);
-          const twoFortyEMAData = calculateEMA(candleHistory, maPeriods.twoForty);
-          const threeHundredSixtyEMAData = calculateEMA(candleHistory, maPeriods.threeHundredSixty);
-          
-          const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
+          const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
           crossPointsRef.current = crossPoints;
           const markers = createTradeMarkers(crossPoints, tradeStrategy);
           if (candleSeriesRef.current) {
@@ -1866,18 +1860,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const thirtyEMAData = calculateEMA(updatedData, maPeriods.thirty);
     const fortyEMAData = calculateEMA(updatedData, maPeriods.forty);
     const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
-    const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
-    const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
-    const threeHundredSixtyEMAData = calculateEMA(updatedData, maPeriods.threeHundredSixty);
     thirtyEMASeriesRef.current?.setData(thirtyEMAData);
     fortyEMASeriesRef.current?.setData(fortyEMAData);
     sixtyEMASeriesRef.current?.setData(sixtyEMAData);
-    oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
-    twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
-    threeHundredSixtyEMASeriesRef.current?.setData(threeHundredSixtyEMAData);
 
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
-    const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
+    const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
     crossPointsRef.current = crossPoints;
     const markers = createTradeMarkers(crossPoints, tradeStrategy);
     if (candleSeriesRef.current) {
@@ -1959,15 +1947,13 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
               const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
               const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
               const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
-              const threeHundredSixtyEMAData = calculateEMA(updatedData, maPeriods.threeHundredSixty);
               thirtyEMASeriesRef.current?.setData(thirtyEMAData);
               fortyEMASeriesRef.current?.setData(fortyEMAData);
               sixtyEMASeriesRef.current?.setData(sixtyEMAData);
               oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
               twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
-              threeHundredSixtyEMASeriesRef.current?.setData(threeHundredSixtyEMAData);
               // 크로스 포인트 및 마커 업데이트
-              const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
+              const crossPoints = findCrossPoints(thirtyEMAData, fortyEMAData, sixtyEMAData);
               crossPointsRef.current = crossPoints;
               const markers = createTradeMarkers(crossPoints, tradeStrategy);
               if (candleSeriesRef.current) {
