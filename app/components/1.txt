@@ -447,4 +447,49 @@ A8
 매수 시 이격도 임계값: 1.5%
 매도 시 이격도 임계값: -1.5%
 이 전략은 중장기 이동평균선의 추세를 기반으로 하며, 60EMA와 240EMA의 골든크로스/데드크로스를 주요 매매 시그널로 활용합니다. 또한 240EMA의 단기 추세를 확인하여 추가적인 안전장치를 두고 있습니다.
+현재 코드의 매수/매도 조건을 종합적으로 정리하겠습니다:
+매수 조건
+기본 조건 (buyBaseCondition):
+   const buyBaseCondition = 
+     slopes.ma240 > THRESHOLD_ANGLE_240_PLUS && // 240MA 기울기가 5도 이상
+     slopes.ma120 > THRESHOLD_ANGLE_120_PLUS;   // 120MA 기울기가 5도 이상
+추가 조건 (buyAdditionalCondition):
+   const buyAdditionalCondition = 
+     ma240Index >= 0 && 
+     ma240Index > 0 && // 이전 데이터 존재 확인
+     sixtyEMA[i].value > ma240Data[ma240Index].value && // 현재 60EMA가 240EMA보다 위
+     sixtyEMA[i-1].value <= ma240Data[ma240Index-1].value; // 이전에는 60EMA가 240EMA보다 아래 (상향 돌파)
 
+3. 240EMA 30초 평균 기울기 조건:
+   const ma240SlopeAverage = calculateMA240SlopeAverage(ma240Data, ma240Index);
+   if (ma240SlopeAverage >= 0) // 240EMA의 30초 평균 기울기가 하락이 아닐 때
+매수 신호 발생 조건:
+이전 신호가 매수가 아니어야 함 (lastAction !== 'buy')
+기본 조건 충족 (buyBaseCondition)
+
+추가 조건 충족 (buyAdditionalCondition)
+
+240EMA 30초 평균 기울기가 양수
+매도 조건
+기본 조건 (sellBaseCondition):
+   const sellBaseCondition = 
+     slopes.ma240 < THRESHOLD_ANGLE_240_MINUS && // 240MA 기울기가 -2도 이하
+     slopes.ma120 < THRESHOLD_ANGLE_120_MINUS;   // 120MA 기울기가 -2도 이하
+2. 추가 조건 (sellAdditionalCondition):
+   const sellAdditionalCondition = 
+     ma240Index >= 0 && 
+     ma240Index > 0 && // 이전 데이터 존재 확인
+     sixtyEMA[i].value < ma240Data[ma240Index].value && // 현재 60EMA가 240EMA보다 아래
+     sixtyEMA[i-1].value >= ma240Data[ma240Index-1].value; // 이전에는 60EMA가 240EMA보다 위 (하향 돌파)
+
+매도 신호 발생 조건:
+이전에 매수가 있어야 함 (lastAction === 'buy')
+다음 중 하나를 만족:
+     (sellBaseCondition && sellConditionStartTime !== null && 
+      (currentTime - sellConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
+     (sellBaseCondition && sellAdditionalCondition)
+추가 제약 조건
+거래 간격 제한:
+조건 지속 시간:
+이격도 계산 (현재는 계산만 하고 조건에는 사용하지 않음):
+이러한 조건들이 모두 충족될 때 매수/매도 신호가 생성되고, 차트에 마커가 표시되며 자동 거래가 실행됩니다.
