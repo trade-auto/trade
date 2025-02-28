@@ -362,12 +362,12 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
         sixtyEMA[i].value > ma240Data[ma240Index].value && // 현재 60EMA가 240EMA보다 위에 있음
         sixtyEMA[i-1].value <= ma240Data[ma240Index-1].value; // 이전에는 60EMA가 240EMA보다 아래에 있었음
       
-      // 매도 추가 조건 확인 수정 (60EMA가 240EMA를 하향 돌파)
+      // 매도 추가 조건 확인 수정 (120EMA가 240EMA를 하향 돌파)
       const sellAdditionalCondition = 
         ma240Index >= 0 && 
         ma240Index > 0 && // 이전 데이터가 있는지 확인
-        sixtyEMA[i].value < ma240Data[ma240Index].value && // 현재 60EMA가 240EMA보다 아래
-        sixtyEMA[i-1].value >= ma240Data[ma240Index-1].value; // 이전에는 60EMA가 240EMA보다 위에 있었음
+        oneTwentyEMA[i].value < ma240Data[ma240Index].value && // 현재 120EMA가 240EMA보다 아래
+        oneTwentyEMA[i-1].value >= ma240Data[ma240Index-1].value; // 이전에는 120EMA가 240EMA보다 위에 있었음
       
       // 매수 조건 지속 시간 추적
       if (buyBaseCondition) {
