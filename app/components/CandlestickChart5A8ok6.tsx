@@ -283,7 +283,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
-    const startTime = Math.floor(Date.now() / 1000) - 1500; // 현재 시간에서 25분 전 부터 매매
+    const startTime = Math.floor(Date.now() / 1000) - 3600; //sky 현재 시간에서 25분 전 부터 매매
     
     // 필요한 MA 데이터 가져오기
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
@@ -1392,7 +1392,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const updateInterval = setInterval(async () => {
       try {
         const now = new Date();
-        const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+        const thirtyMinutesAgo = new Date(now.getTime() - 60 * 60 * 1000); //sky
         
         // 데이터 로드 전에 이전 데이터 초기화
         if (candleSeriesRef.current) {
