@@ -411,8 +411,8 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
               ma240: deviation240
             }
           });
-        lastAction = 'buy';
-        lastActionTime = currentTime;
+          lastAction = 'buy';
+          lastActionTime = currentTime;
           buyConditionStartTime = null;
         }
       }
