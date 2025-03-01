@@ -350,24 +350,39 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       
       // 매수 신호 생성
       if (lastAction !== 'buy' && gapNarrowing && buyCross && buySlope) {
-        crossPoints.push({
-          time: sixtyEMA[i].time,
-          position: 'buy',
-          price: currSixty,
-          isAbove360MA: false,
-          slopes: {
-            ma60: currSixty - sixtyEMA[i-1].value,
-            ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
-            ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
-            ma360: ma360Index >= 0 && ma360Data ? ma360Data[ma360Index].value - (ma360Index > 0 ? ma360Data[ma360Index-1].value : 0) : 0
-          },
-          deviations: {
-            ma120: ((currSixty / curr120MA) * 100) - 100,
-            ma240: ((currSixty / curr240MA) * 100) - 100
-          }
-        });
-        lastAction = 'buy';
-        lastActionTime = currentTime;
+        // 240MA가 360MA보다 아래인지 확인
+        const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
+        const is240MABelowMA360 = curr240MA < ma360Value;
+        
+        // 240MA와 360MA의 기울기가 하향인지 확인
+        const prev360Index = ma360Data ? ma360Data.findIndex(d => Math.abs((d.time as number) - (sixtyEMA[prevIndex].time as number)) < tolerance) : -1;
+        const prev360MA = prev360Index >= 0 && ma360Data && ma360Data[prev360Index] ? ma360Data[prev360Index].value : 0;
+        const slope360MA = calculateAngle(ma360Value, prev360MA, timeDiff);
+        
+        const is240MADownward = slope240MA < 0;
+        const is360MADownward = slope360MA < 0;
+        
+        // 240MA가 360MA보다 아래거나 240MA, 360MA 하향 기울기면 매수하지 않음
+        if (!is240MABelowMA360 && !(is240MADownward && is360MADownward)) {
+          crossPoints.push({
+            time: sixtyEMA[i].time,
+            position: 'buy',
+            price: currSixty,
+            isAbove360MA: false,
+            slopes: {
+              ma60: currSixty - sixtyEMA[i-1].value,
+              ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
+              ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
+              ma360: ma360Value - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
+            },
+            deviations: {
+              ma120: ((currSixty / curr120MA) * 100) - 100,
+              ma240: ((currSixty / curr240MA) * 100) - 100
+            }
+          });
+          lastAction = 'buy';
+          lastActionTime = currentTime;
+        }
       }
       
       // 매도 신호 생성
