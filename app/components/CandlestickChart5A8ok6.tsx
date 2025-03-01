@@ -343,8 +343,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const slope120MA = calculateAngle(curr120MA, prev120MA, timeDiff);
       const slope240MA = calculateAngle(curr240MA, prev240MA, timeDiff);
       const slope360MA = calculateAngle(curr360MA, prev360MA, timeDiff);
-      
+
       // 기울기 조건
+      const is240MAUpward = slope240MA > 5; // 상향 기울기
+      const is360MAUpward = slope360MA > 5; // 상향 기울기
+      const is240MADownward = slope240MA > 5;
+      const is360MADownward = slope360MA > 5;
+      const is240MADownwardrev = slope240MA < -2;
+      const is360MADownwardrev = slope360MA < -2;
       const buySlope = (slope120MA >= 5) && (slope240MA >= 5); // 5도 이상 상향
       const sellSlope = (slope120MA <= -2) && (slope240MA <= -2); // -2도 이하 하향
       
@@ -352,11 +358,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               // 120MA와 240MA가 정배열인지 확인 (120MA가 240MA보다 위에 있는지)
         const isProperAlignment = curr120MA > curr240MA;
           const isProperAlignmentrev = curr120MA < curr240MA;
+         // const isProperAlignmentFull =   (curr240MA > curr360MA);
+             // 매수 신호 생성 전에 모든 변수 정의
+   const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
+   const is240MABelowMA360 = curr240MA < ma360Value;
+   const isProperAlignmentFull = (curr240MA > ma360Value);
+   const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
       // 매수 신호 생성
-      if (lastAction !== 'buy' && ((gapNarrowing && buyCross && buySlope) || (isProperAlignment && buyCross))) {
+      if (lastAction !== 'buy' && 
+          ((gapNarrowing && buyCross && buySlope) || 
+           (isProperAlignment && buyCross) || 
+           (isProperAlignmentFull && buyCross && is360MAUpward)) && 
+          !isReverseAlignment) {
         // 240MA가 360MA보다 아래인지 확인
-        const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
-        const is240MABelowMA360 = curr240MA < ma360Value;
+
         
         // 240MA와 360MA의 기울기가 하향인지 확인
         const prev360Index = ma360Data ? ma360Data.findIndex(d => Math.abs((d.time as number) - (sixtyEMA[prevIndex].time as number)) < tolerance) : -1;
@@ -367,7 +382,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         const is360MADownward = slope360MA > 5;
         
         // 360MA, 240MA, 120MA가 역배열인지 확인 (360MA > 240MA > 120MA)
-        const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
+       // const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
 
         // 역배열이 아니고, 240MA가 360MA보다 아래가 아니거나, 240MA와 360MA의 기울기가 하향이 아닐 때만 매수
         if (!isReverseAlignment && (!is240MABelowMA360 || !(is240MADownward && is360MADownward))) {
@@ -380,7 +395,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               ma60: currSixty - sixtyEMA[i-1].value,
               ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
               ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
-              ma360: ma360Value - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
+              ma360: curr360MA - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
             },
             deviations: {
               ma120: ((currSixty / curr120MA) * 100) - 100,
