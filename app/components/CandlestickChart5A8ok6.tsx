@@ -280,166 +280,99 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
 
   // 매수/매도 신호 생성 로직 수정
-  const findCrossPoints = (sixtyEMA: LineData<Time>[], oneTwentyEMA: LineData<Time>[], twoFortyEMA: LineData<Time>[]): CrossPoint[] => {
+  const findCrossPoints = (sixtyEMA: LineData<Time>[], oneTwentyEMA: LineData<Time>[], twoFortyEMA: LineData<Time>[], threeSixtyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
     const startTime = Math.floor(Date.now() / 1000) - 1500; // 현재 시간에서 25분 전 부터 매매
-    
-    // 필요한 MA 데이터 가져오기
-    const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
-    
-    // 조건 지속 시간 추적을 위한 변수들
-    let buyConditionStartTime: number | null = null;
-    let sellConditionStartTime: number | null = null;
-    const CONDITION_DURATION_THRESHOLD = 10; // 10초 지속 조건
-    
-    const MIN_TIME_BETWEEN_TRADES = 30; // 30초
-    
-    for (let i = 1; i < sixtyEMA.length; i++) {
+
+    for (let i = 11; i < sixtyEMA.length; i++) {
       const currentTime = sixtyEMA[i].time as number;
       
       // 시작 시간 이전의 신호는 무시
       if (currentTime < startTime) continue;
       
       const currSixty = sixtyEMA[i].value;
-      
-      // 240MA 관련 데이터 계산
-      const tolerance = 3; // 초 단위 허용 오차
-      const ma240Index = ma240Data ? ma240Data.findIndex(d => Math.abs((d.time as number) - (sixtyEMA[i].time as number)) < tolerance) : -1;
-      const ma120Index = ma120Data ? ma120Data.findIndex(d => Math.abs((d.time as number) - (sixtyEMA[i].time as number)) < tolerance) : -1;
-      const ma360Index = ma360Data ? ma360Data.findIndex(d => Math.abs((d.time as number) - (sixtyEMA[i].time as number)) < tolerance) : -1;
-      // 이격도 계산
-let deviation120 = 0;
-let deviation240 = 0;
-let deviation360 = 0;
-if (ma120Index >= 0 && ma120Data) {
-  deviation120 = ((currSixty / ma120Data[ma120Index].value) * 100) - 100;
-}
+      const currOneTwenty = oneTwentyEMA[i].value;
+      const currTwoForty = twoFortyEMA[i].value;
+      const currThreeSixty = threeSixtyEMA[i].value;
 
-if (ma240Index >= 0 && ma240Data) {
-  deviation240 = ((currSixty / ma240Data[ma240Index].value) * 100) - 100;
-}
-if (ma360Index >= 0 && ma360Data) {
-  deviation360 = ((currSixty / ma360Data[ma360Index].value) * 100) - 100;
-}
-// 이격도 임계값 설정
-const DEVIATION_THRESHOLD_BUY = 1.5; // 매수 시 이격도 임계값 (%)
-const DEVIATION_THRESHOLD_SELL = -1.5; // 매도 시 이격도 임계값 (%)
+      const prevSixty = sixtyEMA[i - 10].value;
+      const prevOneTwenty = oneTwentyEMA[i - 10].value;
+      const prevTwoForty = twoFortyEMA[i - 10].value;
 
-// 이격도 조건 추가
-const buyDeviationCondition = deviation120 > DEVIATION_THRESHOLD_BUY && deviation240 > DEVIATION_THRESHOLD_BUY;
-const sellDeviationCondition = deviation120 < DEVIATION_THRESHOLD_SELL && deviation240 < DEVIATION_THRESHOLD_SELL;
-      
-      // 기울기 계산
-      const slopes = {
-        //ma40: fortyEMA[i].value - fortyEMA[i-1].value,
-        ma60: sixtyEMA[i].value - sixtyEMA[i-1].value,
-        ma120: ma120Index !== undefined && ma120Index > 0 && ma120Data
-          ? ma120Data[ma120Index].value - ma120Data[ma120Index-1].value
-          : 0,
-        ma240: ma240Index !== undefined && ma240Index > 0 && ma240Data
-          ? ma240Data[ma240Index].value - ma240Data[ma240Index-1].value
-          : 0,
-        ma360: ma360Data && i < ma360Data.length && i > 0
-          ? ma360Data[i].value - ma360Data[i-1].value
-          : 0
-      };
-      
-      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue;  // 30초 간격 유지
-// 파일 상단의 다른 임계값 상수들과 함께 추가
-const THRESHOLD_ANGLE_240_PLUS = MAX_SLOPE_THRESHOLD;        // 240MA 매수 기준: 기울기가 5도 이상일 때
-const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;  
-      // 매수 기본 조건 확인 (240MA와 120MA의 기울기가 양수 임계값보다 큼)
-      const buyBaseCondition = 
-        slopes.ma240 > THRESHOLD_ANGLE_240_PLUS && 
-        slopes.ma120 > THRESHOLD_ANGLE_120_PLUS;
-      
-      // 매도 기본 조건 확인 (240MA와 120MA의 기울기가 음수 임계값보다 작음)
-      const sellBaseCondition = 
-        slopes.ma240 < THRESHOLD_ANGLE_240_MINUS && 
-        slopes.ma120 < THRESHOLD_ANGLE_120_MINUS;
-      
-      // 매수 추가 조건 확인
-      const buyAdditionalCondition = 
-        ma240Index >= 0 && 
-        ma240Index > 0 && // 이전 데이터가 있는지 확인
-        sixtyEMA[i].value > ma240Data[ma240Index].value && // 현재 60EMA가 240EMA보다 위에 있음
-        sixtyEMA[i-1].value <= ma240Data[ma240Index-1].value; // 이전에는 60EMA가 240EMA보다 아래에 있었음
-      
-      // 매도 추가 조건 확인 수정 (60EMA가 360EMA를 하향 돌파)
-      const sellAdditionalCondition = 
-        ma360Index >= 0 && 
-        ma360Index > 0 && // 이전 데이터가 있는지 확인
-        twoFortyEMA[i].value < ma360Data[ma360Index].value && // 현재 240EMA가 360EMA보다 아래
-        twoFortyEMA[i-1].value >= ma360Data[ma360Index-1].value; // 이전에는 240EMA가 360EMA보다 위에 있었음
-      
-      // 매수 조건 지속 시간 추적
-      if (buyBaseCondition) {
-        if (buyConditionStartTime === null) {
-          buyConditionStartTime = currentTime;
-        }
+      // 이격도 조건
+      const currentGap = Math.abs(currOneTwenty - currTwoForty);
+      const previousGap = Math.abs(prevOneTwenty - prevTwoForty);
+      const gapNarrowing = currentGap < previousGap;
+
+      // 크로스 조건
+      const buyCross = (prevSixty < prevOneTwenty) && (currSixty > currOneTwenty);
+      const sellCross = (prevSixty > prevOneTwenty) && (currSixty < currOneTwenty);
+
+      // 기울기 조건
+      const timeDiff = 10; // 10초
+      const slopeOneTwenty = calculateSlope(currOneTwenty, prevOneTwenty, timeDiff);
+      const slopeTwoForty = calculateSlope(currTwoForty, prevTwoForty, timeDiff);
+
+      const buySlope = (slopeOneTwenty >= 5) && (slopeTwoForty >= 5);
+      const sellSlope = (slopeOneTwenty <= -2) && (slopeTwoForty <= -2);
+
+      // 보유 조건
+      const proximityThreshold = 0.005; // 0.5%
+      const holdCondition = Math.abs(currThreeSixty - currTwoForty) / currThreeSixty < proximityThreshold;
+
+      // 최종 전략 결정
+      if (holdCondition) {
+        // 포지션 유지
+        continue;
       } else {
-        buyConditionStartTime = null;
-      }
-      
-      // 매도 조건 지속 시간 추적
-      if (sellBaseCondition) {
-        if (sellConditionStartTime === null) {
-          sellConditionStartTime = currentTime;
-        }
-      } else {
-        sellConditionStartTime = null;
-      }
-      
-      // 매수 신호 생성 조건 수정 - 항상 buyAdditionalCondition 필요
-      if (lastAction !== 'buy' && buyBaseCondition && buyAdditionalCondition) {
-        // 240EMA 30초 평균 기울기 계산
-        const ma240SlopeAverage = calculateMA240SlopeAverage(ma240Data, ma240Index);
-        const ma360SlopeAverage = calculateMA360SlopeAverage(ma360Data, ma360Index);
-        
-        // 240EMA의 평균 기울기가 하강이 아닐 때만 매수 신호 생성
-        if (ma240SlopeAverage >= 0) {
+        if (gapNarrowing && buyCross && buySlope && lastAction !== 'buy') {
           crossPoints.push({
             time: sixtyEMA[i].time,
             position: 'buy',
             price: currSixty,
             isAbove360MA: false,
-            slopes,
-            deviations: {
-              ma120: deviation120,
-              ma240: deviation240,
-              ma360: deviation360
+            slopes: {
+              ma60: currSixty - prevSixty,
+              ma120: currOneTwenty - prevOneTwenty,
+              ma240: currTwoForty - prevTwoForty,
+              ma360: currThreeSixty - prevTwoForty
             }
           });
-        lastAction = 'buy';
-        lastActionTime = currentTime;
-          buyConditionStartTime = null;
+          lastAction = 'buy';
+          lastActionTime = currentTime;
+        } else if (gapNarrowing && sellCross && sellSlope && lastAction === 'buy') {
+          crossPoints.push({
+            time: sixtyEMA[i].time,
+            position: 'sell',
+            price: currSixty,
+            isAbove360MA: false,
+            slopes: {
+              ma60: currSixty - prevSixty,
+              ma120: currOneTwenty - prevOneTwenty,
+              ma240: currTwoForty - prevTwoForty,
+              ma360: currThreeSixty - prevTwoForty
+            }
+          });
+          lastAction = 'sell';
+          lastActionTime = currentTime;
         }
       }
-      
-      // 매도 신호 생성 (수정: lastAction이 'buy'일 때만 매도 신호 생성)
-      else if (lastAction === 'buy' && (
-          (sellBaseCondition && sellConditionStartTime !== null && 
-           (currentTime - sellConditionStartTime) >= CONDITION_DURATION_THRESHOLD) ||
-          (sellBaseCondition && sellAdditionalCondition)
-        )) {
-        crossPoints.push({
-          time: sixtyEMA[i].time,
-          position: 'sell',
-          price: currSixty,
-          isAbove360MA: false,
-          slopes
-        });
-        lastAction = 'sell';
-        lastActionTime = currentTime;
-        sellConditionStartTime = null;
-      }
     }
-    
+
     return crossPoints;
+  };
+
+  // Helper function to convert radians to degrees
+  const radiansToDegrees = (radians: number): number => {
+    return radians * (180 / Math.PI);
+  };
+
+  // Unified calculateSlope function
+  const calculateSlope = (currentValue: number, previousValue: number, timeDiff: number): number => {
+    if (timeDiff === 0) return 0;
+    return radiansToDegrees(Math.atan((currentValue - previousValue) / timeDiff));
   };
 
   // 컴포넌트 레벨에서 tradeStrategy 가져오기
@@ -682,7 +615,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       }
           
       // 거래 신호 업데이트
-      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
           crossPointsRef.current = crossPoints;
           
       // 통합된 마커 업데이트 함수 사용
@@ -1249,7 +1182,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       const threeHundredSixtyEMAData = calculateEMA(candleData, maPeriods.threeHundredSixty);
 
       // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
       crossPointsRef.current = crossPoints;
 
       // 데이터 설정
@@ -1395,7 +1328,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const updateInterval = setInterval(async () => {
       try {
         const now = new Date();
-        const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+        const thirtyMinutesAgo = new Date(now.getTime() - 60 * 60 * 1000);//차트 시간 늘림
         
         // 데이터 로드 전에 이전 데이터 초기화
         if (candleSeriesRef.current) {
@@ -1760,6 +1693,18 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                 const ma60 = calculateEMA(candleHistory, maPeriods.sixty);
                 sixtyEMASeriesRef.current.update(ma60[ma60.length - 1]);
               }
+              if (oneTwentyEMASeriesRef.current) {
+                const ma120 = calculateEMA(candleHistory, maPeriods.oneTwenty);
+                oneTwentyEMASeriesRef.current.update(ma120[ma120.length - 1]);
+              }
+              if (twoFortyEMASeriesRef.current) {
+                const ma240 = calculateEMA(candleHistory, maPeriods.twoForty);
+                twoFortyEMASeriesRef.current.update(ma240[ma240.length - 1]);
+              }
+              if (threeHundredSixtyEMASeriesRef.current) {
+                const ma360 = calculateEMA(candleHistory, maPeriods.threeHundredSixty);
+                threeHundredSixtyEMASeriesRef.current.update(ma360[ma360.length - 1]);
+              }
             }
           };
 
@@ -1772,27 +1717,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           const sixtyEMAData = calculateEMA(candleHistory, maPeriods.sixty);
           const oneTwentyEMAData = calculateEMA(candleHistory, maPeriods.oneTwenty);
           const twoFortyEMAData = calculateEMA(candleHistory, maPeriods.twoForty);
-          const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+          const threeHundredSixtyEMAData = calculateEMA(candleHistory, maPeriods.threeHundredSixty);
+          const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
           crossPointsRef.current = crossPoints;
           const markers = createTradeMarkers(crossPoints, tradeStrategy);
           if (candleSeriesRef.current) {
-            updateTradeMarkers(candleSeriesRef.current, markers);
-            
-            // 가장 최근 크로스 포인트 확인
-            const lastCrossPoint = crossPoints[crossPoints.length - 1];
-            if (lastCrossPoint && lastCrossPoint.time === Math.floor(data.timestamp / 1000)) {
-              console.log('크로스 포인트 감지:', lastCrossPoint.position);
-              
-              // CreateOrder 컴포넌트의 handㄹleAutomaticTrade 함수 호출
-              handleOrder({
-                market: symbol,
-                side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
-                volume: calculateOrderVolume(data.trade_price),
-                price: data.trade_price.toString(),
-                ord_type: 'limit',
-                mode: mode
-              });
-            }
+            updateTradeMarkers(crossPoints); // Pass only crossPoints
           }
         }
       });
@@ -1843,14 +1773,15 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
     const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
     const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
+    const threeHundredSixtyEMAData = calculateEMA(updatedData, maPeriods.threeHundredSixty);
     thirtyEMASeriesRef.current?.setData(thirtyEMAData);
     fortyEMASeriesRef.current?.setData(fortyEMAData);
     sixtyEMASeriesRef.current?.setData(sixtyEMAData);
     oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
     twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
-
+    threeHundredSixtyEMASeriesRef.current?.setData(threeHundredSixtyEMAData);
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
-    const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+    const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
     crossPointsRef.current = crossPoints;
     const markers = createTradeMarkers(crossPoints, tradeStrategy);
     if (candleSeriesRef.current) {
@@ -1870,10 +1801,16 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   }, [setOnCandleComplete, handleCompletedCandle]);
 
   // 마커 업데이트 함수 추가
-  const updateTradeMarkers = (candleSeries: ISeriesApi<"Candlestick">, markers: SeriesMarker<Time>[]) => {
+  const updateTradeMarkers = (crossPoints: CrossPoint[]) => {
+    if (!candleSeriesRef.current) return;
+
     try {
-      // 기존 마커들을 모두 대체
-      (candleSeries as any).setMarkers(markers);
+      // 기존 마커 제거
+      createSeriesMarkers(candleSeriesRef.current, []);
+
+      // 새 마커 생성 및 설정
+      const markers = createTradeMarkers(crossPoints, tradeStrategy);
+      createSeriesMarkers(candleSeriesRef.current, markers);
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }
@@ -1932,39 +1869,19 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
               const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
               const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
               const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
+              const threeHundredSixtyEMAData = calculateEMA(updatedData, maPeriods.threeHundredSixty);
               thirtyEMASeriesRef.current?.setData(thirtyEMAData);
               fortyEMASeriesRef.current?.setData(fortyEMAData);
               sixtyEMASeriesRef.current?.setData(sixtyEMAData);
               oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
               twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
+              threeHundredSixtyEMASeriesRef.current?.setData(threeHundredSixtyEMAData);
               // 크로스 포인트 및 마커 업데이트
-              const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+              const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
               crossPointsRef.current = crossPoints;
               const markers = createTradeMarkers(crossPoints, tradeStrategy);
               if (candleSeriesRef.current) {
-                updateTradeMarkers(candleSeriesRef.current, markers);
-                const lastCrossPoint = crossPoints[crossPoints.length - 1];
-                const timestampInSeconds = Math.floor(data[0].timestamp / 1000);
-                if (lastCrossPoint && Math.abs(Number(lastCrossPoint.time) - timestampInSeconds) <= 1) {
-                  console.log('크로스 포인트 감지:', lastCrossPoint.position);
-                  try {
-                    await handleOrder({
-                      market: symbol,
-                      side: lastCrossPoint.position === 'buy' ? 'bid' : 'ask',
-                      volume: calculateOrderVolume(data[0].trade_price),
-                      price: data[0].trade_price.toString(),
-                      ord_type: 'limit',
-                      mode: mode
-                    });
-                  } catch (error) {
-                    console.error('주문 실행 중 오류:', error);
-                  }
-                }
-                
-                // 크로스 포인트 및 마커 업데이트
-                if (candleSeriesRef.current) {
-                  updateTradeMarkers(candleSeriesRef.current, markers);
-                }
+                updateTradeMarkers(crossPoints); // Pass only crossPoints
               }
               setCurrentPrice(data[0].trade_price);
             }
@@ -2184,12 +2101,14 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       return {
         ...trade,
         angles: slopes || {
-          entryMa40: 0,
-          entryMa360: 0,
-          exitMa40: 0,
-          exitMa360: 0,
+          entryMa60: 0,
           entryMa120: 0,
-          exitMa120: 0
+          entryMa240: 0,
+          entryMa360: 0,
+          exitMa60: 0,
+          exitMa120: 0,
+          exitMa240: 0,
+          exitMa360: 0,
         }
       };
     }
@@ -2208,32 +2127,39 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         
         // 진입 시점 기울기 계산
         const entryIndex = candleData.findIndex(d => (d.time as number) === entryTime);
-        const entryMa360 = entryIndex > 0 ? calculateSlope(
-          candleData.slice(Math.max(0, entryIndex - 5), entryIndex + 1),
-          maPeriods.threeHundredSixty
+        const entryMa60 = entryIndex > 0 ? calculateSlope(
+          candleData[entryIndex].close, // Use the correct property
+          candleData[Math.max(0, entryIndex - 5)].close, // Use the correct property
+          5 // Assuming 5 as the time difference in seconds or minutes
         ) : 0;
         
         // 청산 시점 기울기 계산
         const exitIndex = candleData.findIndex(d => (d.time as number) === exitTime);
-        const exitMa360 = exitIndex > 0 ? calculateSlope(
-          candleData.slice(Math.max(0, exitIndex - 5), exitIndex + 1),
-          maPeriods.threeHundredSixty
+        const exitMa60 = exitIndex > 0 ? calculateSlope(
+          candleData[exitIndex].close, // Use the correct property
+          candleData[Math.max(0, exitIndex - 5)].close, // Use the correct property
+          5 // Assuming 5 as the time difference in seconds or minutes
         ) : 0;
         
           return {
             ...trade,
           angles: {
             ...trade.angles,
-            entryMa40: entryIndex > 0 ? calculateSlope(
-              candleData.slice(Math.max(0, entryIndex - 5), entryIndex + 1),
-              maPeriods.forty
-            ) : 0,
-            entryMa360,
-            exitMa40: exitIndex > 0 ? calculateSlope(
-              candleData.slice(Math.max(0, exitIndex - 5), exitIndex + 1),
-              maPeriods.forty
-            ) : 0,
-            exitMa360
+            entryMa60,
+            exitMa60,
+            entryMa120: 0,
+            entryMa240: 0,
+            entryMa360: 0,
+            exitMa120: 0,
+            exitMa240: 0,
+            exitMa360: 0,
+
+            // exitMa40: exitIndex > 0 ? calculateSlope(
+            //   candleData.slice(Math.max(0, exitIndex - 5), exitIndex + 1),
+            //   maPeriods.forty,
+            //   exitTime - entryTime
+            // ) : 0,
+           
           }
         };
       });
@@ -2246,17 +2172,17 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   }, [backtestResult?.trades, maPeriods.threeHundredSixty]);
 
   // 기울기 계산 함수 추가
-  const calculateSlope = (data: ExtendedCandlestickData[], period: number): number => {
-    if (data.length < 2) return 0;
+  // const calculateSlope = (data: ExtendedCandlestickData[], period: number): number => {
+  //   if (data.length < 2) return 0;
     
-    const maData = calculateEMA(data, period);
-    if (maData.length < 2) return 0;
+  //   const maData = calculateEMA(data, period);
+  //   if (maData.length < 2) return 0;
     
-    const last = maData[maData.length - 1].value;
-    const prev = maData[maData.length - 2].value;
+  //   const last = maData[maData.length - 1].value;
+  //   const prev = maData[maData.length - 2].value;
     
-    return ((last - prev) / prev) * 100; // 변화율을 퍼센트로 반환
-  };
+  //   return ((last - prev) / prev) * 100; // 변화율을 퍼센트로 반환
+  // };
 
   // 자동 업데이트 효과
   useEffect(() => {
@@ -2318,7 +2244,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       
       // 새 마커 생성 및 설정
       const markers = createTradeMarkers(crossPoints, tradeStrategy);
-    createSeriesMarkers(candleSeriesRef.current, markers);
+      createSeriesMarkers(candleSeriesRef.current, markers);
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }
@@ -2328,50 +2254,33 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
   // 시리즈 제거 함수
   const removeSeries = () => {
-    if (chartRef.current) {
-      // 각 시리즈 제거 전 존재 여부 확인
-      if (candleSeriesRef.current) {
-        chartRef.current.removeSeries(candleSeriesRef.current);
-        candleSeriesRef.current = null;
-      }
-      
+    try {
       if (thirtyEMASeriesRef.current) {
-        chartRef.current.removeSeries(thirtyEMASeriesRef.current);
+        chartRef.current?.removeSeries(thirtyEMASeriesRef.current);
         thirtyEMASeriesRef.current = null;
       }
-      
       if (fortyEMASeriesRef.current) {
-        chartRef.current.removeSeries(fortyEMASeriesRef.current);
+        chartRef.current?.removeSeries(fortyEMASeriesRef.current);
         fortyEMASeriesRef.current = null;
       }
-      
       if (sixtyEMASeriesRef.current) {
-        chartRef.current.removeSeries(sixtyEMASeriesRef.current);
+        chartRef.current?.removeSeries(sixtyEMASeriesRef.current);
         sixtyEMASeriesRef.current = null;
       }
-      
-      if (twentyEMASeriesRef.current) {
-        chartRef.current.removeSeries(twentyEMASeriesRef.current);
-        twentyEMASeriesRef.current = null;
-      }
-      
       if (oneTwentyEMASeriesRef.current) {
-        chartRef.current.removeSeries(oneTwentyEMASeriesRef.current);
+        chartRef.current?.removeSeries(oneTwentyEMASeriesRef.current);
         oneTwentyEMASeriesRef.current = null;
       }
       if (twoFortyEMASeriesRef.current) {
-        chartRef.current.removeSeries(twoFortyEMASeriesRef.current);
+        chartRef.current?.removeSeries(twoFortyEMASeriesRef.current);
         twoFortyEMASeriesRef.current = null;
       }
       if (threeHundredSixtyEMASeriesRef.current) {
-        chartRef.current.removeSeries(threeHundredSixtyEMASeriesRef.current);
+        chartRef.current?.removeSeries(threeHundredSixtyEMASeriesRef.current);
         threeHundredSixtyEMASeriesRef.current = null;
       }
-      
-      if (volumeSeriesRef.current) {
-        chartRef.current.removeSeries(volumeSeriesRef.current);
-        volumeSeriesRef.current = null;
-      }
+    } catch (error) {
+      console.error('시리즈 제거 중 오류:', error);
     }
   };
 
@@ -2504,6 +2413,34 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       }
     }
   }, [chartRef.current, candleSeriesRef.current]);
+
+  const downloadCSV = () => {
+    if (allData.length > 0) {
+      const header = 'timestamp,open,high,low,close,volume\n';
+      const csvContent = allData
+        .map(candle => {
+          const kstDate = new Date(candle.candle_date_time_kst);
+          const formattedDate = kstDate.toISOString().replace('T', ' ').slice(0, 19);
+          return `${formattedDate},${candle.opening_price},${candle.high_price},${candle.low_price},${candle.trade_price},${candle.candle_acc_trade_volume}`;
+        })
+        .join('\n');
+      
+      const fullContent = header + csvContent;
+      const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const fileName = `${symbol}_${chartType}_${csvDateRange.startDate?.toISOString().slice(0,19)}_${csvDateRange.endDate?.toISOString().slice(0,19)}.csv`;
+      
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      alert('먼저 데이터를 가져와주세요.');
+    }
+  };
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
@@ -2916,33 +2853,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                   {csvLoading ? `데이터 가져오는 중... ${csvProgress}%` : '데이터 가져오기'}
                 </button>
                 <button
-                  onClick={() => {
-                    if (allData.length > 0) {
-                      const header = 'timestamp,open,high,low,close,volume\n';
-                      const csvContent = allData
-                        .map(candle => {
-                          const kstDate = new Date(candle.candle_date_time_kst);
-                          const formattedDate = kstDate.toISOString().replace('T', ' ').slice(0, 19);
-                          return `${formattedDate},${candle.opening_price},${candle.high_price},${candle.low_price},${candle.trade_price},${candle.candle_acc_trade_volume}`;
-                        })
-                        .join('\n');
-                      
-                      const fullContent = header + csvContent;
-                      const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
-                      const url = URL.createObjectURL(blob);
-                      const fileName = `${symbol}_${chartType}_${csvDateRange.startDate?.toISOString().slice(0,19)}_${csvDateRange.endDate?.toISOString().slice(0,19)}.csv`;
-                      
-                      const link = document.createElement('a');
-                      link.setAttribute('href', url);
-                      link.setAttribute('download', fileName);
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      URL.revokeObjectURL(url);
-                    } else {
-                      alert('먼저 데이터를 가져와주세요.');
-                    }
-                  }}
+                  onClick={downloadCSV}
                   disabled={csvLoading || allData.length === 0}
                   className={`px-4 py-2 rounded-lg font-bold ${
                     csvLoading || allData.length === 0
