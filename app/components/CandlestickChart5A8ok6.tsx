@@ -74,6 +74,7 @@ interface CrossPoint {
   deviations?: {
     ma120: number;
     ma240: number;
+    ma360: number;
   };
 }
 
@@ -166,7 +167,7 @@ const getInitialDateRange = (type: string): DateRange => {
     startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   }
   
-  return {
+    return {
     startDate,
     endDate: null
   };
@@ -368,7 +369,7 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
         sixtyEMA[i].value > ma240Data[ma240Index].value && // 현재 60EMA가 240EMA보다 위에 있음
         sixtyEMA[i-1].value <= ma240Data[ma240Index-1].value; // 이전에는 60EMA가 240EMA보다 아래에 있었음
       
-      // 매도 추가 조건 확인 수정 (240EMA가 360EMA를 하향 돌파)
+      // 매도 추가 조건 확인 수정 (60EMA가 360EMA를 하향 돌파)
       const sellAdditionalCondition = 
         ma360Index >= 0 && 
         ma360Index > 0 && // 이전 데이터가 있는지 확인
@@ -397,6 +398,7 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
       if (lastAction !== 'buy' && buyBaseCondition && buyAdditionalCondition) {
         // 240EMA 30초 평균 기울기 계산
         const ma240SlopeAverage = calculateMA240SlopeAverage(ma240Data, ma240Index);
+        const ma360SlopeAverage = calculateMA360SlopeAverage(ma360Data, ma360Index);
         
         // 240EMA의 평균 기울기가 하강이 아닐 때만 매수 신호 생성
         if (ma240SlopeAverage >= 0) {
@@ -408,11 +410,12 @@ const THRESHOLD_ANGLE_240_MINUS = -MIN_SLOPE_THRESHOLD;
             slopes,
             deviations: {
               ma120: deviation120,
-              ma240: deviation240
+              ma240: deviation240,
+              ma360: deviation360
             }
           });
-          lastAction = 'buy';
-          lastActionTime = currentTime;
+        lastAction = 'buy';
+        lastActionTime = currentTime;
           buyConditionStartTime = null;
         }
       }
@@ -521,12 +524,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
   const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
     return crossPoints.map(point => ({
-      time: point.time,
+          time: point.time,
       position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
       color: point.position === 'buy' ? '#2196F3' : '#e91e63',
       shape: point.position === 'buy' ? 'arrowUp' : 'arrowDown',
       text: point.position === 'buy' ? '매수' : '매도',
-      size: 2
+          size: 2
     }));
   };
 
@@ -2315,7 +2318,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       
       // 새 마커 생성 및 설정
       const markers = createTradeMarkers(crossPoints, tradeStrategy);
-      createSeriesMarkers(candleSeriesRef.current, markers);
+    createSeriesMarkers(candleSeriesRef.current, markers);
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }
@@ -2445,7 +2448,21 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     
     return slopeSum / sampleCount;
   };
-
+  // 240EMA 기울기 평균 계산 함수 추가
+  const calculateMA360SlopeAverage = (ma360Data: LineData<Time>[], currentIndex: number): number => {
+    if (!ma360Data || currentIndex < 30) return 0;
+    
+    let slopeSum = 0;
+    const sampleCount = 30; // 30초 동안의 데이터
+    
+    for (let i = currentIndex; i > currentIndex - sampleCount; i--) {
+      if (i <= 0) break;
+      const slope = ma360Data[i].value - ma360Data[i-1].value;
+      slopeSum += slope;
+    }
+    
+    return slopeSum / sampleCount;
+  };
   useEffect(() => {
     if (crossPointsRef.current) {
       updateChartMarkers(crossPointsRef.current);
