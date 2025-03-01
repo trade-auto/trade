@@ -156,14 +156,17 @@ const getInitialDateRange = (type: string): DateRange => {
   let startDate: Date;
   
   if (type.startsWith('seconds/')) {
-    startDate = new Date(now.getTime() - 30 * 60 * 1000);
+    // 초봉: 최근 1시간 데이터
+    startDate = new Date(now.getTime() - 60 * 60 * 1000); // 30분 -> 1시간
   } else if (type === 'minutes/1') {
-    startDate = new Date(now.getTime() - 60 * 60 * 1000);
+    // 1분봉: 최근 2시간 데이터
+    startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
   } else {
+    // 일봉: 최근 1일 데이터
     startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   }
   
-    return {
+  return {
     startDate,
     endDate: null
   };
@@ -2445,6 +2448,42 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       updateChartMarkers(crossPointsRef.current);
     }
   }, [crossPointsRef.current]);
+
+  // 차트의 timeScale을 직접 조작하여 표시 범위를 1시간으로 설정
+  useEffect(() => {
+    if (chartRef.current && chartRef.current.timeScale) {
+      try {
+        // 현재 시간에서 1시간 전까지의 범위 설정
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+        
+        chartRef.current.timeScale().setVisibleRange({
+          from: Math.floor(oneHourAgo.getTime() / 1000) as Time,
+          to: Math.floor(now.getTime() / 1000) as Time
+        });
+      } catch (error) {
+        console.error('차트 범위 설정 중 오류:', error);
+      }
+    }
+  }, [chartRef.current]);
+
+  // 차트 초기화 완료 후 실행
+  useEffect(() => {
+    // 차트가 초기화되고 데이터가 로드된 후에만 실행
+    if (chartRef.current && candleSeriesRef.current && candleSeriesRef.current.data().length > 0) {
+      try {
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+        
+        chartRef.current.timeScale().setVisibleRange({
+          from: Math.floor(oneHourAgo.getTime() / 1000) as Time,
+          to: Math.floor(now.getTime() / 1000) as Time
+        });
+      } catch (error) {
+        console.error('차트 범위 설정 중 오류:', error);
+      }
+    }
+  }, [chartRef.current, candleSeriesRef.current]);
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
