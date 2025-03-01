@@ -283,7 +283,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
-    const startTime = Math.floor(Date.now() / 1000) - 3600; // 현재 시간에서 60분 전 부터 매매
+    const startTime = Math.floor(Date.now() / 1000) - 5400; // sky 현재 시간에서 90분(1시간 30분) 전 부터 매매
     
     // 필요한 MA 데이터 가져오기
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
@@ -346,10 +346,29 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const buySlope = (slope120MA >= 5) && (slope240MA >= 5); // 5도 이상 상향
       const sellSlope = (slope120MA <= -2) && (slope240MA <= -2); // -2도 이하 하향
       
+      // 기울기 상향 지속 시간 추적
+      if (buySlope) {
+        if (buyConditionStartTime === null) {
+          buyConditionStartTime = currentTime;
+        }
+      } else {
+        buyConditionStartTime = null;
+      }
+      
+      // 기울기 하향 지속 시간 추적
+      if (sellSlope) {
+        if (sellConditionStartTime === null) {
+          sellConditionStartTime = currentTime;
+        }
+      } else {
+        sellConditionStartTime = null;
+      }
+      
       if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue; // 30초 간격 유지
       
-      // 매수 신호 생성
-      if (lastAction !== 'buy' && gapNarrowing && buyCross && buySlope) {
+      // 매수 신호 생성 - 기울기가 상향이고 10초 이상 유지될 때
+      if (lastAction !== 'buy' && gapNarrowing && buyCross && buySlope && 
+          buyConditionStartTime !== null && (currentTime - buyConditionStartTime) >= CONDITION_DURATION_THRESHOLD) {
         // 240MA가 360MA보다 아래인지 확인
         const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
         const is240MABelowMA360 = curr240MA < ma360Value;
@@ -382,6 +401,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           });
           lastAction = 'buy';
           lastActionTime = currentTime;
+          buyConditionStartTime = null; // 매수 후 조건 초기화
         }
       }
       
@@ -401,6 +421,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         });
         lastAction = 'sell';
         lastActionTime = currentTime;
+        sellConditionStartTime = null; // 매도 후 조건 초기화
       }
     }
     
@@ -1388,7 +1409,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const updateInterval = setInterval(async () => {
       try {
         const now = new Date();
-        const thirtyMinutesAgo = new Date(now.getTime() - 60 * 60 * 1000); //sky
+        const thirtyMinutesAgo = new Date(now.getTime() -1.5* 60 * 60 * 1000); //sky
         
         // 데이터 로드 전에 이전 데이터 초기화
         if (candleSeriesRef.current) {
