@@ -279,7 +279,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
 
   // 매수/매도 신호 생성 로직 수정
-  const findCrossPoints = (sixtyEMA: LineData<Time>[], oneTwentyEMA: LineData<Time>[], twoFortyEMA: LineData<Time>[]): CrossPoint[] => {
+  const findCrossPoints = (sixtyEMA: LineData<Time>[],   oneTwentyEMA: LineData<Time>[], twoFortyEMA: LineData<Time>[], threeHundredSixtyEMA: LineData<Time>[]): CrossPoint[] => {
     const crossPoints: CrossPoint[] = [];
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
@@ -632,7 +632,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       }
           
       // 거래 신호 업데이트
-      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
           crossPointsRef.current = crossPoints;
           
       // 통합된 마커 업데이트 함수 사용
@@ -1227,7 +1227,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       const threeHundredSixtyEMAData = calculateEMA(candleData, maPeriods.threeHundredSixty);
 
       // 크로스 포인트 찾기
-      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+      const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
       crossPointsRef.current = crossPoints;
 
       // 데이터 설정
@@ -1750,7 +1750,8 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           const sixtyEMAData = calculateEMA(candleHistory, maPeriods.sixty);
           const oneTwentyEMAData = calculateEMA(candleHistory, maPeriods.oneTwenty);
           const twoFortyEMAData = calculateEMA(candleHistory, maPeriods.twoForty);
-          const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+          const threeHundredSixtyEMAData = calculateEMA(candleHistory, maPeriods.threeHundredSixty);
+          const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
           crossPointsRef.current = crossPoints;
           const markers = createTradeMarkers(crossPoints, tradeStrategy);
           if (candleSeriesRef.current) {
@@ -1821,14 +1822,15 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
     const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
     const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
+    const threeHundredSixtyEMAData = calculateEMA(updatedData, maPeriods.threeHundredSixty);
     thirtyEMASeriesRef.current?.setData(thirtyEMAData);
     fortyEMASeriesRef.current?.setData(fortyEMAData);
     sixtyEMASeriesRef.current?.setData(sixtyEMAData);
     oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
     twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
-
+    threeHundredSixtyEMASeriesRef.current?.setData(threeHundredSixtyEMAData);
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
-    const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+    const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData,  threeHundredSixtyEMAData);
     crossPointsRef.current = crossPoints;
     const markers = createTradeMarkers(crossPoints, tradeStrategy);
     if (candleSeriesRef.current) {
@@ -1910,13 +1912,15 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
               const sixtyEMAData = calculateEMA(updatedData, maPeriods.sixty);
               const oneTwentyEMAData = calculateEMA(updatedData, maPeriods.oneTwenty);
               const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
+              const threeHundredSixtyEMAData = calculateEMA(updatedData, maPeriods.threeHundredSixty);
               thirtyEMASeriesRef.current?.setData(thirtyEMAData);
               fortyEMASeriesRef.current?.setData(fortyEMAData);
               sixtyEMASeriesRef.current?.setData(sixtyEMAData);
               oneTwentyEMASeriesRef.current?.setData(oneTwentyEMAData);
               twoFortyEMASeriesRef.current?.setData(twoFortyEMAData);
+              threeHundredSixtyEMASeriesRef.current?.setData(threeHundredSixtyEMAData);
               // 크로스 포인트 및 마커 업데이트
-              const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData);
+              const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData);
               crossPointsRef.current = crossPoints;
               const markers = createTradeMarkers(crossPoints, tradeStrategy);
               if (candleSeriesRef.current) {
@@ -2474,6 +2478,64 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     if (timeDiff === 0 || currentValue === undefined || previousValue === undefined) return 0;
     return Math.atan((currentValue - previousValue) / timeDiff) * (180 / Math.PI);
   };
+
+  // THRESHOLD_ANGLE 상수 추가 (없는 경우)
+  const THRESHOLD_ANGLE_240_PLUS = 0.01;  // 240MA 양수 임계값
+  const THRESHOLD_ANGLE_240_MINUS = -0.01; // 240MA 음수 임계값
+  
+  // 무한 루프 방지를 위한 useEffect 수정
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+    
+    const handleResize = () => {
+      if (chartRef.current) {  // chart -> chartRef.current
+        chartRef.current.applyOptions({ width: chartContainerRef.current?.clientWidth });
+      }
+    };
+
+    // 차트가 없으면 초기화
+    if (!chartRef.current) {  // chart -> chartRef.current
+      // initChart 함수가 없으면 이 라인 제거
+      // initChart();
+    }
+    
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);  // 의존성 배열 비우기
+  
+  // 데이터 로딩 useEffect 분리
+  useEffect(() => {
+    if (chartRef.current && dataLoaded?.current !== undefined) {
+      // loadAllData 함수가 인자를 필요로 하면 적절한 인자 전달
+      // loadAllData();
+      if (dataLoaded.current !== undefined) {
+        dataLoaded.current = true;
+      }
+    }
+  }, []);  // 의존성 배열 비우기
+  
+  // 매수/매도 조건 추적을 위한 상태 변수 추가
+  const buyConditionRef = useRef<{ startTime: number | null }>({ startTime: null });
+  const sellConditionRef = useRef<{ startTime: number | null }>({ startTime: null });
+  
+   
+
+  // 다른 ref들과 함께 상단에 추가
+  const dataLoaded = useRef<boolean>(false);
+
+  // ...
+
+  // 그리고 기존 useEffect 코드 수정
+  useEffect(() => {
+    if (chartRef.current && !dataLoaded.current) {
+      // loadAllData 함수가 인자를 필요로 하면 적절한 인자 전달
+      // loadAllData();
+      dataLoaded.current = true;
+    }
+  }, []);  // 의존성 배열 비우기
 
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
