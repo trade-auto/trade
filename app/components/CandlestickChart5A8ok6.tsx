@@ -342,6 +342,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const buyCrossOrAbove = buyCross || sixtyAbove120; // 매수 조건: 상방 돌파 또는 계속 위에 있음
       const sellCrossOrBelow = sellCross || sixtyBelow120; // 매도 조건: 하방 돌파 또는 계속 아래에 있음
       
+      // 60MA와 120MA의 기울기 차이 계산 (60MA가 120MA보다 얼마나 빠르게 상승하는지)
+      const sixtyMA_slope = currSixty - sixtyEMA[prevIndex].value;
+      const onetwentyMA_slope = curr120MA - prev120MA;
+      const slopeDifference = sixtyMA_slope - onetwentyMA_slope;
+
+      // 60MA가 120MA를 큰 기울기로 상방 관통하는지 확인
+      const strongBuyCross = buyCross && (slopeDifference > 0.5); // 0.5는 기울기 차이 임계값으로 조정 가능
+      
       // 기울기 계산 (각도 단위) - 수정된 방식
       const timeDiff = 10; // 10초
       const slope120MA = Math.atan2(curr120MA - prev120MA, timeDiff) * (180 / Math.PI);
@@ -391,10 +399,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         console.log("360MA 기울기가 충분히 크므로 매수/매도 조건 확인");
         // 매수 조건
         if (lastAction !== 'buy' && 
-            ((gapNarrowing && buyCrossOrAbove && buySlope) || 
+            (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
+             (gapNarrowing && buyCrossOrAbove && buySlope) || 
              (isFullProperAlignment && buyCrossOrAbove) || 
              (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward)) && 
-            !isReverseAlignment) {
+            !isReverseAlignment &&
+            !is360MASideways) {
           // 매수 신호 생성 코드
           crossPoints.push({
             time: sixtyEMA[i].time,
@@ -402,8 +412,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             price: currSixty,
             isAbove360MA: false,
             slopes: {
-              ma60: currSixty - sixtyEMA[i-1].value,
-              ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
+              ma60: sixtyMA_slope,
+              ma120: onetwentyMA_slope,
               ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
               ma360: curr360MA - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
             },
@@ -412,17 +422,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               ma240: ((currSixty / curr240MA) * 100) - 100
             }
           });
-          lastAction = 'buy';
-          lastActionTime = currentTime;
+        lastAction = 'buy';
+        lastActionTime = currentTime;
         }
         // 매도 조건
         else if (lastAction == 'buy' && 
                  ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
                   (isFullReverseAlignment && sellCrossOrBelow))) {
           // 매도 신호 생성 코드
-          crossPoints.push({
+        crossPoints.push({
               time: sixtyEMA[i].time,
-            position: 'sell',
+          position: 'sell',
               price: currSixty,
               isAbove360MA: false,
               slopes: {
@@ -431,9 +441,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                 ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
                 ma360: ma360Index >= 0 && ma360Data ? ma360Data[ma360Index].value - (ma360Index > 0 ? ma360Data[ma360Index-1].value : 0) : 0
               }
-          });
-          lastAction = 'sell';
-          lastActionTime = currentTime;
+        });
+        lastAction = 'sell';
+        lastActionTime = currentTime;
          // }
         }
       } else {
