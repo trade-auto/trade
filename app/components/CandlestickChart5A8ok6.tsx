@@ -392,16 +392,27 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 60MA, 120MA, 240MA의 정배열/역배열 상태 확인
       const isFullProperAlignment = (currSixty > curr120MA) && (curr120MA > curr240MA); // 완전 정배열: 60MA > 120MA > 240MA
       const isFullReverseAlignment = (currSixty < curr120MA) && (curr120MA < curr240MA); // 완전 역배열: 60MA < 120MA < 240MA
+      let prev60MASlope: number = 0;
+      let prev60MASlopeTime: number = 0;
+      const SLOPE_CHANGE_THRESHOLD = 30; //
+            // 60MA와 120MA의 기울기가 하강인지 확인
+      const slope60MA = sixtyMA_slope; // 60MA 기울기
+      const is60MADownward = slope60MA < 0; // 60MA 기울기가 음수이면 하강
+      const is120MADownward = slope120MA < 0; // 120MA 기울기가 음수이면 하강
+      const isBothMADownward = is60MADownward && is120MADownward; // 두 MA 모두 하강 기울기
 
- // 60MA와 120MA의 기울기가 하강인지 확인
-const slope60MA = sixtyMA_slope; // 60MA 기울기
-const is60MADownward = slope60MA < 0; // 60MA 기울기가 음수이면 하강
-const is120MADownward = slope120MA < 0; // 120MA 기울기가 음수이면 하강
-const isBothMADownward = is60MADownward && is120MADownward; // 두 MA 모두 하강 기울기
-      // 360MA가 횡보 상태가 아닐 때만 매수/매도 조건 확인
-      // if (!is360MASideways) {
-      //   console.log("360MA 기울기가 충분히 크므로 매수/매도 조건 확인");
-        
+      const isRapidSlopeChange = (
+        currentTime - prev60MASlopeTime <= SLOPE_CHANGE_THRESHOLD && // 30초 이내
+        prev60MASlope < -5 && // 이전에 급하강 (-5도 이하)
+        slope60MA > 5 // 현재 급상승 (5도 이상)
+      );
+      
+      // 현재 60MA 기울기 저장
+      if (Math.abs(slope60MA) > 5) { // 의미 있는 기울기 변화만 저장
+        prev60MASlope = slope60MA;
+        prev60MASlopeTime = currentTime;
+      }
+      
         // 시간 간격 조건 다시 확인 (중요한 조건이므로 이중 확인)
        // const timeSinceLastAction = currentTime - lastActionTime;
         console.log({
@@ -413,21 +424,24 @@ const isBothMADownward = is60MADownward && is120MADownward; // 두 MA 모두 하
           insideIs360MASidewaysBlock: true
         });
         
-        if ((!is360MASideways) && (timeSinceLastAction >= MIN_TIME_BETWEEN_TRADES)  ) {
-          // 60MA와 120MA가 하강 기울기인지 확인
-          if (isBothMADownward) {
+        //if ((!is360MASideways) && (timeSinceLastAction >= MIN_TIME_BETWEEN_TRADES)  ) {
+        
+          if ((!is360MASideways) && (timeSinceLastAction >= MIN_TIME_BETWEEN_TRADES)) {  // 60MA와 120MA가 하강 기울기인지 확인
+          if (isBothMADownward && !isRapidSlopeChange) { // 급격한 기울기 변화가 없을 때만 스킵
             console.log(`Skipping buy: Both 60MA and 120MA are downward sloping. Waiting for 30 seconds.`);
             // 하강 기울기일 때는 lastActionTime을 업데이트하여 30초 동안 매수하지 않음
             lastActionTime = currentTime;
           } 
-          // 매수 조건
-           if (lastAction !== 'buy' && 
-              !isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때만 매수
-              (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
-               (gapNarrowing && buyCrossOrAbove && buySlope) || 
-               (isFullProperAlignment && buyCrossOrAbove) || 
-               (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward)) && 
-              !isReverseAlignment) {
+  // 매수 조건
+  if ((lastAction !== 'buy' && 
+    (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
+     (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
+      (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
+       (gapNarrowing && buyCrossOrAbove && buySlope) || 
+       (isFullProperAlignment && buyCrossOrAbove) || 
+       (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
+     )) && 
+              !isReverseAlignment)) {
             // 매수 신호 생성 코드
             console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
           crossPoints.push({
