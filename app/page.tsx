@@ -2,7 +2,7 @@
 
 import { useUpbitWebSocket } from './hooks/useUpbitWebSocket';
 //import { CandlestickChart } from './components/CandlestickChart5A2_1';
-import { CandlestickChart } from './components/CandlestickChart5A8ok6';
+import { CandlestickChart } from './components/CandlestickChart';
 import { useUpbitStore } from './store/useUpbitStore';
 import { useState } from 'react';
 import { getAccountBalance } from './api/upbitAccount';
