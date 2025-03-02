@@ -22,10 +22,17 @@ export const findCrossPoints = (
   const CONDITION_DURATION_THRESHOLD = 10; // 10초 지속 조건
   const MIN_TIME_BETWEEN_TRADES = 30; // 30초 - 루프 외부로 이동
   
-  // 60MA 기울기 변화 추적을 위한 변수들 ,,,3분(180초) 이내에 120MA 통과 조건
+  // 60MA 기울기 변화 추적을 위한 변수들
   let ma60SlopeChangeTime: number | null = null;
   let prevMA60Slope: number | null = null;
-  const MA_CROSS_TIME_LIMIT = 180; // 3분(180초) 이내에 120MA 통과 조건
+  const MA_CROSS_TIME_LIMIT = 180; // 3분(180초) 이내 조건
+  
+  // 기울기 임계값 설정
+  const DOWNWARD_SLOPE_THRESHOLD = -20; // 하방 기울기 임계값 (-20도)
+  const UPWARD_SLOPE_THRESHOLD = 20;    // 상방 기울기 임계값 (20도)
+  
+  // 기울기 변화 감지를 위한 변수
+  let hasReachedDownwardThreshold = false;
   
   for (let i = 11; i < sixtyEMA.length; i++) {
     const currentTime = sixtyEMA[i].time as number;
@@ -99,16 +106,19 @@ export const findCrossPoints = (
     const buySlope = (slope120MA >= 10) && (slope240MA >= 10); // 10도 이상 상향
     const sellSlope = (slope120MA <= -2) && (slope240MA <= -2); // -2도 이하 하향
 
-    // 60MA 기울기 변화 감지 (하방 -> 상방) ,,3분(180초) 이내에 120MA 통과 조건
+    // 60MA 기울기 변화 감지 (하방 -> 상방)
     const is60MAUpward = slope60MA > 0;
     const is60MADownward = slope60MA < 0;
     
-    // 60MA 기울기 변화 추적
-    if (prevMA60Slope !== null) {
-      // 60MA 기울기가 하방에서 상방으로 변경된 경우
-      if (prevMA60Slope < 0 && slope60MA > 0) {
-        ma60SlopeChangeTime = currentTime;
-      }
+    // 하방 임계값 도달 여부 확인
+    if (slope60MA <= DOWNWARD_SLOPE_THRESHOLD) {
+      hasReachedDownwardThreshold = true;
+    }
+    
+    // 60MA 기울기 변화 추적 (하방 -20도 이하에서 상방 20도 이상으로)
+    if (hasReachedDownwardThreshold && slope60MA >= UPWARD_SLOPE_THRESHOLD) {
+      ma60SlopeChangeTime = currentTime;
+      hasReachedDownwardThreshold = false; // 조건 충족 후 리셋
     }
     
     // 현재 60MA 기울기 저장
@@ -149,16 +159,9 @@ export const findCrossPoints = (
       slope60MA > 5 // 현재 급상승 (5도 이상)
     );
     
-    // 현재 60MA 기울기 저장
-    if (Math.abs(slope60MA) > 5) { // 의미 있는 기울기 변화만 저장
-      prev60MASlope = slope60MA;
-      prev60MASlopeTime = currentTime;
-    }
-    
-    // 새로운 매수 조건: 60MA가 하방 기울기였다가 상방으로 바뀌고 3분 이내에 120MA를 통과
-    const ma60SlopeChangeToBuyCross = 
+    // 새로운 매수 조건: 60MA가 하방 -20도 기울기였다가 상방 20도로 3분 이내에 바뀌면 매수
+    const ma60SlopeChangeToBuy = 
       ma60SlopeChangeTime !== null && 
-      buyCross && 
       (currentTime - ma60SlopeChangeTime <= MA_CROSS_TIME_LIMIT);
     
     // 시간 간격 조건 다시 확인 (중요한 조건이므로 이중 확인)
@@ -170,13 +173,15 @@ export const findCrossPoints = (
       
       // 매수 조건
       if ((lastAction !== 'buy' && 
-        (ma60SlopeChangeToBuyCross || // 새로운 조건: 60MA 기울기 변화 후 3분 이내 120MA 통과
-         isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
-         (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
-          (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
-           (gapNarrowing && buyCrossOrAbove && buySlope) || 
-           (isFullProperAlignment && buyCrossOrAbove) || 
-           (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
+        (ma60SlopeChangeToBuy || // 초기 매수 조건: 60MA 기울기가 하방 -20도에서 상방 20도로 3분 이내 변경
+         (lastAction === 'sell' && // 이미 매도한 후에만 기존 조건 적용
+          (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
+           (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
+            (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
+             (gapNarrowing && buyCrossOrAbove && buySlope) || 
+             (isFullProperAlignment && buyCrossOrAbove) || 
+             (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
+           ))
          )) && 
         !isReverseAlignment)) {
         
@@ -199,11 +204,12 @@ export const findCrossPoints = (
             ma120: ((currSixty / curr120MA) * 100) - 100,
             ma240: ((currSixty / curr240MA) * 100) - 100
           },
-          // 새로운 매수 조건 정보 추가,,, 3분(180초) 이내에 120MA 통과 조건
-          ma60SlopeChange: ma60SlopeChangeToBuyCross ? {
+          // 새로운 매수 조건 정보 추가
+          ma60SlopeChange: ma60SlopeChangeToBuy ? {
             changeTime: ma60SlopeChangeTime,
             crossTime: currentTime,
-            timeDiff: ma60SlopeChangeTime ? currentTime - ma60SlopeChangeTime : null
+            timeDiff: ma60SlopeChangeTime ? currentTime - ma60SlopeChangeTime : null,
+            slopeValue: slope60MA
           } : null
         });
         

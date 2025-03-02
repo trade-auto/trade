@@ -51,6 +51,7 @@ export interface CrossPoint {
     changeTime: number | null;
     crossTime: number;
     timeDiff: number | null;
+    slopeValue: number;
   } | null;
 }
 
