@@ -342,65 +342,60 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const buyCrossOrAbove = buyCross || sixtyAbove120; // 매수 조건: 상방 돌파 또는 계속 위에 있음
       const sellCrossOrBelow = sellCross || sixtyBelow120; // 매도 조건: 하방 돌파 또는 계속 아래에 있음
       
-      // 기울기 계산 (각도 단위)
+      // 기울기 계산 (각도 단위) - 수정된 방식
       const timeDiff = 10; // 10초
-      const slope120MA = calculateAngle(curr120MA, prev120MA, timeDiff);
-      const slope240MA = calculateAngle(curr240MA, prev240MA, timeDiff);
-      const slope360MA = calculateAngle(curr360MA, prev360MA, timeDiff);
+      const slope120MA = Math.atan2(curr120MA - prev120MA, timeDiff) * (180 / Math.PI);
+      const slope240MA = Math.atan2(curr240MA - prev240MA, timeDiff) * (180 / Math.PI);
+      const slope360MA = Math.atan2(curr360MA - prev360MA, timeDiff) * (180 / Math.PI);
 
       // 기울기 조건
-      const is240MAUpward = slope240MA >10; // 상향 기울기
-      const is360MAUpward = slope360MA > 5; // 상향 기울기
+      const sloped360 = 15;
+      const is240MAUpward = slope240MA > 10; // 상향 기울기
+      const is360MAUpward = slope360MA > sloped360; // 상향 기울기
       const is240MADownward = slope240MA > 10;
-      const is360MADownward = slope360MA > 5;
+      const is360MADownward = slope360MA > sloped360;
       const is240MADownwardrev = slope240MA < -2;
       const is360MADownwardrev = slope360MA < -2;
-      const buySlope = (slope120MA >= 10) && (slope240MA >= 10); // 5도 이상 상향
+      const buySlope = (slope120MA >= 10) && (slope240MA >= 10); // 10도 이상 상향
       const sellSlope = (slope120MA <= -2) && (slope240MA <= -2); // -2도 이하 하향
-      
-      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue; // 30초 간격 유지
-              // 120MA와 240MA가 정배열인지 확인 (120MA가 240MA보다 위에 있는지)
-        const isProperAlignment = curr120MA > curr240MA;
-          const isProperAlignmentrev = curr120MA < curr240MA;
-         // const isProperAlignmentFull =   (curr240MA > curr360MA);
-             // 매수 신호 생성 전에 모든 변수 정의
-   const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
-   const is240MABelowMA360 = curr240MA < ma360Value;
-   const isProperAlignmentFull = (curr240MA > ma360Value);
-   const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
-      // 매수 신호 생성
-      //const gapNarrowing = currentGap < previousGap;
-      
 
-      // const buyCross = (sixtyEMA[prevIndex].value < prev120MA) && (currSixty > curr120MA); // 상방 돌파
-      // const sixtyAbove120 = (sixtyEMA[prevIndex].value > prev120MA) && (currSixty > curr120MA); // 60MA가 계속 120MA 위에 있음
-      // const buyCrossOrAbove = buyCross || sixtyAbove120; // 두 조건 중 하나라도 만족하면 true
- 
+      // 360MA 기울기가 +/- 15도 이내인지 확인 (횡보 상태)
+      const is360MASideways = Math.abs(slope360MA) <= sloped360;
+
+      // 시간 간격 조건 확인
+      if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue; // 30초 간격 유지
+
+      // 정배열/역배열 상태 확인
+      const isProperAlignment = curr120MA > curr240MA;
+      const isProperAlignmentrev = curr120MA < curr240MA;
+      const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
+      const is240MABelowMA360 = curr240MA < ma360Value;
+      const isProperAlignmentFull = (curr240MA > ma360Value);
+      const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
+
       // 60MA, 120MA, 240MA의 정배열/역배열 상태 확인
       const isFullProperAlignment = (currSixty > curr120MA) && (curr120MA > curr240MA); // 완전 정배열: 60MA > 120MA > 240MA
       const isFullReverseAlignment = (currSixty < curr120MA) && (curr120MA < curr240MA); // 완전 역배열: 60MA < 120MA < 240MA
 
-      if (lastAction !== 'buy' && 
-          ((gapNarrowing && buyCrossOrAbove && buySlope) || 
-           (isFullProperAlignment && buyCrossOrAbove) || 
-           (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward)) && 
-          !isReverseAlignment) {
-        // 240MA가 360MA보다 아래인지 확인
+      // 디버깅을 위한 로그 추가
+      console.log({
+        slope360MA,
+        sloped360,
+        is360MASideways,
+        condition: !is360MASideways,
+        currentTime: new Date(currentTime * 1000).toLocaleTimeString()
+      });
 
-        
-        // 240MA와 360MA의 기울기가 하향인지 확인
-        const prev360Index = ma360Data ? ma360Data.findIndex(d => Math.abs((d.time as number) - (sixtyEMA[prevIndex].time as number)) < tolerance) : -1;
-        const prev360MA = prev360Index >= 0 && ma360Data && ma360Data[prev360Index] ? ma360Data[prev360Index].value : 0;
-        const slope360MA = calculateAngle(ma360Value, prev360MA, timeDiff);
-        
-        const is240MADownward = slope240MA > 5;
-        const is360MADownward = slope360MA > 5;
-        
-      // 360MA, 240MA, 120MA가 역배열인지 확인 (360MA > 240MA > 120MA)
-      // const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
-
-      // 역배열이 아니고, 240MA가 360MA보다 아래가 아니거나, 240MA와 360MA의 기울기가 하향이 아닐 때만 매수
-      // if (!isReverseAlignment && (!is240MABelowMA360 || !(is240MADownward && is360MADownward))) {
+      // 360MA가 횡보 상태가 아닐 때만 매수/매도 조건 확인
+      if (!is360MASideways) {
+        console.log("360MA 기울기가 충분히 크므로 매수/매도 조건 확인");
+        // 매수 조건
+        if (lastAction !== 'buy' && 
+            ((gapNarrowing && buyCrossOrAbove && buySlope) || 
+             (isFullProperAlignment && buyCrossOrAbove) || 
+             (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward)) && 
+            !isReverseAlignment) {
+          // 매수 신호 생성 코드
           crossPoints.push({
             time: sixtyEMA[i].time,
             position: 'buy',
@@ -417,39 +412,32 @@ export const CandlestickChart: React.FC<ChartProps> = ({
               ma240: ((currSixty / curr240MA) * 100) - 100
             }
           });
-        lastAction = 'buy';
-        lastActionTime = currentTime;
-      //  }
-      }
-
-        // 매도 신호 생성
-        //else if (lastAction === 'buy' && gapNarrowing && sellCross && sellSlope) {
-      else if (lastAction == 'buy' && 
-        ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
-         (isFullReverseAlignment && sellCrossOrBelow))) {
-        // 240MA가 360MA보다 위에 있는지 확인
-        const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
-        const is240MAAboveMA360 = curr240MA > ma360Value;
- 
-        // 240MA가 360MA보다 위에 있으면 매도하지 않음
-        const is240MADownwardrev = slope240MA <  -2 ;
-        const is360MADownwardrev = slope360MA <  -2 ;
-       // if ( is240MAAboveMA360 || !(is240MADownwardrev  && is360MADownwardrev)  ) {
-        crossPoints.push({
-            time: sixtyEMA[i].time,
-          position: 'sell',
-            price: currSixty,
-            isAbove360MA: false,
-            slopes: {
-              ma60: currSixty - sixtyEMA[i-1].value,
-              ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
-              ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
-              ma360: ma360Index >= 0 && ma360Data ? ma360Data[ma360Index].value - (ma360Index > 0 ? ma360Data[ma360Index-1].value : 0) : 0
-            }
-        });
-        lastAction = 'sell';
-        lastActionTime = currentTime;
-       // }
+          lastAction = 'buy';
+          lastActionTime = currentTime;
+        }
+        // 매도 조건
+        else if (lastAction == 'buy' && 
+                 ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
+                  (isFullReverseAlignment && sellCrossOrBelow))) {
+          // 매도 신호 생성 코드
+          crossPoints.push({
+              time: sixtyEMA[i].time,
+            position: 'sell',
+              price: currSixty,
+              isAbove360MA: false,
+              slopes: {
+                ma60: currSixty - sixtyEMA[i-1].value,
+                ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
+                ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
+                ma360: ma360Index >= 0 && ma360Data ? ma360Data[ma360Index].value - (ma360Index > 0 ? ma360Data[ma360Index-1].value : 0) : 0
+              }
+          });
+          lastAction = 'sell';
+          lastActionTime = currentTime;
+         // }
+        }
+      } else {
+        console.log("360MA 기울기가 작아서 매수/매도 하지 않음");
       }
     }
     
@@ -2536,7 +2524,17 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   // 각도 계산 함수 추가 (새로운 함수)
   const calculateAngle = (currentValue: number, previousValue: number, timeDiff: number = 10): number => {
     if (timeDiff === 0 || currentValue === undefined || previousValue === undefined) return 0;
-    return Math.atan((currentValue - previousValue) / timeDiff) * (180 / Math.PI);
+    
+    // 기울기 계산 (라디안)
+    const angleRad = Math.atan((currentValue - previousValue) / timeDiff);
+    
+    // 라디안을 도로 변환
+    const angleDeg = angleRad * (180 / Math.PI);
+    
+    // 디버깅을 위한 로그
+    console.log(`calculateAngle: current=${currentValue}, prev=${previousValue}, diff=${currentValue - previousValue}, angle=${angleDeg}`);
+    
+    return angleDeg;
   };
 
   // 파일 끝부분에 return 문 추가
