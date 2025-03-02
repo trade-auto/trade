@@ -9,7 +9,7 @@ import { OrderListById } from '../components/OrderListById';
 import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
-import { CandlestickChart } from '../components/CandlestickChart5A8ok6';
+import { SimpleChart } from '../components/SimpleChart';
 import { getAccountBalance } from '../api/upbitAccount';
 
 const SYMBOLS = [
@@ -283,7 +283,7 @@ export default function OrdersPage() {
         {/* 초봉 차트 섹션 */}
         <div className="mb-8">
           <h2 className="text-xl font-bold text-white mb-4">실시간 초봉 차트</h2>
-          <CandlestickChart 
+          <SimpleChart 
             symbol={selectedSymbol} 
             chartType="seconds/60"
             initialAutoUpdate={true}
