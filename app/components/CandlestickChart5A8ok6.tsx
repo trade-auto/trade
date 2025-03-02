@@ -334,9 +334,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 이격도가 10초 전보다 근접했는지 확인
       const gapNarrowing = currentGap < previousGap;
       
-      // 60MA와 120MA의 교차 여부 확인
+      // 60MA와 120MA의 교차 여부 확인 + 정배열/역배열 상태에서의 위치 확인
       const buyCross = (sixtyEMA[prevIndex].value < prev120MA) && (currSixty > curr120MA); // 상방 돌파
       const sellCross = (sixtyEMA[prevIndex].value > prev120MA) && (currSixty < curr120MA); // 하방 돌파
+      const sixtyAbove120 = (sixtyEMA[prevIndex].value > prev120MA) && (currSixty > curr120MA); // 60MA가 계속 120MA 위에 있음
+      const sixtyBelow120 = (sixtyEMA[prevIndex].value < prev120MA) && (currSixty < curr120MA); // 60MA가 계속 120MA 아래에 있음
+      const buyCrossOrAbove = buyCross || sixtyAbove120; // 매수 조건: 상방 돌파 또는 계속 위에 있음
+      const sellCrossOrBelow = sellCross || sixtyBelow120; // 매도 조건: 하방 돌파 또는 계속 아래에 있음
       
       // 기울기 계산 (각도 단위)
       const timeDiff = 10; // 10초
@@ -365,10 +369,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
    const isProperAlignmentFull = (curr240MA > ma360Value);
    const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
       // 매수 신호 생성
+      //const gapNarrowing = currentGap < previousGap;
+      
+
+      // const buyCross = (sixtyEMA[prevIndex].value < prev120MA) && (currSixty > curr120MA); // 상방 돌파
+      // const sixtyAbove120 = (sixtyEMA[prevIndex].value > prev120MA) && (currSixty > curr120MA); // 60MA가 계속 120MA 위에 있음
+      // const buyCrossOrAbove = buyCross || sixtyAbove120; // 두 조건 중 하나라도 만족하면 true
+ 
       if (lastAction !== 'buy' && 
-          ((gapNarrowing && buyCross && buySlope) || 
-           (isProperAlignment && buyCross) || 
-           (isProperAlignmentFull && buyCross && is360MAUpward)) && 
+          ((gapNarrowing && buyCrossOrAbove && buySlope) || 
+           (isProperAlignment && buyCrossOrAbove) || 
+           (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward)) && 
           !isReverseAlignment) {
         // 240MA가 360MA보다 아래인지 확인
 
@@ -381,11 +392,11 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         const is240MADownward = slope240MA > 5;
         const is360MADownward = slope360MA > 5;
         
-        // 360MA, 240MA, 120MA가 역배열인지 확인 (360MA > 240MA > 120MA)
-       // const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
+      // 360MA, 240MA, 120MA가 역배열인지 확인 (360MA > 240MA > 120MA)
+      // const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
 
-        // 역배열이 아니고, 240MA가 360MA보다 아래가 아니거나, 240MA와 360MA의 기울기가 하향이 아닐 때만 매수
-        if (!isReverseAlignment && (!is240MABelowMA360 || !(is240MADownward && is360MADownward))) {
+      // 역배열이 아니고, 240MA가 360MA보다 아래가 아니거나, 240MA와 360MA의 기울기가 하향이 아닐 때만 매수
+      // if (!isReverseAlignment && (!is240MABelowMA360 || !(is240MADownward && is360MADownward))) {
           crossPoints.push({
             time: sixtyEMA[i].time,
             position: 'buy',
@@ -404,12 +415,14 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           });
         lastAction = 'buy';
         lastActionTime = currentTime;
-        }
+      //  }
       }
 
         // 매도 신호 생성
         //else if (lastAction === 'buy' && gapNarrowing && sellCross && sellSlope) {
-      else if (lastAction == 'buy' && ((gapNarrowing && sellCross && sellSlope) || (isProperAlignmentrev && sellCross))) {
+      else if (lastAction == 'buy' && 
+        ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
+         (isProperAlignmentrev && sellCrossOrBelow))) {
         // 240MA가 360MA보다 위에 있는지 확인
         const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
         const is240MAAboveMA360 = curr240MA > ma360Value;
@@ -417,7 +430,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         // 240MA가 360MA보다 위에 있으면 매도하지 않음
         const is240MADownwardrev = slope240MA <  -2 ;
         const is360MADownwardrev = slope360MA <  -2 ;
-        if ( is240MAAboveMA360 || !(is240MADownwardrev  && is360MADownwardrev)  ) {
+       // if ( is240MAAboveMA360 || !(is240MADownwardrev  && is360MADownwardrev)  ) {
         crossPoints.push({
             time: sixtyEMA[i].time,
           position: 'sell',
@@ -432,7 +445,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         });
         lastAction = 'sell';
         lastActionTime = currentTime;
-        }
+       // }
       }
     }
     
@@ -2522,6 +2535,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     return Math.atan((currentValue - previousValue) / timeDiff) * (180 / Math.PI);
   };
 
+  // 파일 끝부분에 return 문 추가
   return (
     <div className="w-full min-h-screen p-4 bg-[#1e1e1e] rounded-lg">
       {/* 데이터 로딩 제어 버튼 */}
