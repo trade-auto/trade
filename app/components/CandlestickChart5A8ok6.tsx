@@ -349,13 +349,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const slope360MA = calculateAngle(curr360MA, prev360MA, timeDiff);
 
       // 기울기 조건
-      const is240MAUpward = slope240MA > 5; // 상향 기울기
+      const is240MAUpward = slope240MA >10; // 상향 기울기
       const is360MAUpward = slope360MA > 5; // 상향 기울기
-      const is240MADownward = slope240MA > 5;
+      const is240MADownward = slope240MA > 10;
       const is360MADownward = slope360MA > 5;
       const is240MADownwardrev = slope240MA < -2;
       const is360MADownwardrev = slope360MA < -2;
-      const buySlope = (slope120MA >= 5) && (slope240MA >= 5); // 5도 이상 상향
+      const buySlope = (slope120MA >= 10) && (slope240MA >= 10); // 5도 이상 상향
       const sellSlope = (slope120MA <= -2) && (slope240MA <= -2); // -2도 이하 하향
       
       if (currentTime - lastActionTime < MIN_TIME_BETWEEN_TRADES) continue; // 30초 간격 유지
@@ -376,9 +376,13 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // const sixtyAbove120 = (sixtyEMA[prevIndex].value > prev120MA) && (currSixty > curr120MA); // 60MA가 계속 120MA 위에 있음
       // const buyCrossOrAbove = buyCross || sixtyAbove120; // 두 조건 중 하나라도 만족하면 true
  
+      // 60MA, 120MA, 240MA의 정배열/역배열 상태 확인
+      const isFullProperAlignment = (currSixty > curr120MA) && (curr120MA > curr240MA); // 완전 정배열: 60MA > 120MA > 240MA
+      const isFullReverseAlignment = (currSixty < curr120MA) && (curr120MA < curr240MA); // 완전 역배열: 60MA < 120MA < 240MA
+
       if (lastAction !== 'buy' && 
           ((gapNarrowing && buyCrossOrAbove && buySlope) || 
-           (isProperAlignment && buyCrossOrAbove) || 
+           (isFullProperAlignment && buyCrossOrAbove) || 
            (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward)) && 
           !isReverseAlignment) {
         // 240MA가 360MA보다 아래인지 확인
@@ -422,7 +426,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         //else if (lastAction === 'buy' && gapNarrowing && sellCross && sellSlope) {
       else if (lastAction == 'buy' && 
         ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
-         (isProperAlignmentrev && sellCrossOrBelow))) {
+         (isFullReverseAlignment && sellCrossOrBelow))) {
         // 240MA가 360MA보다 위에 있는지 확인
         const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
         const is240MAAboveMA360 = curr240MA > ma360Value;
