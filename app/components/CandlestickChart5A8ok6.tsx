@@ -402,6 +402,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 60MA, 120MA, 240MA의 정배열/역배열 상태 확인
       const isFullProperAlignment = (currSixty > curr120MA) && (curr120MA > curr240MA); // 완전 정배열: 60MA > 120MA > 240MA
       const isFullReverseAlignment = (currSixty < curr120MA) && (curr120MA < curr240MA); // 완전 역배열: 60MA < 120MA < 240MA
+      
+      // 역배열 상태에서 60MA가 상방으로 바뀌고 120MA를 통과하는 초기 매수 조건
+      const is60MAUpwardInReverseAlignment = isFullReverseAlignment && // 완전 역배열 상태 (60MA < 120MA < 240MA)
+                                              sixtyMA_slope > 0 && // 60MA가 상방으로 변화
+                                              buyCross; // 60MA가 120MA를 상방 돌파
+
       let prev60MASlope: number = 0;
       let prev60MASlopeTime: number = 0;
       const SLOPE_CHANGE_THRESHOLD = 30; //
@@ -442,23 +448,29 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             // 하강 기울기일 때는 lastActionTime을 업데이트하여 30초 동안 매수하지 않음
             lastActionTime = currentTime;
           } 
-  // 매수 조건
-  if ((lastAction !== 'buy' && 
-    (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
-     (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
-      (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
-       (gapNarrowing && buyCrossOrAbove && buySlope) || 
-       (isFullProperAlignment && buyCrossOrAbove) || 
-       (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
-     )) && 
-              !isReverseAlignment)) {
+          // 매수 조건
+          if ((lastAction !== 'buy' && 
+            (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
+            (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
+              (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
+              (gapNarrowing && buyCrossOrAbove && buySlope) || 
+              (isFullProperAlignment && buyCrossOrAbove) || 
+              (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
+            )) || 
+            is60MAUpwardInReverseAlignment && // 역배열 상태에서 60MA가 상방으로 바뀌고 120MA를 통과할 때 매수
+              !isReverseAlignment)) 
+              {
             
-            // 360MA와 240MA가 근접하면 매수하지 않음
-            if (is360_240_Close) {
+            // 360MA와 240MA가 근접하면 매수하지 않음 (역배열 상태에서의 초기 매수는 제외)
+            if (is360_240_Close && !is60MAUpwardInReverseAlignment) {
               console.log(`BUY signal ignored - 360MA and 240MA are too close (${(gap360_240 / curr240MA * 100).toFixed(2)}%) at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
             } else {
               // 매수 신호 생성 코드
-              console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+              const buyReason = is60MAUpwardInReverseAlignment ? 
+                "역배열 상태에서 60MA가 상방으로 바뀌고 120MA 통과" : 
+                "일반 매수 조건 충족";
+              
+              console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()} - ${buyReason}`);
               
               // 360MA 위에 있는지 확인
               const isAbove360MA = currSixty > curr360MA;
