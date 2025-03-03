@@ -333,16 +333,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 이격도가 10초 전보다 근접했는지 확인
       const gapNarrowing = currentGap < previousGap;
       
-      // 360MA와 240MA 간의 이격도 계산
-      const gap360_240 = Math.abs(curr360MA - curr240MA);
-      const prev_gap360_240 = Math.abs(prev360MA - prev240MA);
-      
-      // 360MA와 240MA가 근접한지 확인 (이격도가 1% 이내)
-      const is360_240_Close = (gap360_240 / curr240MA) * 100 < 0.08; //sky  0.5~0.1%
-      
-      // 360MA와 240MA의 이격도가 줄어들고 있는지 확인
-      const is360_240_GapNarrowing = gap360_240 < prev_gap360_240;
-      
       // 60MA와 120MA의 교차 여부 확인 + 정배열/역배열 상태에서의 위치 확인
       const buyCross = (sixtyEMA[prevIndex].value < prev120MA) && (currSixty > curr120MA); // 상방 돌파
       const sellCross = (sixtyEMA[prevIndex].value > prev120MA) && (currSixty < curr120MA); // 하방 돌파
@@ -402,12 +392,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 60MA, 120MA, 240MA의 정배열/역배열 상태 확인
       const isFullProperAlignment = (currSixty > curr120MA) && (curr120MA > curr240MA); // 완전 정배열: 60MA > 120MA > 240MA
       const isFullReverseAlignment = (currSixty < curr120MA) && (curr120MA < curr240MA); // 완전 역배열: 60MA < 120MA < 240MA
-      
-      // 역배열 상태에서 60MA가 상방으로 바뀌고 120MA를 통과하는 초기 매수 조건
-      const is60MAUpwardInReverseAlignment = isFullReverseAlignment && // 완전 역배열 상태 (60MA < 120MA < 240MA)
-                                              sixtyMA_slope > 0 && // 60MA가 상방으로 변화
-                                              buyCross; // 60MA가 120MA를 상방 돌파
-
       let prev60MASlope: number = 0;
       let prev60MASlopeTime: number = 0;
       const SLOPE_CHANGE_THRESHOLD = 30; //
@@ -448,53 +432,41 @@ export const CandlestickChart: React.FC<ChartProps> = ({
             // 하강 기울기일 때는 lastActionTime을 업데이트하여 30초 동안 매수하지 않음
             lastActionTime = currentTime;
           } 
-          // 매수 조건
-          if ((lastAction !== 'buy' && 
-            (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
-            (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
-              (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
-              (gapNarrowing && buyCrossOrAbove && buySlope) || 
-              (isFullProperAlignment && buyCrossOrAbove) || 
-              (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
-            )) || 
-            is60MAUpwardInReverseAlignment && // 역배열 상태에서 60MA가 상방으로 바뀌고 120MA를 통과할 때 매수
-              !isReverseAlignment)) 
-              {
+  // 매수 조건
+  if ((lastAction !== 'buy' && 
+    (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
+     (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
+      (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
+       (gapNarrowing && buyCrossOrAbove && buySlope) || 
+       (isFullProperAlignment && buyCrossOrAbove) || 
+       (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
+     )) && 
+              !isReverseAlignment)) {
+            // 매수 신호 생성 코드
+            console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
             
-            // 360MA와 240MA가 근접하면 매수하지 않음 (역배열 상태에서의 초기 매수는 제외)
-            if (is360_240_Close && !is60MAUpwardInReverseAlignment) {
-              console.log(`BUY signal ignored - 360MA and 240MA are too close (${(gap360_240 / curr240MA * 100).toFixed(2)}%) at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
-            } else {
-              // 매수 신호 생성 코드
-              const buyReason = is60MAUpwardInReverseAlignment ? 
-                "역배열 상태에서 60MA가 상방으로 바뀌고 120MA 통과" : 
-                "일반 매수 조건 충족";
-              
-              console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()} - ${buyReason}`);
-              
-              // 360MA 위에 있는지 확인
-              const isAbove360MA = currSixty > curr360MA;
-              
-              crossPoints.push({
-                time: sixtyEMA[i].time,
-                position: 'buy',
-                price: currSixty,
-                isAbove360MA: isAbove360MA,
-                slopes: {
-                  ma60: sixtyMA_slope,
-                  ma120: onetwentyMA_slope,
-                  ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
-                  ma360: curr360MA - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
-                },
-                deviations: {
-                  ma120: ((currSixty / curr120MA) * 100) - 100,
-                  ma240: ((currSixty / curr240MA) * 100) - 100
-                }
-              });
-              lastAction = 'buy';
-              lastActionTime = currentTime;
-            }
-          }
+            // 360MA 위에 있는지 확인
+            const isAbove360MA = currSixty > curr360MA;
+            
+          crossPoints.push({
+              time: sixtyEMA[i].time,
+            position: 'buy',
+              price: currSixty,
+              isAbove360MA: isAbove360MA,
+              slopes: {
+                ma60: sixtyMA_slope,
+                ma120: onetwentyMA_slope,
+                ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
+                ma360: curr360MA - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
+              },
+              deviations: {
+                ma120: ((currSixty / curr120MA) * 100) - 100,
+                ma240: ((currSixty / curr240MA) * 100) - 100
+              }
+          });
+        lastAction = 'buy';
+        lastActionTime = currentTime;
+        }
           // 매도 조건
           else if (lastAction == 'buy' && 
                    ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
@@ -1435,64 +1407,197 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       setCsvProgress(0);
       setAllData([]); // 데이터 초기화
 
-      // KST 시간을 UTC로 변환하여 API 요청 (10시간(36000000ms) 땡겨줌)
-      const kstStart = new Date(csvDateRange.startDate.getTime() + 9 * 60 * 60 * 1000);
-      const kstEnd = new Date(csvDateRange.endDate.getTime() + 9 * 60 * 60 * 1000);
-      const utcStart = new Date(kstStart.getTime() );//- 10 * 60 * 60 * 1000);
-      const utcEnd = new Date(kstEnd.getTime() );//- 10 * 60 * 60 * 1000);
+      // 날짜 변환 로직 수정 - 시간대 변환 없이 직접 사용
+      const startDate = new Date(csvDateRange.startDate);
+      const endDate = new Date(csvDateRange.endDate);
+      
+      // 시작 시간을 해당 날짜의 00:00:00으로 설정
+      startDate.setHours(0, 0, 0, 0);
+      
+      // 종료 시간을 해당 날짜의 23:59:59로 설정
+      endDate.setHours(23, 59, 59, 999);
+      
+      console.log('CSV 다운로드 시작 - 날짜 범위:', {
+        원본: {
+          startDate: csvDateRange.startDate?.toISOString(),
+          endDate: csvDateRange.endDate?.toISOString()
+        },
+        변환후: {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString()
+        }
+      });
+
+      // 현재 날짜 확인
+      const now = new Date();
+      if (endDate > now) {
+        console.warn('미래 날짜가 선택됨. 현재 날짜로 조정합니다.');
+        endDate.setTime(now.getTime());
+      }
+      
+      // 날짜 범위가 너무 넓은지 확인 (최대 30일)
+      const MAX_DAYS = 30;
+      const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff > MAX_DAYS) {
+        console.warn(`선택한 기간이 너무 깁니다: ${daysDiff}일. 최대 ${MAX_DAYS}일로 제한합니다.`);
+        startDate.setTime(endDate.getTime() - (MAX_DAYS * 24 * 60 * 60 * 1000));
+      }
 
       // 데이터 로딩 시작
-      setCsvProgress(20);
+      setCsvProgress(10);
       
       // API 요청 준비
-      const count = 200;
+      const count = 200; // 한 번에 가져올 최대 캔들 수
       let tempData: any[] = [];
-      let currentDate = utcEnd;
       
-      while (currentDate >= utcStart) {
-        setCsvProgress(Math.min(90, (tempData.length / 1000) * 100));
+      // 종료일부터 시작하여 과거로 거슬러 올라가는 방식
+      let currentDate = new Date(endDate);
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
+      const MAX_REQUESTS = 50; // 최대 API 요청 횟수 제한
+      let requestCount = 0;
+      
+      while (currentDate >= startDate && retryCount < MAX_RETRIES && requestCount < MAX_REQUESTS) {
+        requestCount++;
+        setCsvProgress(Math.min(90, (tempData.length / 2000) * 100));
         
-        const apiUrl = `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&to=${currentDate.toISOString()}&count=${count}`;
+        // ISO 문자열로 변환 (UTC 기준)
+        const currentDateISO = currentDate.toISOString();
+        const apiUrl = `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&to=${currentDateISO}&count=${count}`;
+        console.log(`API 요청 #${requestCount}: ${apiUrl}`);
         
         try {
           const response = await fetch(apiUrl);
           
           if (!response.ok) {
-            throw new Error(`API 요청 실패: ${response.status}`);
+            const errorText = await response.text();
+            console.error(`API 응답 오류: 상태 코드 ${response.status}`, errorText);
+            
+            // 429 (Too Many Requests) 오류 처리
+            if (response.status === 429) {
+              console.log('요청 제한 초과. 5초 대기 후 재시도...');
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              retryCount++;
+              continue;
+            }
+            
+            throw new Error(`API 요청 실패: ${response.status} - ${errorText}`);
           }
 
           const data = await response.json();
-          if (!data || data.length === 0) break;
-
-          tempData = [...tempData, ...data];
-          currentDate = new Date(data[data.length - 1].candle_date_time_kst);
+          console.log(`API 응답 데이터 수신: ${data?.length || 0}개`);
           
-          setAllData(tempData);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          if (!data || data.length === 0) {
+            console.warn('API에서 데이터를 반환하지 않음. 루프 종료');
+            break;
+          }
+
+          // 데이터 추가
+          tempData = [...tempData, ...data];
+          console.log(`누적 데이터: ${tempData.length}개`);
+          
+          // 다음 요청을 위해 날짜 업데이트
+          const oldestCandleDate = new Date(data[data.length - 1].candle_date_time_utc);
+          
+          // 1분을 빼서 중복을 방지
+          oldestCandleDate.setMinutes(oldestCandleDate.getMinutes() - 1);
+          
+          const prevDate = new Date(currentDate);
+          currentDate = oldestCandleDate;
+          
+          console.log(`다음 요청 날짜 업데이트: ${prevDate.toISOString()} -> ${currentDate.toISOString()}`);
+          
+          // 진행 상황 업데이트
+          setAllData([...tempData]); // 새 배열 생성하여 상태 업데이트 보장
+          
+          // API 요청 제한 방지를 위한 지연
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // 재시도 카운터 초기화
+          retryCount = 0;
         } catch (apiError) {
           console.error('API 호출 오류:', apiError);
+          retryCount++;
+          
+          if (retryCount >= MAX_RETRIES) {
+            console.error(`최대 재시도 횟수(${MAX_RETRIES})에 도달했습니다.`);
+            break;
+          }
+          
+          console.log(`${retryCount}번째 재시도... 2초 후 다시 시도합니다.`);
           await new Promise(resolve => setTimeout(resolve, 2000));
           continue;
         }
       }
 
-      // 데이터 필터링 (KST 기준)
-      const filteredData = tempData
-        .sort((a, b) => new Date(a.candle_date_time_kst).getTime() - new Date(b.candle_date_time_kst).getTime())
-        .filter(candle => {
-          const candleTime = new Date(candle.candle_date_time_kst);
-          return candleTime >= kstStart && candleTime <= kstEnd;
-        });
+      console.log(`API 요청 완료. 총 데이터: ${tempData.length}개, 총 요청 수: ${requestCount}`);
 
-      if (filteredData.length === 0) {
-        throw new Error('선택한 기간의 데이터가 없습니다.');
+      if (tempData.length === 0) {
+        throw new Error('데이터를 가져오지 못했습니다. 다른 날짜 범위를 선택해 주세요.');
       }
 
-      setAllData(filteredData);
+      // 중복 제거 (candle_date_time_utc 기준)
+      const uniqueData = Array.from(
+        new Map(tempData.map(item => [item.candle_date_time_utc, item])).values()
+      );
+      
+      console.log(`중복 제거 후 데이터: ${uniqueData.length}개 (${tempData.length - uniqueData.length}개 중복 제거)`);
+
+      // 데이터 정렬 (시간 오름차순)
+      const sortedData = uniqueData.sort(
+        (a, b) => new Date(a.candle_date_time_utc).getTime() - new Date(b.candle_date_time_utc).getTime()
+      );
+      
+      // 필터링 전 데이터 범위 확인
+      if (sortedData.length > 0) {
+        const firstCandleTime = new Date(sortedData[0].candle_date_time_utc);
+        const lastCandleTime = new Date(sortedData[sortedData.length - 1].candle_date_time_utc);
+        
+        console.log('정렬된 데이터 범위:', {
+          첫데이터: firstCandleTime.toISOString(),
+          마지막데이터: lastCandleTime.toISOString(),
+          필터시작: startDate.toISOString(),
+          필터종료: endDate.toISOString()
+        });
+      }
+      
+      // 필터링 적용 (UTC 기준)
+      const finalData = sortedData.filter(candle => {
+        const candleTime = new Date(candle.candle_date_time_utc);
+        return candleTime >= startDate && candleTime <= endDate;
+      });
+
+      console.log(`필터링 후 데이터: ${finalData.length}개`);
+      
+      if (finalData.length === 0) {
+        console.error('필터링 후 데이터가 없음. 필터링 전 데이터:', {
+          sortedDataLength: sortedData.length,
+          firstItem: sortedData.length > 0 ? new Date(sortedData[0].candle_date_time_utc).toISOString() : null,
+          lastItem: sortedData.length > 0 ? new Date(sortedData[sortedData.length - 1].candle_date_time_utc).toISOString() : null,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString()
+        });
+        
+        // 필터링 없이 모든 데이터 사용
+        console.log('필터링을 건너뛰고 모든 데이터를 사용합니다.');
+        setAllData(sortedData);
+        setCsvProgress(100);
+        console.log('CSV 데이터 로드 완료 (필터링 없이)');
+        return;
+      }
+
+      setAllData(finalData);
       setCsvProgress(100);
+      console.log('CSV 데이터 로드 완료');
 
     } catch (error: any) {
       console.error('CSV 다운로드 중 오류:', error);
+      console.error('오류 세부 정보:', {
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack
+      });
       alert(`데이터 다운로드 중 오류: ${error?.message || '알 수 없는 오류가 발생했습니다.'}`);
     } finally {
       setCsvLoading(false);
