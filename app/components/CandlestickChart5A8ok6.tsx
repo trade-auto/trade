@@ -332,6 +332,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       
       // 이격도가 10초 전보다 근접했는지 확인
       const gapNarrowing = currentGap < previousGap;
+            
+      // 360MA와 240MA 간의 이격도 계산
+      const gap360_240 = Math.abs(curr360MA - curr240MA);
+      const prev_gap360_240 = Math.abs(prev360MA - prev240MA);
+      
+      // 360MA와 240MA가 근접한지 확인 (이격도가 1% 이내)
+      const is360_240_Close = (gap360_240 / curr240MA) * 100 < 0.08; //sky  0.5~0.1%
+      
+      // 360MA와 240MA의 이격도가 줄어들고 있는지 확인
+      const is360_240_GapNarrowing = gap360_240 < prev_gap360_240;
       
       // 60MA와 120MA의 교차 여부 확인 + 정배열/역배열 상태에서의 위치 확인
       const buyCross = (sixtyEMA[prevIndex].value < prev120MA) && (currSixty > curr120MA); // 상방 돌파
@@ -443,15 +453,24 @@ export const CandlestickChart: React.FC<ChartProps> = ({
      )) && 
               !isReverseAlignment)) {
             // 매수 신호 생성 코드
-            console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
             
-            // 360MA 위에 있는지 확인
-            const isAbove360MA = currSixty > curr360MA;
+            // 360MA와 240MA가 근접하면 매수하지 않음
+            if (is360_240_Close) {
+              console.log(`BUY signal ignored - 360MA and 240MA are too close (${(gap360_240 / curr240MA * 100).toFixed(2)}%) at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+            } else {
+              // 매수 신호 생성 코드
+              console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+              
+              // 360MA 위에 있는지 확인
+              const isAbove360MA = currSixty > curr360MA;
+              
+ 
             
           crossPoints.push({
               time: sixtyEMA[i].time,
             position: 'buy',
               price: currSixty,
+              
               isAbove360MA: isAbove360MA,
               slopes: {
                 ma60: sixtyMA_slope,
@@ -467,6 +486,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         lastAction = 'buy';
         lastActionTime = currentTime;
         }
+      }
           // 매도 조건
           else if (lastAction == 'buy' && 
                    ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
