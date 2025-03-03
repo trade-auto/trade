@@ -333,6 +333,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       // 이격도가 10초 전보다 근접했는지 확인
       const gapNarrowing = currentGap < previousGap;
       
+      // 360MA와 240MA 간의 이격도 계산
+      const gap360_240 = Math.abs(curr360MA - curr240MA);
+      const prev_gap360_240 = Math.abs(prev360MA - prev240MA);
+      
+      // 360MA와 240MA가 근접한지 확인 (이격도가 1% 이내)
+      const is360_240_Close = (gap360_240 / curr240MA) * 100 < 0.08; //sky  0.5~0.1%
+      
+      // 360MA와 240MA의 이격도가 줄어들고 있는지 확인
+      const is360_240_GapNarrowing = gap360_240 < prev_gap360_240;
+      
       // 60MA와 120MA의 교차 여부 확인 + 정배열/역배열 상태에서의 위치 확인
       const buyCross = (sixtyEMA[prevIndex].value < prev120MA) && (currSixty > curr120MA); // 상방 돌파
       const sellCross = (sixtyEMA[prevIndex].value > prev120MA) && (currSixty < curr120MA); // 하방 돌파
@@ -442,48 +452,67 @@ export const CandlestickChart: React.FC<ChartProps> = ({
        (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
      )) && 
               !isReverseAlignment)) {
-            // 매수 신호 생성 코드
-            console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
-          crossPoints.push({
-              time: sixtyEMA[i].time,
-            position: 'buy',
-              price: currSixty,
-              isAbove360MA: false,
-              slopes: {
-                ma60: sixtyMA_slope,
-                ma120: onetwentyMA_slope,
-                ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
-                ma360: curr360MA - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
-              },
-              deviations: {
-                ma120: ((currSixty / curr120MA) * 100) - 100,
-                ma240: ((currSixty / curr240MA) * 100) - 100
-              }
-          });
-        lastAction = 'buy';
-        lastActionTime = currentTime;
-        }
+            
+            // 360MA와 240MA가 근접하면 매수하지 않음
+            if (is360_240_Close) {
+              console.log(`BUY signal ignored - 360MA and 240MA are too close (${(gap360_240 / curr240MA * 100).toFixed(2)}%) at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+            } else {
+              // 매수 신호 생성 코드
+              console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+              
+              // 360MA 위에 있는지 확인
+              const isAbove360MA = currSixty > curr360MA;
+              
+              crossPoints.push({
+                time: sixtyEMA[i].time,
+                position: 'buy',
+                price: currSixty,
+                isAbove360MA: isAbove360MA,
+                slopes: {
+                  ma60: sixtyMA_slope,
+                  ma120: onetwentyMA_slope,
+                  ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
+                  ma360: curr360MA - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
+                },
+                deviations: {
+                  ma120: ((currSixty / curr120MA) * 100) - 100,
+                  ma240: ((currSixty / curr240MA) * 100) - 100
+                }
+              });
+              lastAction = 'buy';
+              lastActionTime = currentTime;
+            }
+          }
           // 매도 조건
           else if (lastAction == 'buy' && 
                    ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
                     (isFullReverseAlignment && sellCrossOrBelow))) {
-            // 매도 신호 생성 코드
-            console.log(`SELL signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
-        crossPoints.push({
-              time: sixtyEMA[i].time,
-          position: 'sell',
-              price: currSixty,
-              isAbove360MA: false,
-              slopes: {
-                ma60: currSixty - sixtyEMA[i-1].value,
-                ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
-                ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
-                ma360: ma360Index >= 0 && ma360Data ? ma360Data[ma360Index].value - (ma360Index > 0 ? ma360Data[ma360Index-1].value : 0) : 0
-              }
-        });
-        lastAction = 'sell';
-        lastActionTime = currentTime;
-      }
+            
+            // 360MA 위에 있는지 확인
+            const isAbove360MA = currSixty > curr360MA;
+            
+            // 360MA 위에 있으면 매도하지 않음
+            if (isAbove360MA) {
+              console.log(`SELL signal ignored - price is above 360MA at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+            } else {
+              // 매도 신호 생성 코드
+              console.log(`SELL signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+              crossPoints.push({
+                time: sixtyEMA[i].time,
+                position: 'sell',
+                price: currSixty,
+                isAbove360MA: isAbove360MA,
+                slopes: {
+                  ma60: currSixty - sixtyEMA[i-1].value,
+                  ma120: curr120MA - (prev120Index >= 0 && ma120Data ? ma120Data[prev120Index].value : 0),
+                  ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
+                  ma360: ma360Index >= 0 && ma360Data ? ma360Data[ma360Index].value - (ma360Index > 0 ? ma360Data[ma360Index-1].value : 0) : 0
+                }
+              });
+              lastAction = 'sell';
+              lastActionTime = currentTime;
+            }
+          }
         } else {
           console.log(`Skipping trade: Last action (${lastAction}) was ${timeSinceLastAction} seconds ago, need to wait ${MIN_TIME_BETWEEN_TRADES - timeSinceLastAction} more seconds`);
         }
@@ -1052,6 +1081,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       if (point.position === 'buy') {
         buyPoint = point;
       } else if (point.position === 'sell' && buyPoint) {
+        // 360MA 위에 있으면 매도 신호 무시 (백테스트에서도 적용)
+        if (point.isAbove360MA) {
+          console.log(`Backtest: SELL signal ignored at ${new Date((point.time as number) * 1000).toLocaleTimeString()} - price is above 360MA`);
+          continue; // 다음 포인트로 넘어감
+        }
+        
         const entryPrice = buyPoint.price;
         const exitPrice = point.price;
         const returnRate = (exitPrice - entryPrice) / entryPrice;
