@@ -256,12 +256,16 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const isLoadingRef = useRef<boolean>(false); // 데이터 로딩 상태를 추적하기 위한 ref
   const oldestTimestampRef = useRef<number | null>(null); // 가장 오래된 데이터의 timestamp를 저장하기 위한 ref
   
+  // 초기 매수 여부를 컴포넌트 상태에서 가져옴
+  const [isFirstBuy, setIsFirstBuy] = useState<boolean>(true);
+  
   const { prices, tickers, updateTradeState, orderLimits, maPeriods, updateMAPeriod, showMA, updateShowMA } = useUpbitStore();
   const [tickerData, setTickerData] = useState<TickerData | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('-');
   const [chartPrice, setChartPrice] = useState<number>(0);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
+  const [ma3Price, setMa3Price] = useState<number | null>(0); // 3초 이동평균 가격 추가
   
   // 초기 날짜 범위 상태를 chartType에 따라 설정
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
@@ -283,6 +287,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     let lastAction: 'buy' | 'sell' | null = null;
     let lastActionTime: number = 0;
     const startTime = Math.floor(Date.now() / 1000) - 3600; // 현재 시간에서 60분 전 부터 매매
+    
+    // 초기 매수 여부를 컴포넌트 상태에서 가져옴
+    // let isFirstBuy = true; // 이 줄 삭제
     
     // 필요한 MA 데이터 가져오기
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
@@ -345,6 +352,9 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       const sixtyMA_slope = currSixty - sixtyEMA[prevIndex].value;
       const onetwentyMA_slope = curr120MA - prev120MA;
       const slopeDifference = sixtyMA_slope - onetwentyMA_slope;
+
+      // 60MA 기울기 변화 확인 (상방으로 바뀌는지)
+      const is60MAUpwardChange = sixtyMA_slope > 0 && (prevIndex > 0 ? (sixtyEMA[prevIndex].value - sixtyEMA[prevIndex-1].value) <= 0 : false);
 
       // 60MA가 120MA를 큰 기울기로 상방 관통하는지 확인
       const strongBuyCross = buyCross && (slopeDifference > 0.5); // 0.5는 기울기 차이 임계값으로 조정 가능
@@ -424,33 +434,20 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           insideIs360MASidewaysBlock: true
         });
         
-        //if ((!is360MASideways) && (timeSinceLastAction >= MIN_TIME_BETWEEN_TRADES)  ) {
-        
-          if ((!is360MASideways) && (timeSinceLastAction >= MIN_TIME_BETWEEN_TRADES)) {  // 60MA와 120MA가 하강 기울기인지 확인
-          if (isBothMADownward && !isRapidSlopeChange) { // 급격한 기울기 변화가 없을 때만 스킵
-            console.log(`Skipping buy: Both 60MA and 120MA are downward sloping. Waiting for 30 seconds.`);
-            // 하강 기울기일 때는 lastActionTime을 업데이트하여 30초 동안 매수하지 않음
-            lastActionTime = currentTime;
-          } 
-  // 매수 조건
-  if ((lastAction !== 'buy' && 
-    (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
-     (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
-      (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
-       (gapNarrowing && buyCrossOrAbove && buySlope) || 
-       (isFullProperAlignment && buyCrossOrAbove) || 
-       (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
-     )) && 
-              !isReverseAlignment)) {
-            // 매수 신호 생성 코드
-            console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+        // 초기 매수 조건 확인 (360MA 횡보 상태 무시)
+        if (isFirstBuy) {
+          console.log(`초기 매수 조건 확인 (360MA 횡보 상태 무시): isReverseAlignment=${isReverseAlignment}, is60MAUpwardChange=${is60MAUpwardChange}, buyCross=${buyCross}`);
+          
+          // 초기 매수 조건 (역배열에서 60MA가 상방으로 바뀌고 120MA 통과시)
+          if (isReverseAlignment && is60MAUpwardChange && buyCross) {
+            console.log(`FIRST BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()} - 역배열에서 60MA 상방 전환 및 120MA 통과`);
             
             // 360MA 위에 있는지 확인
             const isAbove360MA = currSixty > curr360MA;
             
-          crossPoints.push({
+            crossPoints.push({
               time: sixtyEMA[i].time,
-            position: 'buy',
+              position: 'buy',
               price: currSixty,
               isAbove360MA: isAbove360MA,
               slopes: {
@@ -463,10 +460,60 @@ export const CandlestickChart: React.FC<ChartProps> = ({
                 ma120: ((currSixty / curr120MA) * 100) - 100,
                 ma240: ((currSixty / curr240MA) * 100) - 100
               }
-          });
-        lastAction = 'buy';
-        lastActionTime = currentTime;
+            });
+            
+            lastAction = 'buy';
+            lastActionTime = currentTime;
+            setIsFirstBuy(false); // 컴포넌트 상태 업데이트
+          }
         }
+        // 기존 매수/매도 로직 (360MA 횡보 상태 및 시간 간격 조건 적용)
+        else if ((!is360MASideways) && (timeSinceLastAction >= MIN_TIME_BETWEEN_TRADES)) {  // 60MA와 120MA가 하강 기울기인지 확인
+          if (isBothMADownward && !isRapidSlopeChange) { // 급격한 기울기 변화가 없을 때만 스킵
+            console.log(`Skipping buy: Both 60MA and 120MA are downward sloping. Waiting for 30 seconds.`);
+            // 하강 기울기일 때는 lastActionTime을 업데이트하여 30초 동안 매수하지 않음
+            lastActionTime = currentTime;
+          } 
+          
+          // 매수 조건
+          if (lastAction !== 'buy') {
+            // 2차 매수부터는 기존 조건대로
+            if (!isFirstBuy && 
+              (isRapidSlopeChange || // 30초 이내 60MA 기울기가 급하강에서 급상승으로 변경
+               (!isBothMADownward && // 60MA와 120MA가 모두 하강 기울기가 아닐 때
+                (strongBuyCross || // 60MA가 120MA를 큰 기울기로 상방 관통
+                 (gapNarrowing && buyCrossOrAbove && buySlope) || 
+                 (isFullProperAlignment && buyCrossOrAbove) || 
+                 (isProperAlignmentFull && buyCrossOrAbove && is360MAUpward))
+               )) && 
+               !isReverseAlignment) {
+              // 매수 신호 생성 코드
+              console.log(`BUY signal generated at ${new Date(currentTime * 1000).toLocaleTimeString()}`);
+              
+              // 360MA 위에 있는지 확인
+              const isAbove360MA = currSixty > curr360MA;
+              
+              crossPoints.push({
+                time: sixtyEMA[i].time,
+                position: 'buy',
+                price: currSixty,
+                isAbove360MA: isAbove360MA,
+                slopes: {
+                  ma60: sixtyMA_slope,
+                  ma120: onetwentyMA_slope,
+                  ma240: curr240MA - (prev240Index >= 0 && ma240Data ? ma240Data[prev240Index].value : 0),
+                  ma360: curr360MA - (prev360Index >= 0 && ma360Data ? ma360Data[prev360Index].value : 0)
+                },
+                deviations: {
+                  ma120: ((currSixty / curr120MA) * 100) - 100,
+                  ma240: ((currSixty / curr240MA) * 100) - 100
+                }
+              });
+              
+              lastAction = 'buy';
+              lastActionTime = currentTime;
+            }
+          }
           // 매도 조건
           else if (lastAction == 'buy' && 
                    ((gapNarrowing && sellCrossOrBelow && sellSlope) ||
@@ -1615,7 +1662,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     const updateInterval = setInterval(async () => {
       try {
         const now = new Date();
-        const thirtyMinutesAgo = new Date(now.getTime() - 60 * 60 * 1000); //sky
+        const thirtyMinutesAgo = new Date(now.getTime() - 2*60 * 60 * 1000); //sky
         
         // 데이터 로드 전에 이전 데이터 초기화
         if (candleSeriesRef.current) {
@@ -1665,7 +1712,6 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   }, [chartType, resetAndLoadData]);
 
   // 상태 변수 추가
-  const [ma3Price, setMa3Price] = useState<number | null>(null);
   const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
 
   // 기존 useEffect 수정
@@ -1761,9 +1807,41 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     // 매수/매도 신호 감지 및 주문 실행
     const checkAndExecuteOrder = async () => {
       try {
-        if (currentPrice < ma3Price * 0.999) {
+        console.log(`주문 실행 조건 확인: currentPrice=${currentPrice}, ma3Price=${ma3Price}, isFirstBuy=${isFirstBuy}, lastTradeType=${lastTradeType}`);
+        
+        // 초기 매수 조건 확인 (crossPoints에서 매수 신호가 있는지)
+        if (isFirstBuy && crossPointsRef.current.length > 0) {
+          const lastCrossPoint = crossPointsRef.current[crossPointsRef.current.length - 1];
+          if (lastCrossPoint.position === 'buy') {
+            console.log('초기 매수 신호 감지 - handleOrder 실행:');
+            await handleOrder({
+              market: symbol,
+              side: 'bid',
+              volume: calculateOrderVolume(currentPrice),
+              price: currentPrice.toString(),
+              ord_type: 'limit',
+              mode: mode
+            });
 
-       
+            // 매수 성공 후 상태 업데이트
+            updateTradeState({
+              lastTradeType: 'bid',
+              statusChangeTime: currentTime,
+              currentPrice: currentPrice,
+              actionStartTime: now,
+              isTrading: true,
+              theoreticalPosition: 'bid',
+              missedFirstCycle: false
+            });
+            
+            // 초기 매수 완료 표시
+            setIsFirstBuy(false);
+            return; // 초기 매수 후 함수 종료
+          }
+        }
+        
+        // 기존 매수/매도 로직
+        if (currentPrice < ma3Price * 0.999) {
           // 매수 조건
           if ((missedFirstCycle && lastTradeType === 'ask') || (!missedFirstCycle && lastTradeType === null)) {
             console.log('handleOrder 실행:');
