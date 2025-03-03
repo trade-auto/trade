@@ -1,5 +1,5 @@
 import { Time, LineData, CandlestickData } from 'lightweight-charts';
-import { ExtendedCandlestickData } from '../types/candlestick';
+import { ExtendedCandlestickData } from '../../types/candlestick';
 
 // 타입 정의
 export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';

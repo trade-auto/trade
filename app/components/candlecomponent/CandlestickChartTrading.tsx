@@ -8,7 +8,7 @@ export const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStr
   return crossPoints.map((point) => {
     const position = point.position;
     const color = position === 'buy' ? '#2196F3' : '#FF5252';
-    const shape = position === 'buy' ? 'arrow_up' : 'arrow_down';
+    const shape = position === 'buy' ? 'arrowUp' : 'arrowDown';
     const text = position === 'buy' ? '매수' : '매도';
     
     return {
