@@ -6,15 +6,19 @@ import { formatTime } from './CandlestickChartHelpers';
 interface ChartControlsProps {
   isAutoUpdate: boolean;
   isRealtimeAPIEnabled: boolean;
+  isWebSocketEnabled?: boolean;
   handleAutoUpdateToggle: () => void;
   handleRealtimeAPIToggle: () => void;
+  handleWebSocketToggle?: () => void;
 }
 
 export const ChartControls: React.FC<ChartControlsProps> = ({
   isAutoUpdate,
   isRealtimeAPIEnabled,
+  isWebSocketEnabled = false,
   handleAutoUpdateToggle,
-  handleRealtimeAPIToggle
+  handleRealtimeAPIToggle,
+  handleWebSocketToggle
 }) => {
   return (
     <div className="mb-4">
@@ -42,6 +46,19 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           >
             {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
           </button>
+          
+          {handleWebSocketToggle && (
+            <button
+              onClick={handleWebSocketToggle}
+              className={`px-4 py-2 rounded-lg font-bold ${
+                isWebSocketEnabled 
+                  ? 'bg-purple-600 hover:bg-purple-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              } text-white`}
+            >
+              {isWebSocketEnabled ? '✓ 웹소켓 연결' : '웹소켓 연결'}
+            </button>
+          )}
         </div>
       </div>
     </div>

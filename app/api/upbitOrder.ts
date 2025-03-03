@@ -326,20 +326,39 @@ export const get3SecMA = async (market: string): Promise<number> => {
 
     const data = await response.json();
     
+    // 응답 데이터 확인
+    console.log('3초 중간값 API 응답:', data);
+    
+    // 데이터가 배열이 아니거나 비어있는 경우 처리
+    if (!Array.isArray(data) || data.length === 0) {
+      console.error('유효하지 않은 API 응답 데이터:', data);
+      return 0;
+    }
+    
     // 가격들을 배열로 추출하고 정렬
     const prices = data
+      .filter((trade: any) => trade && typeof trade.trade_price !== 'undefined')
       .map((trade: any) => Number(trade.trade_price))
       .sort((a: number, b: number) => a - b);
     
+    console.log('추출된 가격 배열:', prices);
+    
+    if (prices.length === 0) {
+      console.warn('추출된 가격이 없습니다.');
+      return 0;
+    }
+    
     if (prices.length < 3) {
-      return prices[0] || 0;
+      console.log('가격 배열 길이가 3 미만, 첫 번째 가격 반환:', prices[0]);
+      return prices[0];
     }
 
     // 정렬된 배열에서 중간 인덱스(1)의 값을 반환
+    console.log('중간값 반환:', prices[1]);
     return prices[1];
 
   } catch (error: any) {
     console.error('3초 중간값 조회 중 오류:', error);
-    throw error;
+    return 0; // 오류 발생 시 0 반환
   }
 }; 

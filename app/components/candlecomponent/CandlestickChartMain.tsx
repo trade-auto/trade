@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import React from 'react';
 import debug from 'debug';
+
+// NodeJS 타입 정의
+declare global {
+  namespace NodeJS {
+    interface Timeout {}
+  }
+}
+
 const log = debug('trade:orders');
 import { useUpbitStore } from '../../store/useUpbitStore';
 import {
@@ -149,12 +158,11 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
   // 자동 업데이트 타이머 ref 추가
   const autoUpdateTimer = useRef<NodeJS.Timeout | null>(null);
   
-  // useEffect에서 웹소켓 연결
-  useEffect(() => {
-    if (isWebSocketEnabled) {
-      // 필요한 경우 여기에 직접 웹소켓 연결 구현
-    }
-  }, [symbol, isWebSocketEnabled]);
+  // API 실시간 업데이트를 위한 인터벌 ref 추가
+  const apiIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // useUpbitWebSocket 훅 사용
+  const { connectWebSocket, disconnectWebSocket } = useUpbitWebSocket(symbol);
   
   // 웹소켓 데이터 처리
   useEffect(() => {
@@ -626,35 +634,23 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
     };
   }, [isAutoUpdate, isChartDisposed]);
   
-  // 컴포넌트 언마운트 시 타이머 정리
-  useEffect(() => {
-    return () => {
-      stopAutoUpdate();
-    };
-  }, []);
-  
-  // 자동 업데이트 토글
+  // 자동 업데이트 토글 핸들러 수정
   const handleAutoUpdateToggle = () => {
-    console.log('자동 업데이트 토글 전:', isAutoUpdate);
-    setIsAutoUpdate(prev => {
-      const newValue = !prev;
-      console.log('자동 업데이트 토글 후:', newValue);
-      
-      // 자동 업데이트가 활성화되면 즉시 데이터 로드
-      if (newValue && chartInitialized.current && !isChartDisposed && chart.current && candleSeries.current) {
-        console.log('자동 업데이트 활성화: 즉시 데이터 로드');
-        loadChartData();
-      } else if (newValue) {
-        console.log('자동 업데이트 활성화되었지만 차트가 아직 준비되지 않았습니다:',
-          '초기화 상태(ref):', chartInitialized.current,
-          '초기화 상태(state):', isChartInitialized,
-          '차트 객체:', !!chart.current,
-          '캔들시리즈:', !!candleSeries.current
-        );
+    if (!isAutoUpdate) {
+      // 자동 업데이트 활성화 시 웹소켓 비활성화
+      if (isWebSocketEnabled) {
+        disconnectWebSocket();
+        setIsWebSocketEnabled(false);
       }
       
-      return newValue;
-    });
+      // 자동 업데이트 시작
+      startAutoUpdate();
+    } else {
+      // 자동 업데이트 중지
+      stopAutoUpdate();
+    }
+    
+    setIsAutoUpdate(prev => !prev);
   };
   
   // 실시간 API 토글
@@ -664,7 +660,57 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
   
   // 웹소켓 토글
   const handleWebSocketToggle = () => {
-    setIsWebSocketEnabled(prev => !prev);
+    // 웹소켓 상태 토글
+    const newWebSocketState = !isWebSocketEnabled;
+    
+    if (newWebSocketState) {
+      // 웹소켓 활성화
+      if (isAutoUpdate) {
+        // 자동 업데이트가 활성화되어 있으면 비활성화
+        stopAutoUpdate();
+        setIsAutoUpdate(false);
+      }
+      
+      // 웹소켓 연결 설정
+      try {
+        console.log('웹소켓 연결 시도:', symbol);
+        
+        // 타입스크립트 타입 정의가 명확하지 않으므로 any 타입을 사용
+        connectWebSocket([symbol], (data: any) => {
+          try {
+            console.log('웹소켓 데이터 수신:', data.type);
+            
+            if (data.type === 'trade') {
+              console.log('거래 데이터 수신:', data.trade_price);
+              setLastTradeData(data);
+              updateCurrentPrice(data.trade_price);
+            } else if (data.type === 'ticker') {
+              console.log('티커 데이터 수신:', data);
+              setTickerData(data);
+            }
+          } catch (error) {
+            console.error('웹소켓 데이터 처리 오류:', error);
+          }
+        });
+        
+        console.log('웹소켓 연결 요청 완료');
+      } catch (error) {
+        console.error('웹소켓 연결 오류:', error);
+        // 연결에 실패한 경우 상태를 원래대로 되돌림
+        setIsWebSocketEnabled(false);
+        return;
+      }
+    } else {
+      // 웹소켓 비활성화
+      try {
+        console.log('웹소켓 연결 종료');
+        disconnectWebSocket();
+      } catch (error) {
+        console.error('웹소켓 연결 종료 오류:', error);
+      }
+    }
+    
+    setIsWebSocketEnabled(newWebSocketState);
   };
   
   // 날짜 범위 변경 처리
@@ -995,8 +1041,10 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
       <ChartControls 
         isAutoUpdate={isAutoUpdate}
         isRealtimeAPIEnabled={isRealtimeAPIEnabled}
+        isWebSocketEnabled={isWebSocketEnabled}
         handleAutoUpdateToggle={handleAutoUpdateToggle}
         handleRealtimeAPIToggle={handleRealtimeAPIToggle}
+        handleWebSocketToggle={handleWebSocketToggle}
       />
       
       {/* 날짜 선택 */}
