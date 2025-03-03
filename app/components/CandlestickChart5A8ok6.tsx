@@ -1454,24 +1454,76 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       setCsvProgress(0);
       setAllData([]); // 데이터 초기화
 
-      // 날짜 변환 로직 수정 - 시간대 변환 없이 직접 사용
+      // 날짜 변환 로직 수정 - 한국 시간(KST)으로 명시적 변환
       const startDate = new Date(csvDateRange.startDate);
       const endDate = new Date(csvDateRange.endDate);
       
-      // 시작 시간을 해당 날짜의 00:00:00으로 설정
-      startDate.setHours(0, 0, 0, 0);
+      // 사용자가 선택한 정확한 시간 범위를 유지
       
-      // 종료 시간을 해당 날짜의 23:59:59로 설정
-      endDate.setHours(23, 59, 59, 999);
+      // 브라우저의 로컬 시간을 KST로 변환 (KST = UTC+9)
+      // 브라우저 시간대와 KST 간의 차이를 계산 (분 단위)
+      const browserTimezoneOffset = new Date().getTimezoneOffset(); // 브라우저의 시간대 오프셋 (분 단위, UTC 기준)
+      const kstOffsetMinutes = -540; // KST는 UTC+9 (9시간 = 540분 앞섬)
+      const offsetDiffMinutes = kstOffsetMinutes - browserTimezoneOffset; // 브라우저 시간대와 KST의 차이 (분 단위)
+      
+      // 브라우저 시간을 KST로 변환
+      const startDateKST = new Date(startDate.getTime() + offsetDiffMinutes * 60 * 1000);
+      const endDateKST = new Date(endDate.getTime() + offsetDiffMinutes * 60 * 1000);
+      
+      // KST 시간을 문자열로 변환 (YYYY-MM-DDThh:mm:ss 형식)
+      const formatToKSTString = (date: Date) => {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+      };
+      
+      const startDateKSTStr = formatToKSTString(startDateKST);
+      const endDateKSTStr = formatToKSTString(endDateKST);
+      
+      // 시간 문자열 형식 (YYYY-MM-DDThh:mm:ss)
+      const startDateStr = startDateKSTStr;
+      const endDateStr = endDateKSTStr;
+      
+      // 디버깅을 위한 로깅
+      console.log('시간대 변환 정보:', {
+        브라우저시간대: browserTimezoneOffset,
+        KST오프셋: kstOffsetMinutes,
+        시간차이: offsetDiffMinutes,
+        원본시간: {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString()
+        },
+        KST변환시간: {
+          startDateKST: startDateKST.toISOString(),
+          endDateKST: endDateKST.toISOString(),
+          startDateKSTStr,
+          endDateKSTStr
+        }
+      });
+      
+      // KST 시간을 UTC로 변환 (API 요청용)
+      const startDateUTC = new Date(startDateKST.getTime() - (9 * 60 * 60 * 1000));
+      const endDateUTC = new Date(endDateKST.getTime() - (9 * 60 * 60 * 1000));
       
       console.log('CSV 다운로드 시작 - 날짜 범위:', {
         원본: {
           startDate: csvDateRange.startDate?.toISOString(),
           endDate: csvDateRange.endDate?.toISOString()
         },
-        변환후: {
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString()
+        브라우저시간대: browserTimezoneOffset,
+        KST오프셋: kstOffsetMinutes,
+        시간차이: offsetDiffMinutes,
+        KST변환: {
+          startDateKST: startDateKST.toISOString(),
+          endDateKST: endDateKST.toISOString(),
+          startDateKSTStr,
+          endDateKSTStr
+        },
+        필터링용: {
+          startDateStr,
+          endDateStr
+        },
+        UTC변환: {
+          startDateUTC: startDateUTC.toISOString(),
+          endDateUTC: endDateUTC.toISOString()
         }
       });
 
@@ -1499,13 +1551,13 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       let tempData: any[] = [];
       
       // 종료일부터 시작하여 과거로 거슬러 올라가는 방식
-      let currentDate = new Date(endDate);
+      let currentDate = new Date(endDateUTC); // UTC 시간 사용
       let retryCount = 0;
       const MAX_RETRIES = 3;
       const MAX_REQUESTS = 50; // 최대 API 요청 횟수 제한
       let requestCount = 0;
       
-      while (currentDate >= startDate && retryCount < MAX_RETRIES && requestCount < MAX_REQUESTS) {
+      while (currentDate >= startDateUTC && retryCount < MAX_RETRIES && requestCount < MAX_REQUESTS) {
         requestCount++;
         setCsvProgress(Math.min(90, (tempData.length / 2000) * 100));
         
@@ -1609,19 +1661,51 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         });
       }
       
-      // 필터링 적용 (UTC 기준)
+      // 필터링 적용 (KST 기준)
       const finalData = sortedData.filter(candle => {
-        const candleTime = new Date(candle.candle_date_time_utc);
-        return candleTime >= startDate && candleTime <= endDate;
+        // candle_date_time_kst는 'YYYY-MM-DDThh:mm:ss' 형식의 문자열
+        // 업비트 API에서 반환하는 candle_date_time_kst는 이미 KST 시간이지만
+        // 형식이 'YYYY-MM-DDThh:mm:ss'이므로 직접 비교하기 어려움
+        
+        // 업비트 API의 candle_date_time_kst 형식을 startDateStr, endDateStr과 동일한 형식으로 변환
+        // 예: '2025-03-03T22:03:00+09:00' -> '2025-03-03T22:03:00'
+        const kstDateStr = candle.candle_date_time_kst.split('+')[0];
+        
+        // 디버깅을 위한 로깅 (처음 몇 개 항목만)
+        if (sortedData.indexOf(candle) < 5) {
+          console.log(`필터링 비교: API=${kstDateStr}, 시작=${startDateStr}, 종료=${endDateStr}, 범위내=${kstDateStr >= startDateStr && kstDateStr <= endDateStr}`);
+        }
+        
+        // 문자열 비교로 범위 확인
+        const isInRange = kstDateStr >= startDateStr && kstDateStr <= endDateStr;
+        
+        return isInRange;
       });
 
-      console.log(`필터링 후 데이터: ${finalData.length}개`);
+      // 디버깅을 위한 로깅
+      if (sortedData.length > 0) {
+        const firstCandle = sortedData[0];
+        const lastCandle = sortedData[sortedData.length - 1];
+        const firstCandleTime = new Date(firstCandle.candle_date_time_kst);
+        const lastCandleTime = new Date(lastCandle.candle_date_time_kst);
+        
+        console.log('데이터 시간 범위 확인:', {
+          첫데이터시간: firstCandleTime.toISOString(),
+          마지막데이터시간: lastCandleTime.toISOString(),
+          필터시작시간: startDate.toISOString(),
+          필터종료시간: endDate.toISOString(),
+          필터링전데이터수: sortedData.length,
+          필터링후데이터수: finalData.length
+        });
+      }
+
+      console.log(`필터링 후 데이터: ${finalData.length}개, 필터링 전: ${sortedData.length}개`);
       
       if (finalData.length === 0) {
         console.error('필터링 후 데이터가 없음. 필터링 전 데이터:', {
           sortedDataLength: sortedData.length,
-          firstItem: sortedData.length > 0 ? new Date(sortedData[0].candle_date_time_utc).toISOString() : null,
-          lastItem: sortedData.length > 0 ? new Date(sortedData[sortedData.length - 1].candle_date_time_utc).toISOString() : null,
+          firstItemKST: sortedData.length > 0 ? new Date(sortedData[0].candle_date_time_kst).toISOString() : null,
+          lastItemKST: sortedData.length > 0 ? new Date(sortedData[sortedData.length - 1].candle_date_time_kst).toISOString() : null,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString()
         });
@@ -3179,23 +3263,56 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                 <button
                   onClick={() => {
                     if (allData.length > 0) {
-                      const header = 'timestamp,open,high,low,close,volume\n';
+                      const csvHeader = 'timestamp(KST),open,high,low,close,volume\n';
                       const csvContent = allData
                         .map(candle => {
-                          const kstDate = new Date(candle.candle_date_time_kst);
-                          const formattedDate = kstDate.toISOString().replace('T', ' ').slice(0, 19);
-                          return `${formattedDate},${candle.opening_price},${candle.high_price},${candle.low_price},${candle.trade_price},${candle.candle_acc_trade_volume}`;
+                          // candle_date_time_kst는 'YYYY-MM-DDThh:mm:ss' 형식의 문자열
+                          // 이를 Date 객체로 변환하면 브라우저의 로컬 시간대로 해석됨
+                          // 따라서 문자열 그대로 사용하는 것이 더 정확함
+                          
+                          // 업비트 API의 candle_date_time_kst 형식을 변환
+                          // 예: '2025-03-03T22:03:00+09:00' -> '2025-03-03 22:03:00'
+                          const kstDateStr = candle.candle_date_time_kst.split('+')[0];
+                          const formattedKSTDate = kstDateStr.replace('T', ' ');
+                          
+                          // 디버깅을 위한 로깅 (처음 몇 개 항목만)
+                          if (allData.indexOf(candle) < 5 || allData.indexOf(candle) > allData.length - 5) {
+                            console.log(`캔들 시간 확인: ${candle.candle_date_time_kst} -> ${formattedKSTDate}`);
+                          }
+                          
+                          return `${formattedKSTDate},${candle.opening_price},${candle.high_price},${candle.low_price},${candle.trade_price},${candle.candle_acc_trade_volume}`;
                         })
                         .join('\n');
                       
-                      const fullContent = header + csvContent;
+                      const fullContent = csvHeader + csvContent;
                       const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
                       const url = URL.createObjectURL(blob);
-                      const fileName = `${symbol}_${chartType}_${csvDateRange.startDate?.toISOString().slice(0,19)}_${csvDateRange.endDate?.toISOString().slice(0,19)}.csv`;
+                      
+                      // 파일명에 KST 시간을 명시적으로 표시
+                      const formatDateForFileName = (date: Date | null) => {
+                        if (!date) return '';
+                        
+                        // 브라우저 시간을 KST로 변환
+                        const browserTimezoneOffset = new Date().getTimezoneOffset();
+                        const kstOffsetMinutes = -540; // KST는 UTC+9
+                        const offsetDiffMinutes = kstOffsetMinutes - browserTimezoneOffset;
+                        
+                        // 브라우저 시간을 KST로 변환
+                        const dateKST = new Date(date.getTime() + offsetDiffMinutes * 60 * 1000);
+                        
+                        // 디버깅을 위한 로깅
+                        console.log(`파일명 시간 변환: 원본=${date.toISOString()}, KST변환=${dateKST.toISOString()}`);
+                        
+                        // KST 시간을 YYYY-MM-DDThh_mm_ss 형식으로 변환
+                        return `${dateKST.getFullYear()}-${String(dateKST.getMonth() + 1).padStart(2, '0')}-${String(dateKST.getDate()).padStart(2, '0')}T${String(dateKST.getHours()).padStart(2, '0')}_${String(dateKST.getMinutes()).padStart(2, '0')}_${String(dateKST.getSeconds()).padStart(2, '0')}`;
+                      };
+                      
+                      // 파일명에 시간 범위를 명확하게 표시
+                      const csvFileName = `${symbol}_${chartType}_${formatDateForFileName(csvDateRange.startDate)}_${formatDateForFileName(csvDateRange.endDate)}_KST.csv`;
                       
                       const link = document.createElement('a');
                       link.setAttribute('href', url);
-                      link.setAttribute('download', fileName);
+                      link.setAttribute('download', csvFileName);
                       document.body.appendChild(link);
                       link.click();
                       document.body.removeChild(link);
