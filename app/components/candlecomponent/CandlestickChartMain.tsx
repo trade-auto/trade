@@ -173,6 +173,47 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
     }
   }, [tickerData, isWebSocketEnabled]);
   
+  // 실시간 가격 업데이트 처리
+  useEffect(() => {
+    if (!candleSeries.current || !chart.current) return;
+
+    // 현재 캔들 데이터 가져오기
+    const candleData = candleSeries.current.data() as ExtendedCandlestickData[];
+    if (candleData.length === 0) {
+      console.log('캔들 데이터가 없습니다.');
+      return;
+    }
+
+    // 마지막 캔들 정보 업데이트
+    const lastCandle = candleData[candleData.length - 1];
+    if (!lastCandle) {
+      console.log('마지막 캔들 정보가 없습니다.');
+      return;
+    }
+
+    console.log('마지막 캔들:', lastCandle);
+    console.log('현재 가격:', currentPrice);
+
+    // 차트 가격 업데이트
+    setChartPrice(lastCandle.close);
+
+    // 현재 시간이 마지막 캔들의 시간보다 크면 새 캔들 추가
+    const currentTime = Math.floor(Date.now() / 1000);
+    const lastCandleTime = lastCandle.time as number;
+
+    if (currentTime > lastCandleTime && currentPrice > 0) {
+      console.log('새 캔들 추가:', currentTime, currentPrice);
+      const newCandle = {
+        time: currentTime as Time,
+        open: currentPrice,
+        high: currentPrice,
+        low: currentPrice,
+        close: currentPrice
+      };
+      candleSeries.current.update(newCandle);
+    }
+  }, [currentPrice, chartType]);
+  
   // 차트 초기화
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -371,18 +412,26 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
       
       // 차트 데이터 설정
       if (candleSeries.current) {
+        console.log('캔들 시리즈에 데이터 설정:', formattedData.length);
         candleSeries.current.setData(formattedData);
+        
+        // candles 상태 업데이트
+        setCandles(formattedData);
         
         // 최근 데이터로 현재가 업데이트
         if (formattedData.length > 0) {
-          updateCurrentPrice(formattedData[formattedData.length - 1].close);
+          const lastCandle = formattedData[formattedData.length - 1];
+          console.log('마지막 캔들:', lastCandle);
+          updateCurrentPrice(lastCandle.close);
         }
+        
+        // 데이터 로드 후 즉시 이동평균선 업데이트
+        setTimeout(() => {
+          updateMA();
+        }, 200);
+      } else {
+        console.error('캔들 시리즈가 없어 데이터를 설정할 수 없습니다');
       }
-      
-      // 캔들 데이터 상태 업데이트
-      setCandles(formattedData);
-      
-      console.log('차트 데이터 로딩 완료');
     } catch (error) {
       console.error('차트 데이터 로딩 오류:', error);
     } finally {
@@ -624,15 +673,24 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
       return;
     }
     
-    // 이동평균선 계산
     try {
-      console.log('이동평균선 업데이트 시작...');
+      console.log('이동평균선 업데이트 시작...', candles.length);
 
-      // 각 이동평균선 데이터 생성
-      const sixtyData = calculateEMA(candles, 60);
-      const oneTwentyData = calculateEMA(candles, 120);
-      const twoFortyData = calculateEMA(candles, 240);
-      const threeHundredSixtyData = calculateEMA(candles, 360);
+      // 차트에서 실제 데이터 가져오기
+      const chartData = candleSeries.current?.data() as ExtendedCandlestickData[];
+      
+      if (!chartData || chartData.length === 0) {
+        console.error('차트에 데이터가 없습니다.');
+        return;
+      }
+      
+      console.log(`차트 데이터 포인트 수: ${chartData.length}`);
+      
+      // 각 이동평균선 데이터 생성 (calculateEMA 함수 사용)
+      const sixtyData = calculateEMA(chartData, 60);
+      const oneTwentyData = calculateEMA(chartData, 120);
+      const twoFortyData = calculateEMA(chartData, 240);
+      const threeHundredSixtyData = calculateEMA(chartData, 360);
       
       // 데이터 확인 로깅
       console.log(`MA 데이터 계산 완료: 60(${sixtyData.length}), 120(${oneTwentyData.length}), 240(${twoFortyData.length}), 360(${threeHundredSixtyData.length})`);
@@ -749,46 +807,77 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
   
   // 차트 타입에 따른 API 엔드포인트 결정
   const getChartEndpoint = (type: string) => {
-    console.log('차트 타입:', type);
-    
-    // 초 단위 처리
-    if (type.startsWith('seconds/')) {
-      console.log('초 단위 차트 감지');
-      return 'seconds'; // 초봉 API 엔드포인트
-    }
-    
-    // 한글 키워드로 된 차트 타입 처리
-    if (type.indexOf("일봉") !== -1) {
+    // 차트 타입에 따른 API 엔드포인트 결정
+    if (type.includes('1s') || type.includes('초')) {
+      return "minutes/1";
+    } else if (type.includes('1m') || type.includes('분')) {
+      return "minutes/1";
+    } else if (type.includes('3m')) {
+      return "minutes/3";
+    } else if (type.includes('5m')) {
+      return "minutes/5";
+    } else if (type.includes('10m')) {
+      return "minutes/10";
+    } else if (type.includes('15m')) {
+      return "minutes/15";
+    } else if (type.includes('30m')) {
+      return "minutes/30";
+    } else if (type.includes('1h') || type.includes('시간')) {
+      return "minutes/60";
+    } else if (type.includes('4h')) {
+      return "minutes/240";
+    } else if (type.includes('1d') || type.includes('일')) {
       return "days";
-    } else if (type.indexOf("주봉") !== -1) {
-      return "weeks";
-    } else if (type.indexOf("월봉") !== -1) {
-      return "months";
-    } else if (type.indexOf("분봉") !== -1) {
-      const minutes = type.split("/")[1] || "1";
-      return `minutes/${minutes}`;
     }
-    
-    // minutes/X 형식 처리
-    if (type.indexOf("minutes/") !== -1) {
-      return type; // 그대로 사용
-    }
-    
-    // 숫자만 있는 경우 (분 단위로 간주)
-    if (/^\d+$/.test(type)) {
-      const minutes = parseInt(type);
-      if (minutes <= 240) { // 1분봉, 3분봉, 일봉(240분)
-        return `minutes/${type}`;
-      } else if (minutes === 7200) { // 월봉
-        return 'months';
-      } else if (minutes > 7200) { // 년봉
-        return 'years';
-      }
-    }
-    
-    // 기본값
-    console.log('알 수 없는 차트 타입, 기본값 사용:', type);
     return "days";
+  };
+  
+  // EMA 계산 함수
+  const calculateEMA = (data: ExtendedCandlestickData[], period: number): LineData<Time>[] => {
+    if (!data || data.length === 0 || period <= 0) {
+      console.log(`EMA 계산 실패: 유효하지 않은 데이터 또는 기간(${period})`);
+      return [];
+    }
+    
+    const emaData: LineData<Time>[] = [];
+    let multiplier = 2 / (period + 1);
+    let initialSMA = 0;
+    
+    // 유효한 데이터만 필터링
+    const validData = data.filter(item => item && item.close !== undefined);
+    
+    if (validData.length === 0) {
+      console.log('EMA 계산을 위한 유효한 데이터가 없습니다.');
+      return [];
+    }
+    
+    // 초기 SMA 계산
+    for (let i = 0; i < Math.min(period, validData.length); i++) {
+      initialSMA += validData[i].close;
+    }
+    initialSMA /= Math.min(period, validData.length);
+    
+    // 첫 번째 EMA는 SMA와 동일
+    if (validData.length > 0) {
+      emaData.push({
+        time: validData[0].time,
+        value: initialSMA
+      });
+    }
+    
+    // 나머지 EMA 계산
+    for (let i = 1; i < validData.length; i++) {
+      const previousEMA = emaData[i - 1].value;
+      const currentEMA = (validData[i].close - previousEMA) * multiplier + previousEMA;
+      
+      emaData.push({
+        time: validData[i].time,
+        value: currentEMA
+      });
+    }
+    
+    console.log(`EMA ${period} 계산 완료: ${emaData.length}개 데이터 포인트`);
+    return emaData;
   };
   
   return (
