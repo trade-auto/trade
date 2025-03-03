@@ -107,6 +107,8 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
   const [isChartDisposed, setIsChartDisposed] = useState<boolean>(false);
   // 차트 초기화 완료 상태 추가
   const [isChartInitialized, setIsChartInitialized] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [progress, setProgress] = useState<number>(0);
   
   // MA 시리즈 관련 상태
   const sixtySeries = useRef<ISeriesApi<"Line"> | null>(null);
@@ -171,444 +173,222 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
     }
   }, [tickerData, isWebSocketEnabled]);
   
-  // 첫 렌더링 시 차트 초기화 및 데이터 로딩
+  // 차트 초기화
   useEffect(() => {
-    // 새 차트를 초기화하기 전에 이전 차트가 있다면 제거
-    if (chart.current) {
-      try {
-        chart.current.remove();
-      } catch (error) {
-        console.error('Error removing previous chart:', error);
-      }
-      chart.current = null;
-      candleSeries.current = null;
-      sixtySeries.current = null;
-      oneTwentySeries.current = null;
-      twoFortySeries.current = null;
-      threeHundredSixtySeries.current = null;
-      setIsChartDisposed(true);
-    }
+    if (!chartContainerRef.current) return;
 
-    setIsChartDisposed(false);
+    console.log('차트 DOM 초기화 시작');
     
-    console.log('차트 초기화 시작...', new Date().toISOString());
-    
-    // 차트 초기화 전에 컨테이너가 준비되었는지 확인
-    if (!chartContainerRef.current) {
-      console.log('차트 컨테이너가 아직 준비되지 않았습니다.');
-    } else {
-      console.log('차트 컨테이너 크기:', 
-        chartContainerRef.current.clientWidth, 
-        chartContainerRef.current.clientHeight
-      );
-    }
-    
-    // DOM이 준비되었는지 확인하고 차트 초기화
-    setTimeout(() => {
-      if (chartContainerRef.current) {
-        console.log('타임아웃 후 차트 컨테이너 크기:', 
-          chartContainerRef.current.clientWidth, 
-          chartContainerRef.current.clientHeight
-        );
-        
-        // 차트 초기화 (3번 시도)
-        let initSuccess = false;
-        let attempts = 0;
-        
-        const tryInitChart = () => {
-          attempts++;
-          try {
-            console.log(`차트 초기화 시도 #${attempts}`);
-            initializeChart();
-            
-            // 초기화가 성공했는지 확인
-            if (chart.current && candleSeries.current) {
-              console.log('차트 초기화 성공!');
-              initSuccess = true;
-              
-              // 데이터 로드
-              loadChartData();
-            } else {
-              console.log(`차트 초기화 실패 #${attempts} - 차트: ${!!chart.current}, 캔들시리즈: ${!!candleSeries.current}`);
-              
-              // 최대 3번까지 재시도
-              if (attempts < 3) {
-                console.log(`${500 * attempts}ms 후 다시 시도...`);
-                setTimeout(() => {
-                  tryInitChart();
-                }, 500 * attempts); // 지연 시간 점진적 증가
-              } else {
-                console.error('최대 시도 횟수 초과, 차트 초기화 실패');
-              }
-            }
-          } catch (error) {
-            console.error(`차트 초기화 중 예외 발생 #${attempts}:`, error);
-            
-            // 최대 3번까지 재시도
-            if (attempts < 3) {
-              console.log(`${500 * attempts}ms 후 다시 시도...`);
-              setTimeout(() => {
-                tryInitChart();
-              }, 500 * attempts); // 지연 시간 점진적 증가
-            } else {
-              console.error('최대 시도 횟수 초과, 차트 초기화 실패');
-            }
-          }
-        };
-        
-        // 첫 번째 시도 시작
-        tryInitChart();
-      } else {
-        console.log('타임아웃 후에도 차트 컨테이너가 준비되지 않았습니다.');
-      }
-    }, 500); // 더 긴 지연으로 DOM이 준비되도록 함
-    
-    return () => {
-      setIsChartDisposed(true);
-      // 클린업 시 모든 상태 리셋
-      chartInitialized.current = false;
-      setIsChartInitialized(false);
-      if (resizeObserver.current) {
-        resizeObserver.current.disconnect();
-      }
-      if (chart.current) {
-        try {
-          chart.current.remove();
-          chart.current = null;
-          candleSeries.current = null;
-          sixtySeries.current = null;
-          oneTwentySeries.current = null;
-          twoFortySeries.current = null;
-          threeHundredSixtySeries.current = null;
-        } catch (error) {
-          console.error('Error removing chart on unmount:', error);
-        }
-      }
-    };
-  }, [symbol, chartType, isAutoUpdate]);
-  
-  // 차트 초기화 함수
-  const initializeChart = () => {
-    console.log('initializeChart 함수 호출됨');
-    
-    // 초기화 시작 시 상태 리셋
-    chartInitialized.current = false;
-    setIsChartInitialized(false);
-    
-    if (!chartContainerRef.current || isChartDisposed) {
-      console.log('차트 컨테이너가 없거나 차트가 이미 제거되었습니다.');
-      return;
-    }
-    
-    // 컨테이너에 고정된 크기 설정
-    chartContainerRef.current.style.width = '100%';
-    chartContainerRef.current.style.height = `${chartHeight}px`;
+    // 컨테이너 스타일 설정
     chartContainerRef.current.style.position = 'relative';
     
-    // 강제로 레이아웃 리플로우 발생시킴
-    void chartContainerRef.current.offsetHeight;
-    
-    // 컨테이너 크기 확인
-    const containerWidth = chartContainerRef.current.clientWidth || 800;
-    const containerHeight = chartContainerRef.current.clientHeight || 600;
-    
-    console.log('차트 컨테이너 크기:', containerWidth, containerHeight);
-    
-    // 기존 차트 정리
-    if (chart.current) {
-      try {
-        chart.current.remove();
-      } catch (error) {
-        console.error('기존 차트 제거 오류:', error);
-      }
-      chart.current = null;
-      candleSeries.current = null;
-      
-      // 이동평균선 시리즈도 정리
-      sixtySeries.current = null;
-      oneTwentySeries.current = null;
-      twoFortySeries.current = null;
-      threeHundredSixtySeries.current = null;
-    }
+    // Create chart
+    const chartInstance = createChart(chartContainerRef.current, {
+      layout: {
+        background: { color: '#1e1e1e' },
+        textColor: '#d1d4dc',
+      },
+      grid: {
+        vertLines: { color: '#2B2B2B' },
+        horzLines: { color: '#2B2B2B' },
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: 400,
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: true,
+        borderColor: '#2B2B2B',
+        tickMarkFormatter: (time: number) => {
+          const date = new Date(time * 1000);
+          return chartType.startsWith('seconds/') 
+            ? date.toLocaleTimeString('ko-KR', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+              })
+            : date.toLocaleString('ko-KR', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+        }
+      },
+      rightPriceScale: {
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.2,
+        },
+        borderVisible: false,
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          width: 2,
+          color: '#555',
+          style: 0,
+        },
+        horzLine: {
+          width: 2,
+          color: '#555',
+          style: 0,
+        },
+      },
+    });
+
+    chart.current = chartInstance;
     
     try {
-      console.log('차트 생성 시도 중...');
-      
-      // 차트 생성
-      chart.current = createChart(chartContainerRef.current, {
-        width: containerWidth,
-        height: containerHeight,
-        layout: {
-          background: { color: '#222' },
-          textColor: '#DDD',
-        },
-        timeScale: {
-          timeVisible: true,
-        },
-      });
-      
-      // 캔들스틱 시리즈 추가
-      candleSeries.current = chart.current.addSeries({
-        type: 'Candlestick',
+      console.log('캔들스틱 시리즈 추가 시작');
+      // 타입 단언을 사용하여 TypeScript 오류 해결
+      const candlestickSeries = (chart.current as any).addCandlestickSeries({
         upColor: '#26a69a',
         downColor: '#ef5350',
         borderVisible: false,
         wickUpColor: '#26a69a',
         wickDownColor: '#ef5350',
-      } as any);
+      });
       
-      // 이동평균선 시리즈 추가
-      sixtySeries.current = chart.current.addSeries({
-        type: 'Line',
-        color: '#2196F3',
+      candleSeries.current = candlestickSeries;
+      console.log('캔들스틱 시리즈 추가 성공');
+      
+      // 이동평균선 시리즈 추가 (v5 API 사용)
+      console.log('이동평균선 시리즈 추가 시작');
+      sixtySeries.current = (chart.current as any).addLineSeries({
+        color: '#0000FF', // 파란색
         lineWidth: 2,
         visible: showMA.sixty,
-        priceLineVisible: false,
-      } as any);
+      });
       
-      oneTwentySeries.current = chart.current.addSeries({
-        type: 'Line',
-        color: '#FF9800',
+      oneTwentySeries.current = (chart.current as any).addLineSeries({
+        color: '#800080', // 보라색
         lineWidth: 2,
         visible: showMA.oneTwenty,
-        priceLineVisible: false,
-      } as any);
+      });
       
-      twoFortySeries.current = chart.current.addSeries({
-        type: 'Line',
-        color: '#F44336',
+      twoFortySeries.current = (chart.current as any).addLineSeries({
+        color: '#FFA500', // 주황색
         lineWidth: 2,
         visible: showMA.twoForty,
-        priceLineVisible: false,
-      } as any);
+      });
       
-      threeHundredSixtySeries.current = chart.current.addSeries({
-        type: 'Line',
-        color: '#9C27B0',
+      threeHundredSixtySeries.current = (chart.current as any).addLineSeries({
+        color: '#000000', // 검은색
         lineWidth: 2,
         visible: showMA.threeHundredSixty,
-        priceLineVisible: false,
-      } as any);
+      });
       
-      console.log('차트 및 시리즈 생성 완료');
+      console.log('이동평균선 시리즈 추가 완료');
       
-      // 리사이즈 처리 설정
-      if (resizeObserver.current) {
-        resizeObserver.current.disconnect();
-      }
-      
-      if (chartContainerRef.current) {
-        console.log('리사이즈 옵저버 설정');
-        resizeObserver.current = new ResizeObserver(handleResize);
-        resizeObserver.current.observe(chartContainerRef.current);
-      }
-      
-      // 차트 초기화 완료 상태 설정
+      // 차트 초기화 완료
       chartInitialized.current = true;
       setIsChartInitialized(true);
       
-      // 즉시 데이터 로드 (지연시간 없이)
+      // 데이터 로드
+      console.log('차트 데이터 로드 시작');
       loadChartData();
     } catch (error) {
-      console.error('차트 초기화 오류:', error);
-      chart.current = null;
-      candleSeries.current = null;
+      console.error('차트 시리즈 추가 중 오류 발생:', error);
+    }
+
+    // 윈도우 리사이즈 핸들러
+    const handleResizeEvent = () => {
+      if (chartContainerRef.current && chart.current) {
+        chart.current.resize(chartContainerRef.current.clientWidth, chartHeight);
+      }
+    };
+
+    window.addEventListener('resize', handleResizeEvent);
+
+    return () => {
+      window.removeEventListener('resize', handleResizeEvent);
+      if (chart.current) {
+        console.log('차트 정리 시작');
+        chart.current.remove();
+        chart.current = null;
+      }
       chartInitialized.current = false;
       setIsChartInitialized(false);
-    }
-  };
-  
-  // 리사이즈 처리 함수
-  const handleResize = () => {
-    if (chart.current && chartContainerRef.current) {
-      chart.current.applyOptions({
-        width: chartContainerRef.current.clientWidth,
-      });
-    }
-  };
+      candleSeries.current = null;
+      sixtySeries.current = null;
+      oneTwentySeries.current = null;
+      twoFortySeries.current = null;
+      threeHundredSixtySeries.current = null;
+      console.log('차트 정리 완료');
+    };
+  }, [chartType, showMA, chartHeight]);
   
   // 차트 데이터 로딩 함수
   const loadChartData = useCallback(async () => {
     if (!chartInitialized.current || isChartDisposed || !chart.current || !candleSeries.current) {
-      console.log('차트가 준비되지 않았습니다. 데이터를 로드할 수 없습니다.', 
-        '초기화 상태(ref):', chartInitialized.current,
-        '초기화 상태(state):', isChartInitialized,
-        '차트 객체:', !!chart.current, 
-        '캔들시리즈:', !!candleSeries.current,
-        '시간:', new Date().toISOString()
-      );
+      console.log('loadChartData: 차트가 초기화되지 않았거나 제거됨');
       return;
     }
 
+    console.log('차트 데이터 로딩 시작:', symbol, chartType);
+    setIsLoading(true);
+    
     try {
+      // API 엔드포인트와 데이터 개수 결정
       const endpoint = getChartEndpoint(chartType);
       const count = getChartCount(chartType);
       
-      // 현재 시간에서 2시간 후로 설정
-      const now = new Date();
-      now.setHours(now.getHours() + 2);
-      const toTime = now.toISOString();
+      console.log(`데이터 로드: ${endpoint}, 개수: ${count}`);
       
-      console.log('데이터 요청 시작:', `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${toTime}`);
-      const response = await fetch(`https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${toTime}`);
+      // API 호출
+      const response = await fetch(
+        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}`
+      );
       
       if (!response.ok) {
-        throw new Error(`Network response error: ${response.status}`);
+        throw new Error(`API 응답 오류: ${response.status}`);
       }
       
-      const data: UpbitCandle[] = await response.json();
-      console.log('데이터 요청 완료:', new Date().toISOString());
+      const data = await response.json() as UpbitCandle[];
       
-      if (!data || !data.length) {
-        console.error('데이터를 받지 못했습니다');
+      if (!data || data.length === 0) {
+        console.log('받은 데이터가 없습니다');
+        setIsLoading(false);
         return;
       }
       
-      console.log(`${data.length}개의 캔들 데이터를 받았습니다`);
+      console.log(`데이터 수신 완료: ${data.length}개`);
       
-      // 차트가 여전히 유효한지 다시 확인
-      if (!chartInitialized.current || isChartDisposed || !chart.current || !candleSeries.current) {
-        console.log('데이터 수신 후 차트가 더 이상 유효하지 않습니다.');
-        return;
-      }
+      // 데이터 형식 변환
+      const formattedData = data
+        .sort((a, b) => new Date(a.candle_date_time_kst).getTime() - new Date(b.candle_date_time_kst).getTime())
+        .map(candle => ({
+          time: Math.floor(new Date(candle.candle_date_time_kst).getTime() / 1000) as Time,
+          open: candle.opening_price,
+          high: candle.high_price,
+          low: candle.low_price,
+          close: candle.trade_price,
+          volume: candle.candle_acc_trade_volume
+        })) as ExtendedCandlestickData[];
       
-      let candleData: ExtendedCandlestickData[] = [];
-      let volumeData: HistogramData<Time>[] = [];
-
-      if (chartType.startsWith('seconds/')) {
-        // 초봉 처리 로직
-        candleData = data.map((item: UpbitCandle) => {
-          const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
-          return {
-            time: timestamp as Time,
-            open: item.opening_price,
-            high: item.high_price,
-            low: item.low_price,
-            close: item.trade_price,
-            volume: item.candle_acc_trade_volume
-          };
-        }).reverse();
-        
-        volumeData = data.map((item: UpbitCandle) => {
-          const timestamp = Math.floor(new Date(item.candle_date_time_kst).getTime() / 1000);
-          return {
-            time: timestamp as Time,
-            value: item.candle_acc_trade_volume,
-            color: item.trade_price >= item.opening_price ? '#26a69a80' : '#ef535080'
-          };
-        }).reverse();
-      } else {
-        // 분봉, 일봉, 월봉, 년봉 데이터 처리
-        candleData = data.map((item: UpbitCandle) => {
-          let timestamp: number;
-          const date = new Date(item.candle_date_time_kst);
-          
-          if (chartType.indexOf("일봉") !== -1 || parseInt(chartType) === 240) { // 일봉
-            date.setHours(9, 0, 0, 0); // 한국 시장 시작 시간으로 설정
-            timestamp = Math.floor(date.getTime() / 1000);
-          } else if (chartType.indexOf("월봉") !== -1 || parseInt(chartType) === 7200) { // 월봉
-            date.setDate(1);
-            date.setHours(9, 0, 0, 0);
-            timestamp = Math.floor(date.getTime() / 1000);
-          } else if (parseInt(chartType) === 86400) { // 년봉
-            date.setMonth(0, 1);
-            date.setHours(9, 0, 0, 0);
-            timestamp = Math.floor(date.getTime() / 1000);
-          } else { // 분봉
-            timestamp = Math.floor(date.getTime() / 1000) + (2 * 60 * 60);
-          }
-
-          return {
-            time: timestamp as Time,
-            open: item.opening_price,
-            high: item.high_price,
-            low: item.low_price,
-            close: item.trade_price,
-            volume: item.candle_acc_trade_volume
-          };
-        }).reverse();
-
-        // volumeData도 동일한 시간 처리 적용
-        volumeData = data.map((item: UpbitCandle) => {
-          let timestamp: number;
-          const date = new Date(item.candle_date_time_kst);
-          
-          if (chartType.indexOf("일봉") !== -1 || parseInt(chartType) === 240) { // 일봉
-            date.setHours(9, 0, 0, 0);
-            timestamp = Math.floor(date.getTime() / 1000);
-          } else if (chartType.indexOf("월봉") !== -1 || parseInt(chartType) === 7200) { // 월봉
-            date.setDate(1);
-            date.setHours(9, 0, 0, 0);
-            timestamp = Math.floor(date.getTime() / 1000);
-          } else if (parseInt(chartType) === 86400) { // 년봉
-            date.setMonth(0, 1);
-            date.setHours(9, 0, 0, 0);
-            timestamp = Math.floor(date.getTime() / 1000);
-          } else { // 분봉
-            timestamp = Math.floor(date.getTime() / 1000) + (2 * 60 * 60);
-          }
-
-          return {
-            time: timestamp as Time,
-            value: item.candle_acc_trade_volume,
-            color: item.trade_price >= item.opening_price ? '#26a69a80' : '#ef535080'
-          };
-        }).reverse();
-      }
-
-      // 데이터를 상태에 저장
-      setCandles(candleData);
+      console.log(`포맷 변환 완료: ${formattedData.length}개 캔들`);
       
-      // 캔들스틱 데이터 설정
-      console.log('캔들스틱 데이터 설정 중... 총 데이터:', candleData.length);
+      // 차트 데이터 설정
       if (candleSeries.current) {
-        candleSeries.current.setData(candleData);
-        console.log('캔들스틱 데이터 설정 완료');
-      }
-      
-      // 이동평균선 계산 및 설정
-      console.log('이동평균선 계산 시작... 캔들 데이터 수:', candleData.length);
-      const sixtyData = calculateEMA(candleData, 60);
-      const oneTwentyData = calculateEMA(candleData, 120);
-      const twoFortyData = calculateEMA(candleData, 240);
-      const threeHundredSixtyData = calculateEMA(candleData, 360);
-      
-      // 상태 업데이트
-      setSixtyEMA(sixtyData);
-      setOneTwentyEMA(oneTwentyData);
-      setTwoFortyEMA(twoFortyData);
-      setThreeHundredSixtyEMA(threeHundredSixtyData);
-      
-      // 이동평균선 데이터 설정
-      if (sixtySeries.current && sixtyData.length > 0) {
-        sixtySeries.current.setData(sixtyData);
-      }
-      if (oneTwentySeries.current && oneTwentyData.length > 0) {
-        oneTwentySeries.current.setData(oneTwentyData);
-      }
-      if (twoFortySeries.current && twoFortyData.length > 0) {
-        twoFortySeries.current.setData(twoFortyData);
-      }
-      if (threeHundredSixtySeries.current && threeHundredSixtyData.length > 0) {
-        threeHundredSixtySeries.current.setData(threeHundredSixtyData);
-      }
-      
-      // 현재 가격 업데이트
-      if (candleData.length > 0) {
-        const latestCandle = candleData[candleData.length - 1];
-        updateCurrentPrice(latestCandle.close);
+        candleSeries.current.setData(formattedData);
         
-        // 마지막 업데이트 시간 설정
-        const dateTime = new Date();
-        setLastUpdated(dateTime.toLocaleString());
-        console.log('마지막 업데이트 시간 설정:', dateTime.toLocaleString());
+        // 최근 데이터로 현재가 업데이트
+        if (formattedData.length > 0) {
+          updateCurrentPrice(formattedData[formattedData.length - 1].close);
+        }
       }
       
-      console.log('데이터 로딩 및 설정 모두 완료:', new Date().toISOString());
+      // 캔들 데이터 상태 업데이트
+      setCandles(formattedData);
+      
+      console.log('차트 데이터 로딩 완료');
     } catch (error) {
       console.error('차트 데이터 로딩 오류:', error);
+    } finally {
+      setIsLoading(false);
     }
-  }, [chartType, symbol, chartInitialized, isChartDisposed, chart, candleSeries]);
+  }, [symbol, chartType]);
   
   // 자동 업데이트 상태가 변경될 때 타이머 관리
   useEffect(() => {
@@ -753,18 +533,16 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
     setTradeCycle(status as 'auto' | 'buy-only' | 'sell-only' | 'off');
   };
   
-  
-
-  // 차트 유형에 따라 데이터 개수 결정
+  // 차트 타입에 따른 데이터 개수 결정
   const getChartCount = (type: string) => {
-    if (type.indexOf("일봉") !== -1) {
-      return 200;
-    } else if (type.indexOf("주봉") !== -1 || type.indexOf("월봉") !== -1) {
-      return 100;
-    } else if (type.indexOf("seconds") !== -1) {
-      return 500; // 초단위 차트는 더 많은 데이터 포인트
+    if (type.startsWith('seconds/')) {
+      return 1500; // 초봉 데이터 개수 증가 (330 -> 500) 1500
     }
-    return 300; // 분봉 등 기본값
+    const minutes = parseInt(type);
+    if (minutes <= 3) return 430;     // 분봉
+    if (minutes === 240) return 200;  // 일봉 (200일)
+    if (minutes === 7200) return 200; // 월봉 (200개월)
+    return 30;                        // 년봉 (30년)
   };
   
   // 자동 업데이트 시작 함수
@@ -841,91 +619,71 @@ export const CandlestickChartMain: React.FC<ChartProps> = ({
   
   // 이동평균선 업데이트
   const updateMA = () => {
-    if (!chartInitialized.current || isChartDisposed || !chart.current || !candleSeries.current || !candles.length) {
+    if (!chartInitialized.current || isChartDisposed || !chart.current || !candles.length) {
       console.log('이동평균선 업데이트: 차트 또는 데이터가 유효하지 않습니다.');
       return;
     }
     
+    // 이동평균선 계산
     try {
-      console.log('이동평균선 계산 시작... 캔들 데이터 수:', candles.length);
-      // 이동평균선 계산
+      console.log('이동평균선 업데이트 시작...');
+
+      // 각 이동평균선 데이터 생성
       const sixtyData = calculateEMA(candles, 60);
       const oneTwentyData = calculateEMA(candles, 120);
       const twoFortyData = calculateEMA(candles, 240);
       const threeHundredSixtyData = calculateEMA(candles, 360);
       
-      console.log('이동평균선 계산 완료:',
-        'MA60:', sixtyData.length,
-        'MA120:', oneTwentyData.length,
-        'MA240:', twoFortyData.length,
-        'MA360:', threeHundredSixtyData.length
-      );
+      // 데이터 확인 로깅
+      console.log(`MA 데이터 계산 완료: 60(${sixtyData.length}), 120(${oneTwentyData.length}), 240(${twoFortyData.length}), 360(${threeHundredSixtyData.length})`);
       
-      if (!sixtyData.length) {
-        console.error('계산된 이동평균 데이터가 비어 있습니다.');
-        return;
+      // 각 시리즈 업데이트
+      if (sixtySeries.current) {
+        console.log('60 이동평균선 업데이트...');
+        sixtySeries.current.setData(sixtyData);
+        sixtySeries.current.applyOptions({
+          visible: showMA.sixty,
+        });
       }
       
-      // 상태 업데이트 - 이 부분에서 sixtyEMA 등 상태가 설정됨
-      // 이 상태들은 useEffect에서 감지되어 교차점과 마커가 업데이트됨
-      setSixtyEMA(sixtyData);
-      setOneTwentyEMA(oneTwentyData);
-      setTwoFortyEMA(twoFortyData);
-      setThreeHundredSixtyEMA(threeHundredSixtyData);
+      if (oneTwentySeries.current) {
+        console.log('120 이동평균선 업데이트...');
+        oneTwentySeries.current.setData(oneTwentyData);
+        oneTwentySeries.current.applyOptions({
+          visible: showMA.oneTwenty,
+        });
+      }
       
-      // 이동평균선 시리즈 생성 또는 업데이트
-      const createOrUpdateMASeries = (
-        seriesRef: React.MutableRefObject<ISeriesApi<"Line"> | null>,
-        data: LineData<Time>[],
-        color: string,
-        visible: boolean,
-        label: string
-      ) => {
-        if (!chart.current) return;
-        
-        try {
-          // 시리즈가 없으면 생성
-          if (!seriesRef.current) {
-            console.log(`${label} 시리즈 생성 중...`);
-            
-            // 방법 1: addLineSeries 메소드 사용 시도
-            if (typeof (chart.current as any).addLineSeries === 'function') {
-              seriesRef.current = (chart.current as any).addLineSeries({
-                color,
-                lineWidth: 2,
-                visible,
-                priceLineVisible: false,
-              });
-            }
-            // 방법 2: addSeries 메소드 사용 시도
-            else if (typeof chart.current.addSeries === 'function') {
-              seriesRef.current = chart.current.addSeries({
-                type: 'Line',
-                color,
-                lineWidth: 2,
-                visible,
-                priceLineVisible: false,
-              } as any);
-            }
-          }
-          
-          // 데이터 설정
-          if (seriesRef.current && data.length) {
-            console.log(`${label} 데이터 설정 중... 데이터 수:`, data.length);
-            seriesRef.current.setData(data);
-            console.log(`${label} 데이터 설정 완료`);
-          }
-        } catch (error) {
-          console.error(`${label} 시리즈 생성 또는 업데이트 오류:`, error);
-          seriesRef.current = null;
-        }
-      };
+      if (twoFortySeries.current) {
+        console.log('240 이동평균선 업데이트...');
+        twoFortySeries.current.setData(twoFortyData);
+        twoFortySeries.current.applyOptions({
+          visible: showMA.twoForty,
+        });
+      }
       
-      // 각 이동평균선에 대해 시리즈 생성 또는 업데이트
-      createOrUpdateMASeries(sixtySeries, sixtyData, '#2196F3', showMA.sixty, 'MA60');
-      createOrUpdateMASeries(oneTwentySeries, oneTwentyData, '#FF9800', showMA.oneTwenty, 'MA120');
-      createOrUpdateMASeries(twoFortySeries, twoFortyData, '#F44336', showMA.twoForty, 'MA240');
-      createOrUpdateMASeries(threeHundredSixtySeries, threeHundredSixtyData, '#9C27B0', showMA.threeHundredSixty, 'MA360');
+      if (threeHundredSixtySeries.current) {
+        console.log('360 이동평균선 업데이트...');
+        threeHundredSixtySeries.current.setData(threeHundredSixtyData);
+        threeHundredSixtySeries.current.applyOptions({
+          visible: showMA.threeHundredSixty,
+        });
+      }
+      
+      // 교차점 계산
+      const crossPoints = findCrossPoints(
+        sixtyData, 
+        oneTwentyData, 
+        twoFortyData,
+        threeHundredSixtyData
+      );
+      
+      // 교차점을 기반으로 마커 업데이트
+      if (candleSeries.current && crossPoints.length > 0) {
+        console.log(`교차점 발견: ${crossPoints.length}개`);
+        const markers = createTradeMarkers(crossPoints, tradeStrategy);
+        updateTradeMarkers(candleSeries.current, markers);
+      }
       
       console.log('이동평균선 업데이트 완료');
     } catch (error) {
