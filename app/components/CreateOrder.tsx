@@ -42,22 +42,22 @@ interface TradeCycle {
 // 매매 전략 타입 정의 추가
 type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
-// Trade 인터페이스 수정
-interface Trade {
-  entryTime: Time;
-  exitTime: Time;
-  entryPrice: number;
-  exitPrice: number;
-  return: number;
-  isSuccess: boolean;
-  isAutomatic?: boolean;
-  mode: 'test' | 'test-auto' | 'live-auto';
-  slopes?: {  // 기울기 정보 추가
-    ma40: number;
-    ma60: number;
-    ma360: number;
-  };
-}
+// // Trade 인터페이스 수정
+// interface Trade {
+//   entryTime: Time;
+//   exitTime: Time;
+//   entryPrice: number;
+//   exitPrice: number;
+//   return: number;
+//   isSuccess: boolean;
+//   isAutomatic?: boolean;
+//   mode: 'test' | 'test-auto' | 'live-auto';
+//   slopes?: {  // 기울기 정보 추가
+//     ma40: number;
+//     ma60: number;
+//     ma360: number;
+//   };
+// }
 
 // 컴포넌트 외부에 함수 선언
 const calculateRelativeSlope = (ma: number[]) => {
@@ -71,7 +71,7 @@ const calculateRelativeSlope = (ma: number[]) => {
 // ------------------------------
 const getMA = (priceData: number[], period: number): number[] => {
   if (priceData.length < period) return [];
-  let result: number[] = [];
+  const result: number[] = [];
   for (let i = 0; i <= priceData.length - period; i++) {
     const sum = priceData.slice(i, i + period).reduce((a, b) => a + b, 0);
     result.push(sum / period);
@@ -85,14 +85,21 @@ const getAngle = (maValues: number[]): number => {
   return (Math.atan(delta) * 180) / Math.PI;
 };
 
-// 조건 지속시간 추적 (간단한 전역 변수 사용; 실제 환경에서는 적절한 상태 관리 필요)
-if (!(window as any)._conditionStartTimes) {
-  (window as any)._conditionStartTimes = {
+type ConditionStartTimes = Record<"40MA_angle_above_45" | "40MA_angle_below_minus45", number | null>;
+
+declare global {
+  interface Window {
+    _conditionStartTimes: ConditionStartTimes;
+  }
+}
+
+if (!window._conditionStartTimes) {
+  window._conditionStartTimes = {
     "40MA_angle_above_45": null,
     "40MA_angle_below_minus45": null
   };
 }
-const conditionStartTimes = (window as any)._conditionStartTimes;
+const conditionStartTimes = window._conditionStartTimes;
 
 const updateConditionDuration = (
   condition: "40MA_angle_above_45" | "40MA_angle_below_minus45",
@@ -129,7 +136,7 @@ const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sel
   const ma360 = getMA(priceData, 360);
   if (ma40.length === 0 || ma120.length === 0 || ma360.length === 0) return "hold";
 
-  const ma40_latest = ma40[ma40.length - 1];
+  //const ma40_latest = ma40[ma40.length - 1];
   const ma120_latest = ma120[ma120.length - 1];
   const ma360_latest = ma360[ma360.length - 1];
 
@@ -278,8 +285,8 @@ export const CreateOrder = forwardRef<
       if (onOrderCreated) {
         onOrderCreated();
       }
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: Error | unknown) {
+      setError(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
       setIsLoading(false);
     }
@@ -724,7 +731,7 @@ export const CreateOrder = forwardRef<
           onOrderCreated();
         }
       }
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error('자동 거래 실패:', error);
     } finally {
       setIsLoading(false);
@@ -1268,4 +1275,6 @@ export const CreateOrder = forwardRef<
       </div>
     </div>
   );
-}); 
+});
+
+CreateOrder.displayName = 'CreateOrder'; 
