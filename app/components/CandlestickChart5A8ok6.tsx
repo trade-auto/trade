@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import debug from 'debug';
-const log = debug('trade:orders');
+//import debug from 'debug';
+//const log = debug('trade:orders');
 //import { useUpbitStore, TradeStrategy } from '../store/useUpbitStore';
 import { useUpbitStore } from '../store/useUpbitStore';
 import {
   createChart,
-  ColorType,
-  DeepPartial,
-  ChartOptions,
+ 
   CandlestickData,
   LineData,
   Time,
@@ -19,10 +17,7 @@ import {
   createSeriesMarkers,
   HistogramData,
   HistogramSeries,
-  HistogramSeriesPartialOptions,
-  HistogramStyleOptions,
-  SeriesOptionsCommon,
-  SeriesOptions,
+ 
 } from 'lightweight-charts';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
@@ -246,15 +241,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   
   const lastCandleRef = useRef<CandlestickData<Time> | null>(null);
-  const buyMarkerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const sellMarkerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+ 
   const crossPointsRef = useRef<CrossPoint[]>([]);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  const prevVolumeRef = useRef<number>(0); // 이전 거래량을 저장하기 위한 ref 추가
-  const prevTradeTimeRef = useRef<number>(0); // 이전 거래 시간을 저장하기 위한 ref 추가
-  const accVolumeRef = useRef<number>(0); // 현재 캔들의 누적 거래량을 저장하기 위한 ref
+ 
   const isLoadingRef = useRef<boolean>(false); // 데이터 로딩 상태를 추적하기 위한 ref
-  const oldestTimestampRef = useRef<number | null>(null); // 가장 오래된 데이터의 timestamp를 저장하기 위한 ref
+ 
   
   const { prices, tickers, updateTradeState, orderLimits, maPeriods, updateMAPeriod, showMA, updateShowMA } = useUpbitStore();
   const [tickerData, setTickerData] = useState<TickerData | null>(null);
@@ -269,7 +261,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const [progress, setProgress] = useState<number>(0);
   
   // tradeId를 컴포넌트 레벨 변수로 선언
-  const tradeIdRef = useRef<number>(1);
+  //const tradeIdRef = useRef<number>(1);
 
   // 상태 추가
   const [isDataLoadingEnabled, setIsDataLoadingEnabled] = useState<boolean>(false);
@@ -288,12 +280,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     const ma360Data = threeHundredSixtyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma240Data = twoFortyEMASeriesRef.current?.data() as LineData<Time>[];
     const ma120Data = oneTwentyEMASeriesRef.current?.data() as LineData<Time>[];
-    const ma60Data = sixtyEMASeriesRef.current?.data() as LineData<Time>[];
+   // const ma60Data = sixtyEMASeriesRef.current?.data() as LineData<Time>[];
     
     // 조건 지속 시간 추적을 위한 변수들
-    let buyConditionStartTime: number | null = null;
-    let sellConditionStartTime: number | null = null;
-    const CONDITION_DURATION_THRESHOLD = 10; // 10초 지속 조건
+    //let buyConditionStartTime: number | null = null;
+    //let sellConditionStartTime: number | null = null;
+    //const CONDITION_DURATION_THRESHOLD = 10; // 10초 지속 조건
     const MIN_TIME_BETWEEN_TRADES = 30; // 30초 - 루프 외부로 이동
     
     for (let i = 11; i < sixtyEMA.length; i++) {
@@ -357,12 +349,12 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
       // 기울기 조건
       const sloped360 = 15;
-      const is240MAUpward = slope240MA > 10; // 상향 기울기
-      const is360MAUpward = slope360MA > sloped360; // 상향 기울기
-      const is240MADownward = slope240MA > 10;
-      const is360MADownward = slope360MA > sloped360;
-      const is240MADownwardrev = slope240MA < -2;
-      const is360MADownwardrev = slope360MA < -2;
+      //const is240MAUpward = slope240MA > 10; // 상향 기울기
+      //const is360MAUpward = slope360MA > sloped360; // 상향 기울기
+      //const is240MADownward = slope240MA > 10;
+      //const is360MADownward = slope360MA > sloped360;
+      //const is240MADownwardrev = slope240MA < -2;
+      //const is360MADownwardrev = slope360MA < -2;
       const buySlope = (slope120MA >= 10) && (slope240MA >= 10); // 10도 이상 상향
       const sellSlope = (slope120MA <= -2) && (slope240MA <= -2); // -2도 이하 하향
 
@@ -382,10 +374,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       //if (timeSinceLastAction < MIN_TIME_BETWEEN_TRADES) continue; // 30초 간격 유지
 
       // 정배열/역배열 상태 확인
-      const isProperAlignment = curr120MA > curr240MA;
-      const isProperAlignmentrev = curr120MA < curr240MA;
+      //const isProperAlignment = curr120MA > curr240MA;
+      //const isProperAlignmentrev = curr120MA < curr240MA;
       const ma360Value = ma360Index >= 0 && ma360Data && ma360Data[ma360Index] ? ma360Data[ma360Index].value : 0;
-      const is240MABelowMA360 = curr240MA < ma360Value;
+        //  const is240MABelowMA360 = curr240MA < ma360Value;
       const isProperAlignmentFull = (curr240MA > ma360Value);
       const isReverseAlignment = (ma360Value > curr240MA) && (curr240MA > curr120MA);
 

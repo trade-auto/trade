@@ -1,0 +1,8 @@
+# Next.js 관련 제외
+node_modules/             
+.next/                     
+out/                      
+*.log                     
+*.test.ts                 
+*.spec.ts                  
+public/static/large/* 
