@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { NavigationHeader } from '../components/NavigationHeader';
 import { OrderList } from '../components/OrderList';
 import { OrderHistory } from '../components/OrderHistory';
@@ -8,8 +8,8 @@ import { OrderDetail } from '../components/OrderDetail';
 import { OrderListById } from '../components/OrderListById';
 import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
-import { CreateOrder } from '../components/CreateOrder';
-import { CandlestickChart } from '../components/CandlestickChart5A8ok6';
+import { CreateOrder } from '../components/CreateOrder1';
+import { CandlestickChart } from '../components/CandlestickChart5A8ok62';
 import { getAccountBalance } from '../api/upbitAccount';
 
 const SYMBOLS = [
@@ -56,35 +56,44 @@ export default function OrdersPage() {
     }) => Promise<void> 
   }>(null);
 
-  // WebSocket을 통해 실시간 가격 업데이트
+  const handleWebSocketMessage = useCallback((event: MessageEvent) => {
+    const reader = new FileReader();
+    
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        if (data.type === 'trade') {
+          setCurrentPrice(prev => {
+            // 이전 값과 같으면 업데이트하지 않음
+            if (prev === data.trade_price) return prev;
+            return data.trade_price;
+          });
+        }
+      } catch (error) {
+        console.error('JSON 파싱 오류:', error);
+      }
+    };
+
+    reader.readAsText(event.data);
+  }, []);
+
   useEffect(() => {
     const ws = new WebSocket('wss://api.upbit.com/websocket/v1');
-    
+
     ws.onopen = () => {
-      const message = JSON.stringify([
+      const subscribeMessage = JSON.stringify([
         { ticket: "trade" },
         { type: "trade", codes: [selectedSymbol] }
       ]);
-      ws.send(message);
+      ws.send(subscribeMessage);
     };
 
-    ws.onmessage = (event) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result as string);
-          if (data.type === 'trade') {
-            setCurrentPrice(data.trade_price);
-          }
-        } catch (error) {
-          console.error('JSON 파싱 오류:', error);
-        }
-      };
-      reader.readAsText(event.data);
-    };
+    ws.onmessage = handleWebSocketMessage;
 
-    return () => ws.close();
-  }, [selectedSymbol]);
+    return () => {
+      ws.close();
+    };
+  }, [handleWebSocketMessage, selectedSymbol]);
 
   // 잔고 정보 로드
   const loadBalance = async () => {

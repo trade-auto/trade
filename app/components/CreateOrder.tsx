@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import { useUpbitStore } from '../store/useUpbitStore';
-import { Time } from 'lightweight-charts';
+// import { Time } from 'lightweight-charts';
 
 interface CreateOrderProps {
   market: string;
@@ -43,21 +43,21 @@ interface TradeCycle {
 type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
 // Trade 인터페이스 수정
-interface Trade {
-  entryTime: Time;
-  exitTime: Time;
-  entryPrice: number;
-  exitPrice: number;
-  return: number;
-  isSuccess: boolean;
-  isAutomatic?: boolean;
-  mode: 'test' | 'test-auto' | 'live-auto';
-  slopes?: {  // 기울기 정보 추가
-    ma40: number;
-    ma60: number;
-    ma360: number;
-  };
-}
+// interface Trade {
+//   entryTime: Time;
+//   exitTime: Time;
+//   entryPrice: number;
+//   exitPrice: number;
+//   return: number;
+//   isSuccess: boolean;
+//   isAutomatic?: boolean;
+//   mode: 'test' | 'test-auto' | 'live-auto';
+//   slopes?: {  // 기울기 정보 추가
+//     ma40: number;
+//     ma60: number;
+//     ma360: number;
+//   };
+// }
 
 // 컴포넌트 외부에 함수 선언
 const calculateRelativeSlope = (ma: number[]) => {
@@ -71,7 +71,7 @@ const calculateRelativeSlope = (ma: number[]) => {
 // ------------------------------
 const getMA = (priceData: number[], period: number): number[] => {
   if (priceData.length < period) return [];
-  let result: number[] = [];
+  const result: number[] = [];
   for (let i = 0; i <= priceData.length - period; i++) {
     const sum = priceData.slice(i, i + period).reduce((a, b) => a + b, 0);
     result.push(sum / period);
@@ -85,14 +85,25 @@ const getAngle = (maValues: number[]): number => {
   return (Math.atan(delta) * 180) / Math.PI;
 };
 
-// 조건 지속시간 추적 (간단한 전역 변수 사용; 실제 환경에서는 적절한 상태 관리 필요)
-if (!(window as any)._conditionStartTimes) {
-  (window as any)._conditionStartTimes = {
+// 조건 지속시간 추적을 위한 타입 정의
+interface ConditionStartTimes {
+  "40MA_angle_above_45": number | null;
+  "40MA_angle_below_minus45": number | null;
+}
+
+declare global {
+  interface Window {
+    _conditionStartTimes: ConditionStartTimes;
+  }
+}
+
+if (!window._conditionStartTimes) {
+  window._conditionStartTimes = {
     "40MA_angle_above_45": null,
     "40MA_angle_below_minus45": null
   };
 }
-const conditionStartTimes = (window as any)._conditionStartTimes;
+const conditionStartTimes = window._conditionStartTimes;
 
 const updateConditionDuration = (
   condition: "40MA_angle_above_45" | "40MA_angle_below_minus45",
@@ -129,7 +140,7 @@ const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sel
   const ma360 = getMA(priceData, 360);
   if (ma40.length === 0 || ma120.length === 0 || ma360.length === 0) return "hold";
 
-  const ma40_latest = ma40[ma40.length - 1];
+ // const ma40_latest = ma40[ma40.length - 1];
   const ma120_latest = ma120[ma120.length - 1];
   const ma360_latest = ma360[ma360.length - 1];
 
@@ -185,11 +196,11 @@ export const CreateOrder = forwardRef<
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
   const [autoTrading, setAutoTrading] = useState(false);
-  const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
-  const [isTradeComplete, setIsTradeComplete] = useState(false);
-  const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
-  const [statusChangeTime, setStatusChangeTime] = useState<string>(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-  const [statusHistory, setStatusHistory] = useState<{ status: string, time: string }[]>([]);
+  // const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
+  // const [isTradeComplete, setIsTradeComplete] = useState(false);
+  // const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
+  // const [statusChangeTime, setStatusChangeTime] = useState<string>(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  // const [statusHistory, setStatusHistory] = useState<{ status: string, time: string }[]>([]);
   const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string, buyPrice: number | null, sellPrice: number | null, profit: string | null, profitAmount: string | null }[]>([]);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [actionStartTime, setActionStartTime] = useState<Date | null>(null);
@@ -197,11 +208,7 @@ export const CreateOrder = forwardRef<
   const [currentCycle, setCurrentCycle] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
   const [totalProfit, setTotalProfit] = useState<string>('0.00');
 
-  // 볼린저 밴드 계산을 위한 상태 추가
-  const [upperBand, setUpperBand] = useState<number | null>(null);
-  const [lowerBand, setLowerBand] = useState<number | null>(null);
-  const [basis, setBasis] = useState<number | null>(null);
-
+ 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
     const savedSettings = localStorage.getItem('orderLimitSettings');
@@ -278,8 +285,10 @@ export const CreateOrder = forwardRef<
       if (onOrderCreated) {
         onOrderCreated();
       }
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setError(error.message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -289,20 +298,20 @@ export const CreateOrder = forwardRef<
   const [activePercent, setActivePercent] = useState(25);
 
   // 25% 금액에 해당하는 수량 계산 함수
-  const calculatePercentVolume = () => {
+  const calculatePercentVolume = useCallback(() => {
     if (ma3Price && orderLimits.maxOrderPrice) {
       const quarterAmount = orderLimits.maxOrderPrice * 0.25; // 최대 주문 금액의 25%
       return (quarterAmount / ma3Price).toFixed(4);
     }
     return '0';
-  };
+  }, [ma3Price, orderLimits.maxOrderPrice]);
 
   // 컴포넌트 마운트 시 25% 수량 자동 설정
   useEffect(() => {
     if (ma3Price) {
       setVolume(calculatePercentVolume());
     }
-  }, [ma3Price, orderLimits.maxOrderPrice]);
+  }, [ma3Price, orderLimits.maxOrderPrice, calculatePercentVolume]);
 
   // 퍼센트 버튼 핸들러 수정
   const handlePercentage = (percent: number) => {
@@ -319,7 +328,7 @@ export const CreateOrder = forwardRef<
   };
 
   // 가격 정보 업데이트 함수
-  const updatePrices = async () => {
+  const updatePrices = useCallback(async () => {
     try {
       setPriceUpdateError(null);
       const [current, ma3] = await Promise.all([
@@ -329,21 +338,27 @@ export const CreateOrder = forwardRef<
       setCurrentPrice(current);
       setMa3Price(ma3);
 
-      // 가격 히스토리 업데이트
       setPriceHistory(prev => {
-        const newHistory = [...prev, current].slice(-3); // 최근 3개 가격만 유지
+        const newHistory = [...prev, current].slice(-3);
         return newHistory;
       });
 
-      // 지정가 주문이 아닐 때는 현재가로 자동 업데이트
       if (ordType !== 'limit' && current) {
         setPrice(current.toString());
       }
-    } catch (error: any) {
-      setPriceUpdateError('가격 정보 업데이트 실패');
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setPriceUpdateError(error.message);
+      }
       console.error('가격 업데이트 중 오류:', error);
     }
-  };
+  }, [market, ordType]);
+
+  useEffect(() => {
+    updatePrices();
+    const interval = setInterval(updatePrices, 1000);
+    return () => clearInterval(interval);
+  }, [market, ordType, updatePrices]);
 
   // 3초 MA 가격 변경 시 현재가도 업데이트
   const handleMa3PriceClick = () => {
@@ -356,10 +371,10 @@ export const CreateOrder = forwardRef<
   // 주기적으로 가격 업데이트 (1초마다)
   useEffect(() => {
     updatePrices();
-    const interval = setInterval(updatePrices, 1000); // 1초마다 업데이트
+    const interval = setInterval(updatePrices, 1000);
     
     return () => clearInterval(interval);
-  }, [market, ordType]); // ordType이 변경될 때도 다시 설정
+  }, [market, ordType, updatePrices]);
 
   // 주문 방식이 변경될 때 가격 자동 설정
   useEffect(() => {
@@ -393,53 +408,13 @@ export const CreateOrder = forwardRef<
   }, [volume, onQuantityUpdate]);
 
   // 수익률 계산 함수
-  const calculateProfitRate = (buyPrice: number, sellPrice: number) => {
-    if (buyPrice === 0) return 0;
-    return ((sellPrice - buyPrice) / buyPrice) * 100;
-  };
+  // const calculateProfitRate = (buyPrice: number, sellPrice: number) => {
+  //   if (buyPrice === 0) return 0;
+  //   return ((sellPrice - buyPrice) / buyPrice) * 100;
+  // };
 
   // 매매 사이클 업데이트 함수 수정
-  const updateTradeCycle = (status: string) => {
-    const currentTime = new Date().toLocaleTimeString('ko-KR', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
-    });
-    
-    setTradeCycles(prev => {
-      const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime, buyPrice: null, sellPrice: null, profit: null, profitAmount: null };
-      
-      // 새로운 사이클 시작 조건 수정
-      if (prev.length === 0 && status === '매수 대기') {
-        // 첫 번째 사이클인 경우에만 매수 대기 상태 추가
-        return [{ 
-          cycle: [status], 
-          times: [currentTime],
-          time: currentTime,
-          buyPrice: null,
-          sellPrice: null,
-          profit: null,
-          profitAmount: null
-        }];
-      }
-      
-      // 기존 사이클 업데이트
-      if (lastCycle.cycle.length < 4) {
-        const updatedCycle = {
-          cycle: [...lastCycle.cycle, status],
-          times: [...lastCycle.times, currentTime],
-          time: lastCycle.time,
-          buyPrice: lastCycle.buyPrice,
-          sellPrice: lastCycle.sellPrice,
-          profit: lastCycle.profit,
-          profitAmount: lastCycle.profitAmount
-        };
-        return [updatedCycle, ...prev.slice(1)];
-      }
-
-      return prev;
-    });
-  };
+  //
 
   // 볼린저 밴드 계산 함수
   const calculateBollingerBands = (prices: number[], period: number = 20, multiplier: number = 2) => {
@@ -557,7 +532,20 @@ export const CreateOrder = forwardRef<
       setLastSignal(signal);
       console.log(signal); // 콘솔에 신호 출력
     }
-  }, [autoTrading, currentPrice, priceHistory, tradeStrategy]);
+  }, [
+    autoTrading,
+    currentPrice,
+    priceHistory,
+    tradeStrategy,
+    currentCycle,
+    lastSignal,
+    maPeriods.forty,
+    maPeriods.oneTwenty,
+    maPeriods.sixty,
+    maPeriods.thirty,
+    market,
+    mode
+  ]);
 
   // 이동평균 계산 함수 추가
   const calculateMA = (prices: number[], period: number) => {
@@ -724,7 +712,7 @@ export const CreateOrder = forwardRef<
           onOrderCreated();
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('자동 거래 실패:', error);
     } finally {
       setIsLoading(false);
@@ -857,6 +845,7 @@ export const CreateOrder = forwardRef<
   // 전략 변경 핸들러 수정
   const handleStrategyChange = (strategy: TradeStrategy) => {
     updateTradeStrategy(strategy);
+    setCurrentStrategy(strategy);
   };
 
   return (
@@ -1268,4 +1257,6 @@ export const CreateOrder = forwardRef<
       </div>
     </div>
   );
-}); 
+});
+
+CreateOrder.displayName = 'CreateOrder'; 

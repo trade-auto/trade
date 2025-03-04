@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+
+# Your rule content
+Always respond in korean. If you delete a code, you must give a clear reason. You should consider refactoring as much as possible and provide separate code. You should review yourself to see if there are any errors caused by removing the old code. Please suggest if there is anything else that needs to be done. Please predict and tell me what might be a problem. If there is a lot of code to edit, edit it step by step. Let me know what you figured out before you fix it. If there is any contradiction, please correct it in the direction you think is right and explain it to me.

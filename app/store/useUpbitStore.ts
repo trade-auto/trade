@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { format } from 'date-fns';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface PriceData {
   currentPrice: number;
@@ -95,157 +96,127 @@ interface UpbitStore {
   updateTradeStrategy: (strategy: TradeStrategy) => void;
 }
 
-// 로컬 스토리지에서 MA 설정 불러오기
-const loadMASettings = () => {
-  try {
-    const savedShowMA = localStorage.getItem('showMA');
-    const savedMAPeriods = localStorage.getItem('maPeriods');
-    
-    return {
-      showMA: savedShowMA ? JSON.parse(savedShowMA) : {
-        thirty: true,
-        forty: true,
-        sixty: true,
-        oneTwenty: true,
-        twoForty: true,
-        threeHundredSixty: true,
-      },
-      maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : {
-        thirty: 30,
-        forty: 40,
-        sixty: 60,
-        oneTwenty: 120,
-        twoForty: 240,
-        threeHundredSixty: 360,
-      }
-    };
-  } catch (error) {
-    console.error('MA 설정 로드 오류:', error);
-    return {
-      showMA: {
-        thirty: true,
-        forty: true,
-        sixty: true,
-        oneTwenty: true,
-        twoForty: true,
-        threeHundredSixty: true,
-      },
-      maPeriods: {
-        thirty: 30,
-        forty: 40,
-        sixty: 60,
-        oneTwenty: 120,
-        twoForty: 240,
-        threeHundredSixty: 360,
-      }
-    };
-  }
+// 기본값 상수 정의
+const DEFAULT_SHOW_MA = {
+  thirty: true,
+  forty: true,
+  sixty: true,
+  oneTwenty: true,
+  twoForty: true,
+  threeHundredSixty: true,
 };
 
-const savedSettings = loadMASettings();
+const DEFAULT_MA_PERIODS = {
+  thirty: 30,
+  forty: 40,
+  sixty: 60,
+  oneTwenty: 120,
+  twoForty: 240,
+  threeHundredSixty: 360,
+};
 
-export const useUpbitStore = create<UpbitStore>()((set) => ({
-  prices: {},
-  tickers: {},
-  isConnected: false,
-  
-  addPrice: (symbol: string, price: number) => set((state) => ({
-    prices: {
-      ...state.prices,
-      [symbol]: {
-        currentPrice: price,
-        lastUpdated: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
-      }
+const DEFAULT_TRADE_STRATEGY = 'BOLLINGER';
+
+export const useUpbitStore = create<UpbitStore>()(
+  persist(
+    (set) => ({
+      prices: {},
+      tickers: {},
+      isConnected: false,
+      
+      addPrice: (symbol: string, price: number) => set((state) => ({
+        prices: {
+          ...state.prices,
+          [symbol]: {
+            currentPrice: price,
+            lastUpdated: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+          }
+        }
+      })),
+      
+      setIsConnected: (status: boolean) => set({ isConnected: status }),
+      
+      updateLastUpdated: (symbol: string) => set((state) => ({
+        prices: {
+          ...state.prices,
+          [symbol]: {
+            ...state.prices[symbol],
+            lastUpdated: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+          }
+        }
+      })),
+
+      updateTickerData: (symbol: string, data: TickerData) => set((state) => ({
+        tickers: {
+          ...state.tickers,
+          [symbol]: data
+        }
+      })),
+
+      tradeState: {
+        lastTradeType: null,
+        statusChangeTime: '',
+        currentPrice: 0,
+        actionStartTime: null,
+        isTrading: false,
+        theoreticalPosition: 'wait',
+        missedFirstCycle: false
+      },
+
+      updateTradeState: (update) => 
+        set((state) => ({
+          tradeState: { ...state.tradeState, ...update }
+        })),
+
+      createOrder: async (params) => {
+        try {
+          const response = await fetch('/api/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+          });
+          if (!response.ok) throw new Error('주문 실패');
+        } catch (error) {
+          console.error('주문 오류:', error);
+          throw error;
+        }
+      },
+
+      orderLimits: {
+        minOrderPrice: 5000,
+        maxOrderPrice: 1000000000
+      },
+
+      maPeriods: DEFAULT_MA_PERIODS,
+      showMA: DEFAULT_SHOW_MA,
+      tradeStrategy: DEFAULT_TRADE_STRATEGY as TradeStrategy,
+
+      updateMAPeriod: (type, value) => set((state) => ({
+        maPeriods: {
+          ...state.maPeriods,
+          [type]: value,
+        }
+      })),
+
+      updateShowMA: (type) => set((state) => ({
+        showMA: {
+          ...state.showMA,
+          [type]: !state.showMA[type],
+        }
+      })),
+
+      updateTradeStrategy: (strategy) => set({ 
+        tradeStrategy: strategy 
+      }),
+    }),
+    {
+      name: 'upbit-storage',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        maPeriods: state.maPeriods,
+        showMA: state.showMA,
+        tradeStrategy: state.tradeStrategy,
+      }),
     }
-  })),
-  
-  setIsConnected: (status: boolean) => set({ isConnected: status }),
-  
-  updateLastUpdated: (symbol: string) => set((state) => ({
-    prices: {
-      ...state.prices,
-      [symbol]: {
-        ...state.prices[symbol],
-        lastUpdated: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
-      }
-    }
-  })),
-
-  updateTickerData: (symbol: string, data: TickerData) => set((state) => ({
-    tickers: {
-      ...state.tickers,
-      [symbol]: data
-    }
-  })),
-
-  tradeState: {
-    lastTradeType: null,
-    statusChangeTime: '',
-    currentPrice: 0,
-    actionStartTime: null,
-    isTrading: false,
-    theoreticalPosition: 'wait',
-    missedFirstCycle: false
-  },
-
-  updateTradeState: (update) => 
-    set((state) => ({
-      tradeState: { ...state.tradeState, ...update }
-    })),
-
-  createOrder: async (params) => {
-    try {
-      // 실제 주문 로직 구현
-      const response = await fetch('/api/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
-      });
-      if (!response.ok) throw new Error('주문 실패');
-    } catch (error) {
-      console.error('주문 오류:', error);
-      throw error;
-    }
-  },
-
-  orderLimits: {
-    minOrderPrice: 5000,
-    maxOrderPrice: 1000000000
-  },
-
-  maPeriods: savedSettings.maPeriods,
-
-  updateMAPeriod: (type, value) => set((state) => {
-    const newMAPeriods = {
-      ...state.maPeriods,
-      [type]: value,
-    };
-    
-    // 로컬 스토리지에 저장
-    localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
-    
-    return { maPeriods: newMAPeriods };
-  }),
-
-  showMA: savedSettings.showMA,
-
-  updateShowMA: (type) => set((state) => {
-    const newShowMA = {
-      ...state.showMA,
-      [type]: !state.showMA[type],
-    };
-    
-    // 로컬 스토리지에 저장
-    localStorage.setItem('showMA', JSON.stringify(newShowMA));
-    
-    return { showMA: newShowMA };
-  }),
-
-  // 로컬 스토리지에서 마지막 전략 불러오기 또는 기본값 설정
-  tradeStrategy: (localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER',
-  
-  updateTradeStrategy: (strategy) => {
-    localStorage.setItem('lastTradeStrategy', strategy);
-    set({ tradeStrategy: strategy });
-  },
-})); 
+  )
+); 
