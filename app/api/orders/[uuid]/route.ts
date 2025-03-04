@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { sign } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import querystring from 'querystring';
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { uuid: string } }
 ) {
   const access_key = process.env.UPBIT_ACCESS_KEY;
