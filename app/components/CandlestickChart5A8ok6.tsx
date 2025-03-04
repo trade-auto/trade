@@ -216,8 +216,8 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   symbol, 
   chartType,
   initialAutoUpdate = false,
-  mode,  // 추가
-  handleOrder  // 추가
+  mode: orderMode,  // tradingMode를 orderMode로 직접 변경
+  handleOrder
 }) => {
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -291,7 +291,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   // 기존 checkAndExecuteOrder 함수를 제거하고 아래 코드로 대체
   const checkAndExecuteOrderWrapper = async () => {
     try {
-      if (!mode || !currentPrice || !ma3Price) return;
+      if (!orderMode || !currentPrice || !ma3Price) return;
 
       const { missedFirstCycle, lastTradeType, isTrading } = useUpbitStore.getState().tradeState;
       const now = new Date();
@@ -320,7 +320,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           volume: calculateOrderVolume(orderDecision.price),
           price: orderDecision.price.toString(),
           ord_type: 'limit',
-          mode: mode
+          mode: orderMode
         };
         
         // 주문 실행
@@ -476,7 +476,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       }
     }
   };
-
+ 
   // 차트 타입에 따른 API 엔드포인트 결정
   const getChartEndpoint = (type: string) => {
     if (type.startsWith('seconds/')) {
@@ -586,12 +586,17 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       if (twoFortyEMASeriesRef.current) {
         twoFortyEMASeriesRef.current.setData(twoFortyEMAData);
       }
-          
+ 
       // 거래 신호 업데이트
       const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData, isFirstBuy);
       crossPointsRef.current = crossPoints;
-          
-      // 통합된 마커 업데이트 함수 사용
+      const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
+        if (!candleSeriesRef.current) return;
+        const markers = createTradeMarkers(crossPoints, tradeStrategy);
+        // setMarkers 대신 createSeriesMarkers 사용
+        createSeriesMarkers(candleSeriesRef.current, markers);
+      }, [tradeStrategy]);         
+    //  통합된 마커 업데이트 함수 사용
       updateChartMarkers(crossPoints);
 
         // 백테스팅 결과 업데이트
@@ -610,7 +615,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       setIsLoading(false);
       setProgress(0);
     }
-  }, [symbol, chartType, maPeriods, tradeStrategy, isFirstBuy]);
+  }, [symbol, chartType, maPeriods, tradeStrategy, isFirstBuy, calculateBacktestResult, updateChartMarkers]);
 
   // 그 다음에 resetAndLoadData 함수 선언
   const resetAndLoadData = useCallback(async (start: Date, end: Date) => {
@@ -936,7 +941,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           exitPrice,
           return: returnRate,
           isSuccess: returnRate > 0,
-          mode: mode === 'test' ? 'test-auto' : 'live-auto',
+          mode: orderMode === 'test' ? 'test-auto' : 'live-auto',
           angles: {
             //entryMa40: buyPoint.slopes.ma40,
             entryMa360: buyPoint.slopes.ma360,
@@ -949,7 +954,12 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         
         buyPoint = null;
       }
-    }
+      // updateChartMarkers 함수 선언
+const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
+  if (!candleSeriesRef.current) return;
+  const markers = createTradeMarkers(crossPoints, tradeStrategy);
+  createSeriesMarkers(candleSeriesRef.current, markers);
+}, []);
 
     // 나머지 코드는 동일...
     const totalTrades = trades.length;
@@ -1188,48 +1198,27 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
       // 크로스 포인트 찾기
       const crossPoints = findCrossPoints(sixtyEMAData, oneTwentyEMAData, twoFortyEMAData, threeHundredSixtyEMAData, isFirstBuy);
       crossPointsRef.current = crossPoints;
+       
+      // 통합된 마커 업데이트 함수 사용
+      updateChartMarkers(crossPoints);
 
-      // 데이터 설정
-      candleSeriesRef.current.setData(candleData);
-      if (volumeSeriesRef.current) {
-        volumeSeriesRef.current.setData(volumeData);
-      }
- 
-      if (sixtyEMASeriesRef.current) {
-        sixtyEMASeriesRef.current.setData(sixtyEMAData);
-      }
-      if (oneTwentyEMASeriesRef.current) {
-        oneTwentyEMASeriesRef.current.setData(oneTwentyEMAData);
-      }
-      if (twoFortyEMASeriesRef.current) {
-        twoFortyEMASeriesRef.current.setData(twoFortyEMAData);
-      }
-      if (threeHundredSixtyEMASeriesRef.current) {
-        threeHundredSixtyEMASeriesRef.current.setData(threeHundredSixtyEMAData);
+        // 백테스팅 결과 업데이트
+      const result = calculateBacktestResult(formattedData, crossPoints);
+      if (result.trades.length > 0) {
+        setBacktestResult(result);
+      } else {
+        setBacktestResult(null);
       }
 
-      // 매수/매도 마커 업데이트
-      const markers = createTradeMarkers(crossPoints, tradeStrategy);
-      if (candleSeriesRef.current) {
-        try {
-          // 마커 설정
-        createSeriesMarkers(candleSeriesRef.current, markers);
-        } catch (error) {
-          console.error('마커 업데이트 실패:', error);
-        }
-      }
-
-      // 백테스트 결과 업데이트
-      const result = calculateBacktestResult(candleData, crossPoints);
-      setBacktestResult(result);
-
-      // 마지막 가격 설정
-      setChartPrice(candleData[candleData.length - 1].close);
-
+      setProgress(100);
     } catch (error) {
-      console.error('Error loading chart data:', error);
+      console.error('데이터 로딩 오류:', error);
+      alert('데이터 로딩 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
+      setProgress(0);
     }
-  }, [chartType, symbol, maPeriods, tradeStrategy, isFirstBuy]);
+  }, [symbol, chartType, maPeriods, tradeStrategy, isFirstBuy, calculateBacktestResult, updateChartMarkers]);
 
   // chartType이 변경될 때 날짜 범위도 함께 갱신
   useEffect(() => {
@@ -1607,7 +1596,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
   // 기존 useEffect 수정
   useEffect(() => {
-    if (mode === 'test' && currentPrice && ma3Price) {
+    if (orderMode === 'test' && currentPrice && ma3Price) {
       const now = new Date();
       const currentTime = now.toLocaleTimeString('ko-KR', {
         hour: '2-digit',
@@ -1644,7 +1633,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
         }
       }
     }
-  }, [currentPrice, ma3Price, lastTradeType, mode]);
+  }, [currentPrice, ma3Price, lastTradeType, orderMode]);
 
   // 상태 변수 추가
   const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string }[]>([]);
@@ -1685,7 +1674,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
 
   // 매수/매도 마커 업데이트 로직
   useEffect(() => {
-    if (!mode || !currentPrice || !ma3Price) return;
+    if (!orderMode || !currentPrice || !ma3Price) return;
 
     const { missedFirstCycle, lastTradeType, isTrading } = useUpbitStore.getState().tradeState;
     const now = new Date();
@@ -1711,7 +1700,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
               volume: calculateOrderVolume(currentPrice),
               price: currentPrice.toString(),
               ord_type: 'limit',
-              mode: mode
+              mode: orderMode
             });
 
             // 매수 성공 후 상태 업데이트
@@ -1742,7 +1731,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
               volume: calculateOrderVolume(currentPrice),
               price: currentPrice.toString(),
               ord_type: 'limit',
-              mode: mode
+              mode: orderMode
             });
 
             // 매수 성공 후 상태 업데이트
@@ -1764,7 +1753,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
             volume: calculateOrderVolume(currentPrice),
             price: currentPrice.toString(),
             ord_type: 'limit',
-            mode: mode
+            mode: orderMode
           });
 
           // 매도 성공 후 상태 업데이트
@@ -1791,7 +1780,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     // if (isTrading && !isLoadingRef.current) {
     //   checkAndExecuteOrder();
     // }
-  }, [currentPrice, ma3Price, mode]);
+  }, [currentPrice, ma3Price, orderMode, isFirstBuy, handleOrder, updateTradeState]);
 
   // 상태 추가
   const [volume, setVolume] = useState<string>('');
@@ -1984,7 +1973,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                 volume: calculateOrderVolume(data.trade_price),
                 price: data.trade_price.toString(),
                 ord_type: 'limit',
-                mode: mode
+                mode: orderMode
               });
             }
           }
@@ -2064,14 +2053,14 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   }, [setOnCandleComplete, handleCompletedCandle]);
 
   // 마커 업데이트 함수 추가
-  const updateTradeMarkers = (candleSeries: ISeriesApi<"Candlestick">, markers: SeriesMarker<Time>[]) => {
+  const updateTradeMarkers = useCallback((candleSeries: ISeriesApi<"Candlestick">, markers: SeriesMarker<Time>[]) => {
     try {
       // 기존 마커들을 모두 대체
       (candleSeries as any).setMarkers(markers);
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }
-  };
+  }, []);
 
   // 새: 실시간 API 업데이트 토글 상태를 추가
   const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState<boolean>(false);
@@ -2147,7 +2136,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
                       volume: calculateOrderVolume(data[0].trade_price),
                       price: data[0].trade_price.toString(),
                       ord_type: 'limit',
-                      mode: mode
+                      mode: orderMode
                     });
                   } catch (error) {
                     console.error('주문 실행 중 오류:', error);
@@ -2199,7 +2188,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
           volume: '0.0001',
           price: '30000000',
           ord_type: 'limit',
-          mode: mode
+          mode: orderMode
         });
         console.log('테스트 주문 전달 완료');
       } catch (error) {
@@ -2481,20 +2470,7 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
   </div>
 
   // 마커 업데이트를 위한 함수 통합
-  const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
-    if (!candleSeriesRef.current) return;
-    
-    try {
-      // 기존 마커 제거
-      createSeriesMarkers(candleSeriesRef.current, []);
-      
-      // 새 마커 생성 및 설정
-      const markers = createTradeMarkers(crossPoints, tradeStrategy);
-    createSeriesMarkers(candleSeriesRef.current, markers);
-    } catch (error) {
-      console.error('마커 업데이트 실패:', error);
-    }
-  }, [tradeStrategy]);
+
 
    
 
@@ -2609,7 +2585,11 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     
     return slopeSum / sampleCount;
   };
-
+  const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
+    if (!candleSeriesRef.current) return;
+    const markers = createTradeMarkers(crossPoints, tradeStrategy);
+    createSeriesMarkers(candleSeriesRef.current, markers);
+    }, []);  // 빈 의존성 배열
   useEffect(() => {
     if (crossPointsRef.current) {
       updateChartMarkers(crossPointsRef.current);
@@ -3157,3 +3137,4 @@ const THRESHOLD_ANGLE_120_PLUS = THRESHOLD_ANGLE_120;
     </div>
   );
 }; 
+

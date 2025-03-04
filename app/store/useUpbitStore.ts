@@ -98,6 +98,28 @@ interface UpbitStore {
 // 로컬 스토리지에서 MA 설정 불러오기
 const loadMASettings = () => {
   try {
+    // 서버 사이드 렌더링 환경에서는 localStorage가 없으므로 기본값 반환
+    if (typeof window === 'undefined') {
+      return {
+        showMA: {
+          thirty: true,
+          forty: true,
+          sixty: true,
+          oneTwenty: true,
+          twoForty: true,
+          threeHundredSixty: true,
+        },
+        maPeriods: {
+          thirty: 30,
+          forty: 40,
+          sixty: 60,
+          oneTwenty: 120,
+          twoForty: 240,
+          threeHundredSixty: 360,
+        }
+      };
+    }
+    
     const savedShowMA = localStorage.getItem('showMA');
     const savedMAPeriods = localStorage.getItem('maPeriods');
     
@@ -222,7 +244,9 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     };
     
     // 로컬 스토리지에 저장
-    localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
+    }
     
     return { maPeriods: newMAPeriods };
   }),
@@ -236,16 +260,20 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
     };
     
     // 로컬 스토리지에 저장
-    localStorage.setItem('showMA', JSON.stringify(newShowMA));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('showMA', JSON.stringify(newShowMA));
+    }
     
     return { showMA: newShowMA };
   }),
 
   // 로컬 스토리지에서 마지막 전략 불러오기 또는 기본값 설정
-  tradeStrategy: (localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER',
+  tradeStrategy: (typeof window !== 'undefined' && localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER',
   
   updateTradeStrategy: (strategy) => {
-    localStorage.setItem('lastTradeStrategy', strategy);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lastTradeStrategy', strategy);
+    }
     set({ tradeStrategy: strategy });
   },
 })); 
