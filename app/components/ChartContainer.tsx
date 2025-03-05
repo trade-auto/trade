@@ -125,7 +125,7 @@ type SeriesRefs = {
   nineHundredEMA: ISeriesApi<"Line"> | null;
 };
 
-const ChartContainer: React.FC<ChartContainerProps> = memo(({
+const ChartContainer = memo<ChartContainerProps>(({
   isFullscreen,
   chartHeight,
   toggleFullscreen,
@@ -148,6 +148,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     threeHundredEMA: null,
     nineHundredEMA: null,
   });
+  const onChartReadyRef = useRef(onChartReady);
 
   // 차트 크기 조정 핸들러
   const handleResize = useCallback(() => {
@@ -163,13 +164,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
 
   // 차트 초기화
   const initializeChart = useCallback(() => {
-    if (!container.current) return;
-
-    // 이전 차트 정리
-    if (chartRef.current) {
-      chartRef.current.remove();
-    }
-
+    if (!container.current || chartRef.current) return;
+    
     const { clientWidth } = container.current;
     const chart = createChart(container.current, getChartOptions(clientWidth, chartHeight, chartType));
     chartRef.current = chart;
@@ -199,8 +195,9 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       });
     });
 
-    // 차트 준비 완료 콜백
-    onChartReady(
+    // onChartReady를 ref로 저장하여 의존성 제거
+    onChartReadyRef.current = onChartReady;
+    onChartReadyRef.current(
       chart,
       seriesRefs.current.candle!,
       seriesRefs.current.volume!,
@@ -212,21 +209,37 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       seriesRefs.current.nineHundredEMA!
     );
 
-  }, [chartHeight, chartType, onChartReady]);
+  }, [chartHeight, chartType]);
 
-  // 차트 초기화
+  // 차트 옵션 업데이트를 위한 별도 함수 추가
+  const updateChartOptions = useCallback(() => {
+    if (!container.current || !chartRef.current) return;
+    
+    const { clientWidth } = container.current;
+    const height = isFullscreen ? window.innerHeight * 0.9 : chartHeight;
+    
+    chartRef.current.applyOptions(getChartOptions(clientWidth, height, chartType));
+    chartRef.current.timeScale().fitContent();
+  }, [chartHeight, isFullscreen, chartType]);
+
+  // 차트 초기화와 리사이즈 이벤트 리스너만 유지
   useEffect(() => {
     initializeChart();
-    window.addEventListener('resize', handleResize);
-
+    window.addEventListener('resize', updateChartOptions);
+    
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', updateChartOptions);
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
     };
-  }, [initializeChart, handleResize]);
+  }, [initializeChart, updateChartOptions]);
+
+  // 차트 옵션 업데이트
+  useEffect(() => {
+    updateChartOptions();
+  }, [updateChartOptions]);
 
   // 마커 업데이트
   useEffect(() => {
@@ -244,6 +257,10 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   useEffect(() => {
     handleResize();
   }, [isFullscreen, handleResize]);
+
+  useEffect(() => {
+    onChartReadyRef.current = onChartReady;
+  }, [onChartReady]);
 
   return (
     <div className="chart-container">
@@ -270,6 +287,14 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         />
       </div>
     </div>
+  );
+}, (prevProps, nextProps) => {
+  // 실제로 변경이 필요한 props만 비교
+  return (
+    prevProps.chartHeight === nextProps.chartHeight &&
+    prevProps.isFullscreen === nextProps.isFullscreen &&
+    prevProps.symbol === nextProps.symbol &&
+    prevProps.chartType === nextProps.chartType
   );
 });
 
