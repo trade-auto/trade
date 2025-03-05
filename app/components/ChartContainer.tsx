@@ -210,10 +210,9 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
 
     // 초기 리사이즈 이벤트 리스너 설정
     window.addEventListener('resize', handleResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 의도적으로 의존성 배열을 비워서 한 번만 실행되도록 함
 
-  }, [chartHeight, chartType, onChartReady, handleResize]);
-
-  // 차트 초기화 - 컴포넌트 마운트 시 한 번만
   useEffect(() => {
     initializeChart();
     return () => {
@@ -223,7 +222,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         chartRef.current = null;
       }
     };
-  }, [handleResize, initializeChart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 의도적으로 의존성 배열을 비워서 한 번만 실행되도록 함
 
   // 마커 업데이트 - 최적화
   useEffect(() => {
