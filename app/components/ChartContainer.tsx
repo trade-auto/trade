@@ -223,7 +223,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         chartRef.current = null;
       }
     };
-  }, []); // 의존성 배열을 비워서 한 번만 실행되도록 함
+  }, [handleResize, initializeChart]);
 
   // 마커 업데이트 - 최적화
   useEffect(() => {

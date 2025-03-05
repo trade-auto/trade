@@ -67,7 +67,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const [currentPrice, setCurrentPrice] = useState(0);
   const [chartPrice, setChartPrice] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [allData, setAllData] = useState<ExtendedCandlestickData[]>([]);
   const [crossPoints, setCrossPoints] = useState<CrossPoint[]>([]);
@@ -136,8 +135,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     if (ongoingRequestRef.current) return;
     
     ongoingRequestRef.current = true;
-    setIsLoading(true);
-    setProgress(0);
     
     try {
       const endpoint = getChartEndpoint(chartType);
@@ -293,7 +290,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     } catch (error) {
       console.error('데이터 로드 오류:', error);
     } finally {
-      setIsLoading(false);
       setProgress(100);
       ongoingRequestRef.current = false;
     }
@@ -573,7 +569,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
               dateRange={dateRange}
               handleDateRangeChange={(date) => setDateRange(prev => ({ ...prev, startDate: date }))}
               handleEndDateChange={(date) => setDateRange(prev => ({ ...prev, endDate: date }))}
-              isLoading={isLoading}
               progress={progress}
             />
           </div>

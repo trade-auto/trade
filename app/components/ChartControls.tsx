@@ -7,7 +7,6 @@ interface ChartControlsProps {
   isAutoUpdate: boolean;
   isRealtimeAPIEnabled: boolean;
   dateRange: DateRange;
-  isLoading: boolean;
   progress: number;
   handleAutoUpdateToggle: () => void;
   handleRealtimeAPIToggle: () => void;
@@ -19,7 +18,6 @@ const ChartControls: React.FC<ChartControlsProps> = ({
   isAutoUpdate,
   isRealtimeAPIEnabled,
   dateRange,
-  isLoading,
   progress,
   handleAutoUpdateToggle,
   handleRealtimeAPIToggle,
