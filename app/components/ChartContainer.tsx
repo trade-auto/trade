@@ -148,6 +148,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     threeHundredEMA: null,
     nineHundredEMA: null,
   });
+  const prevMarkersRef = useRef<SeriesMarker<Time>[]>([]);
+  const markersInitializedRef = useRef<boolean>(false);
 
   // 차트 크기 조정 핸들러
   const handleResize = useCallback(() => {
@@ -157,18 +159,12 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         width: clientWidth,
         height: isFullscreen ? window.innerHeight * 0.9 : chartHeight,
       });
-      chartRef.current.timeScale().fitContent();
     }
   }, [chartHeight, isFullscreen]);
 
-  // 차트 초기화
+  // 차트 초기화 - 한 번만 실행되도록 수정
   const initializeChart = useCallback(() => {
-    if (!container.current) return;
-
-    // 이전 차트 정리
-    if (chartRef.current) {
-      chartRef.current.remove();
-    }
+    if (!container.current || chartRef.current) return;
 
     const { clientWidth } = container.current;
     const chart = createChart(container.current, getChartOptions(clientWidth, chartHeight, chartType));
@@ -212,13 +208,14 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       seriesRefs.current.nineHundredEMA!
     );
 
-  }, [chartHeight, chartType, onChartReady]);
-
-  // 차트 초기화
-  useEffect(() => {
-    initializeChart();
+    // 초기 리사이즈 이벤트 리스너 설정
     window.addEventListener('resize', handleResize);
 
+  }, [chartHeight, chartType, onChartReady, handleResize]);
+
+  // 차트 초기화 - 컴포넌트 마운트 시 한 번만
+  useEffect(() => {
+    initializeChart();
     return () => {
       window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
@@ -226,17 +223,37 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         chartRef.current = null;
       }
     };
-  }, [initializeChart, handleResize]);
+  }, []); // 의존성 배열을 비워서 한 번만 실행되도록 함
 
-  // 마커 업데이트
+  // 마커 업데이트 - 최적화
   useEffect(() => {
-    if (seriesRefs.current.candle && crossPoints.length > 0) {
-      try {
-        const markers = createTradeMarkers(crossPoints);
-        createSeriesMarkers(seriesRefs.current.candle, markers);
-      } catch (error) {
-        console.error('마커 업데이트 실패:', error);
+    if (!seriesRefs.current.candle) return;
+
+    try {
+      const newMarkers = crossPoints.length > 0 ? createTradeMarkers(crossPoints) : [];
+      
+      // 초기 마커 설정 또는 마커 변경이 있을 때만 업데이트
+      if (!markersInitializedRef.current || JSON.stringify(prevMarkersRef.current) !== JSON.stringify(newMarkers)) {
+        // 기존 마커와 새 마커 비교
+        const existingMarkers = prevMarkersRef.current;
+        const markersToAdd = newMarkers.filter(newMarker => 
+          !existingMarkers.some(existing => 
+            existing.time === newMarker.time && 
+            existing.position === newMarker.position
+          )
+        );
+
+        // 새로운 마커만 추가
+        if (markersToAdd.length > 0) {
+          const allMarkers = [...existingMarkers, ...markersToAdd];
+          createSeriesMarkers(seriesRefs.current.candle, allMarkers);
+          prevMarkersRef.current = allMarkers;
+        }
+
+        markersInitializedRef.current = true;
       }
+    } catch (error) {
+      console.error('마커 업데이트 실패:', error);
     }
   }, [crossPoints, createTradeMarkers]);
 
@@ -244,6 +261,17 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   useEffect(() => {
     handleResize();
   }, [isFullscreen, handleResize]);
+
+  // 차트 옵션 업데이트
+  useEffect(() => {
+    if (!chartRef.current) return;
+    
+    chartRef.current.applyOptions(getChartOptions(
+      container.current?.clientWidth || 800,
+      isFullscreen ? window.innerHeight * 0.9 : chartHeight,
+      chartType
+    ));
+  }, [chartType, chartHeight, isFullscreen]);
 
   return (
     <div className="chart-container">

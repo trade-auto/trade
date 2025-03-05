@@ -87,7 +87,7 @@ const ChartControls: React.FC<ChartControlsProps> = ({
       </div>
       
       {/* 로딩 프로그레스 바 */}
-      {isLoading && (
+      { (
         <div className="bg-gray-800 p-4 rounded-lg">
           <div className="text-white text-sm mb-2">데이터 로드 중: {progress}%</div>
           <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
