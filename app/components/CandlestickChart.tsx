@@ -141,11 +141,27 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       let currentTo = dateRange.endDate ? dateRange.endDate : new Date();
       const startDate = dateRange.startDate;
       
+      // 필요한 데이터 개수 계산
+      const totalDays = Math.ceil((currentTo.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const estimatedCandles = chartType.startsWith('minutes/') ? totalDays * 24 * 60 / parseInt(chartType.split('/')[1]) :
+                             chartType === 'days' ? totalDays :
+                             chartType === 'weeks' ? Math.ceil(totalDays / 7) :
+                             Math.ceil(totalDays / 30);
+      
+      const batchSize = 200;
+      const expectedBatches = Math.ceil(estimatedCandles / batchSize);
+      let currentBatch = 0;
+      
       // 시작 날짜에 도달할 때까지 반복해서 데이터 가져오기
       while (true) {
         const to = currentTo.toISOString();
+        
+        // 진행률 업데이트
+        currentBatch++;
+        setProgress(Math.min(30, (currentBatch / expectedBatches) * 30));
+        
         const response = await fetch(
-          `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=200`
+          `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${batchSize}`
         );
         
         if (!response.ok) {
@@ -166,20 +182,25 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           volume: candle.candle_acc_trade_volume,
         }));
         
-        allProcessedData.push(...processedData);
+        // 시작 날짜보다 이전 데이터는 필터링
+        const filteredData = processedData.filter(
+            candle => new Date((candle.time as number) * 1000) >= startDate
+        );
+        
+        allProcessedData.push(...filteredData);
         
         // 마지막 캔들의 시간으로 다음 요청의 기준 시간 설정
         const lastCandle = data[data.length - 1];
         currentTo = new Date(lastCandle.candle_date_time_kst);
         
         // 시작 날짜에 도달했거나 지났으면 중단
-        if (startDate && currentTo <= startDate) break;
+        if (currentTo <= startDate) break;
         
         // API 호출 제한을 위한 딜레이
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-      // 시간순 정렬
+      // 한 번만 정렬
       allProcessedData.sort((a, b) => {
         if (typeof a.time === 'number' && typeof b.time === 'number') {
           return a.time - b.time;
@@ -187,28 +208,10 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         return 0;
       });
       
-      // 진행 상태 업데이트
-      setProgress(30);
+      setProgress(50);
       
-      // 데이터 정렬 (최신 데이터가 마지막에 오도록)
-      allProcessedData.sort((a, b) => {
-        if (typeof a.time === 'number' && typeof b.time === 'number') {
-          return a.time - b.time;
-        }
-        return 0;
-      });
-      
-      // 시리즈 데이터 업데이트
-      if (
-        candleSeriesRef.current && 
-        volumeSeriesRef.current && 
-        sixtyEMASeriesRef.current && 
-        oneTwentyEMASeriesRef.current && 
-        twoFortyEMASeriesRef.current && 
-        threeHundredSixtyEMASeriesRef.current &&
-        threeHundredEMASeriesRef.current &&
-        nineHundredEMASeriesRef.current
-      ) {
+      // 차트 업데이트를 위한 데이터 준비
+      if (candleSeriesRef.current && volumeSeriesRef.current) {
         // 캔들 데이터 설정
         candleSeriesRef.current.setData(allProcessedData);
         
@@ -220,28 +223,44 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         }));
         volumeSeriesRef.current.setData(volumeData);
         
-        // EMA 계산 및 설정
-        const ema60Data = calculateEMA(allProcessedData, 60);
-        const ema120Data = calculateEMA(allProcessedData, 120);
-        const ema240Data = calculateEMA(allProcessedData, 240);
-        const ema360Data = calculateEMA(allProcessedData, 360);
-        const ema300Data = calculateEMA(allProcessedData, 300);
-        const ema900Data = calculateEMA(allProcessedData, 900);
+        setProgress(70);
         
-        sixtyEMASeriesRef.current.setData(ema60Data);
-        oneTwentyEMASeriesRef.current.setData(ema120Data);
-        twoFortyEMASeriesRef.current.setData(ema240Data);
-        threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-        threeHundredEMASeriesRef.current.setData(ema300Data);
-        nineHundredEMASeriesRef.current.setData(ema900Data);
+        // EMA 계산 및 설정 - 병렬 처리
+        const [ema60Data, ema120Data, ema240Data, ema360Data, ema300Data, ema900Data] = await Promise.all([
+          Promise.resolve(calculateEMA(allProcessedData, 60)),
+          Promise.resolve(calculateEMA(allProcessedData, 120)),
+          Promise.resolve(calculateEMA(allProcessedData, 240)),
+          Promise.resolve(calculateEMA(allProcessedData, 360)),
+          Promise.resolve(calculateEMA(allProcessedData, 300)),
+          Promise.resolve(calculateEMA(allProcessedData, 900))
+        ]);
         
-        // 시리즈 가시성 설정
-        sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
-        oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
-        twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
-        threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
-        threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
-        nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+        if (
+          sixtyEMASeriesRef.current && 
+          oneTwentyEMASeriesRef.current && 
+          twoFortyEMASeriesRef.current && 
+          threeHundredSixtyEMASeriesRef.current &&
+          threeHundredEMASeriesRef.current &&
+          nineHundredEMASeriesRef.current
+        ) {
+          // EMA 데이터 설정
+          sixtyEMASeriesRef.current.setData(ema60Data);
+          oneTwentyEMASeriesRef.current.setData(ema120Data);
+          twoFortyEMASeriesRef.current.setData(ema240Data);
+          threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+          threeHundredEMASeriesRef.current.setData(ema300Data);
+          nineHundredEMASeriesRef.current.setData(ema900Data);
+          
+          // 시리즈 가시성 설정
+          sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+          oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+          twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+          threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+          threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
+          nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+        }
+        
+        setProgress(85);
         
         // 매수/매도 포인트 계산
         const cross = findCrossPoints(ema60Data, ema120Data, ema240Data, ema360Data);
@@ -266,6 +285,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       // 모든 데이터 저장
       setAllData(allProcessedData);
       setLastUpdated(new Date());
+      
     } catch (error) {
       console.error('데이터 로드 오류:', error);
     } finally {

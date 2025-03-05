@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback, memo } from 'react';
 import {
   createChart,
   IChartApi,
@@ -8,6 +8,7 @@ import {
   LineSeries,
   HistogramSeries,
   createSeriesMarkers,
+  LineWidth,
 } from 'lightweight-charts';
 import { SeriesMarker } from 'lightweight-charts';
 import { CrossPoint } from '../types/candlestick';
@@ -38,7 +39,93 @@ interface ChartContainerProps {
   createTradeMarkers: (crossPoints: CrossPoint[]) => SeriesMarker<Time>[];
 }
 
-const ChartContainer: React.FC<ChartContainerProps> = ({
+// 차트 기본 설정 상수화
+const CHART_COLORS = {
+  background: '#1e1e1e',
+  text: '#d1d4dc',
+  grid: '#2B2B2B',
+  upColor: '#26a69a',
+  downColor: '#ef5350',
+} as const;
+
+const MA_COLORS = {
+  sixty: '#0000FF',
+  oneTwenty: '#800080',
+  twoForty: '#FFA500',
+  threeHundredSixty: '#008000',
+  threeHundred: '#00FFFF',
+  nineHundred: '#FF00FF',
+} as const;
+
+// 차트 기본 옵션 설정
+const getChartOptions = (width: number, height: number, chartType: string) => ({
+  layout: {
+    background: { color: CHART_COLORS.background },
+    textColor: CHART_COLORS.text,
+  },
+  grid: {
+    vertLines: { color: CHART_COLORS.grid },
+    horzLines: { color: CHART_COLORS.grid },
+  },
+  width,
+  height,
+  timeScale: {
+    timeVisible: true,
+    secondsVisible: true,
+    borderColor: CHART_COLORS.grid,
+    tickMarkFormatter: (time: number) => {
+      const date = new Date(time * 1000);
+      return chartType.startsWith('seconds/') 
+        ? date.toLocaleTimeString('ko-KR', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+          })
+        : date.toLocaleString('ko-KR', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+    }
+  },
+  rightPriceScale: {
+    scaleMargins: {
+      top: 0.1,
+      bottom: 0.2,
+    },
+    borderVisible: false,
+  },
+  crosshair: {
+    mode: 1,
+    vertLine: {
+      width: 2 as LineWidth,
+      color: '#555',
+      style: 0,
+    },
+    horzLine: {
+      width: 2 as LineWidth,
+      color: '#555',
+      style: 0,
+    },
+  },
+});
+
+type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'threeHundredEMA' | 'nineHundredEMA';
+
+type SeriesRefs = {
+  candle: ISeriesApi<"Candlestick"> | null;
+  volume: ISeriesApi<"Histogram"> | null;
+  sixtyEMA: ISeriesApi<"Line"> | null;
+  oneTwentyEMA: ISeriesApi<"Line"> | null;
+  twoFortyEMA: ISeriesApi<"Line"> | null;
+  threeHundredSixtyEMA: ISeriesApi<"Line"> | null;
+  threeHundredEMA: ISeriesApi<"Line"> | null;
+  nineHundredEMA: ISeriesApi<"Line"> | null;
+};
+
+const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isFullscreen,
   chartHeight,
   toggleFullscreen,
@@ -51,147 +138,85 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
   const container = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  const sixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const twoFortyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const threeHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const nineHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const seriesRefs = useRef<SeriesRefs>({
+    candle: null,
+    volume: null,
+    sixtyEMA: null,
+    oneTwentyEMA: null,
+    twoFortyEMA: null,
+    threeHundredSixtyEMA: null,
+    threeHundredEMA: null,
+    nineHundredEMA: null,
+  });
+
+  // 차트 크기 조정 핸들러
+  const handleResize = useCallback(() => {
+    if (container.current && chartRef.current) {
+      const { clientWidth } = container.current;
+      chartRef.current.applyOptions({
+        width: clientWidth,
+        height: isFullscreen ? window.innerHeight * 0.9 : chartHeight,
+      });
+      chartRef.current.timeScale().fitContent();
+    }
+  }, [chartHeight, isFullscreen]);
 
   // 차트 초기화
-  useEffect(() => {
+  const initializeChart = useCallback(() => {
     if (!container.current) return;
 
-    // Create chart
-    const chart = createChart(container.current, {
-      layout: {
-        background: { color: '#1e1e1e' },
-        textColor: '#d1d4dc',
-      },
-      grid: {
-        vertLines: { color: '#2B2B2B' },
-        horzLines: { color: '#2B2B2B' },
-      },
-      width: container.current.clientWidth,
-      height: chartHeight,
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: true,
-        borderColor: '#2B2B2B',
-        tickMarkFormatter: (time: number) => {
-          const date = new Date(time * 1000);
-          return chartType.startsWith('seconds/') 
-            ? date.toLocaleTimeString('ko-KR', { 
-                hour: '2-digit', 
-                minute: '2-digit', 
-                second: '2-digit' 
-              })
-            : date.toLocaleString('ko-KR', { 
-                year: 'numeric', 
-                month: '2-digit', 
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-              });
-        }
-      },
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.2,
-        },
-        borderVisible: false,
-      },
-      crosshair: {
-        mode: 1,
-        vertLine: {
-          width: 2,
-          color: '#555',
-          style: 0,
-        },
-        horzLine: {
-          width: 2,
-          color: '#555',
-          style: 0,
-        },
-      },
-    });
+    // 이전 차트 정리
+    if (chartRef.current) {
+      chartRef.current.remove();
+    }
 
+    const { clientWidth } = container.current;
+    const chart = createChart(container.current, getChartOptions(clientWidth, chartHeight, chartType));
     chartRef.current = chart;
 
-    // Create series using addSeries method
-    const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#26a69a',
-      downColor: '#ef5350',
+    // 시리즈 생성
+    seriesRefs.current.candle = chart.addSeries(CandlestickSeries, {
+      upColor: CHART_COLORS.upColor,
+      downColor: CHART_COLORS.downColor,
       borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
+      wickUpColor: CHART_COLORS.upColor,
+      wickDownColor: CHART_COLORS.downColor,
     });
-    candleSeriesRef.current = candlestickSeries;
 
-    // Create volume series
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#26a69a',
-      priceFormat: {
-        type: 'volume',
-      },
+    seriesRefs.current.volume = chart.addSeries(HistogramSeries, {
+      color: CHART_COLORS.upColor,
+      priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
     });
-    volumeSeriesRef.current = volumeSeries;
 
     // MA 시리즈 생성
-    const createMASeries = (color: string) => {
-      return chart.addSeries(LineSeries, {
-        color: color,
+    Object.entries(MA_COLORS).forEach(([key, color]) => {
+      const seriesKey = `${key}EMA` as EMAKey;
+      (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = chart.addSeries(LineSeries, {
+        color,
         lineWidth: 2,
         visible: true,
       });
-    };
+    });
 
-    // MA 시리즈 초기화
-    sixtyEMASeriesRef.current = createMASeries('#0000FF'); // 60MA
-    oneTwentyEMASeriesRef.current = createMASeries('#800080'); // 120MA
-    twoFortyEMASeriesRef.current = createMASeries('#FFA500'); // 240MA
-    threeHundredSixtyEMASeriesRef.current = createMASeries('#008000'); // 360MA
-    threeHundredEMASeriesRef.current = createMASeries('#00FFFF'); // 300MA
-    nineHundredEMASeriesRef.current = createMASeries('#FF00FF'); // 900MA
+    // 차트 준비 완료 콜백
+    onChartReady(
+      chart,
+      seriesRefs.current.candle!,
+      seriesRefs.current.volume!,
+      seriesRefs.current.sixtyEMA!,
+      seriesRefs.current.oneTwentyEMA!,
+      seriesRefs.current.twoFortyEMA!,
+      seriesRefs.current.threeHundredSixtyEMA!,
+      seriesRefs.current.threeHundredEMA!,
+      seriesRefs.current.nineHundredEMA!
+    );
 
-    // 컴포넌트 상위로 차트와 시리즈 객체 전달
-    if (
-      chartRef.current && 
-      candleSeriesRef.current && 
-      volumeSeriesRef.current && 
-      sixtyEMASeriesRef.current && 
-      oneTwentyEMASeriesRef.current && 
-      twoFortyEMASeriesRef.current && 
-      threeHundredSixtyEMASeriesRef.current &&
-      threeHundredEMASeriesRef.current &&
-      nineHundredEMASeriesRef.current
-    ) {
-      onChartReady(
-        chartRef.current,
-        candleSeriesRef.current,
-        volumeSeriesRef.current,
-        sixtyEMASeriesRef.current,
-        oneTwentyEMASeriesRef.current,
-        twoFortyEMASeriesRef.current,
-        threeHundredSixtyEMASeriesRef.current,
-        threeHundredEMASeriesRef.current,
-        nineHundredEMASeriesRef.current
-      );
-    }
+  }, [chartHeight, chartType, onChartReady]);
 
-    // 윈도우 리사이즈 핸들러
-    const handleResize = () => {
-      if (container.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: container.current.clientWidth,
-        });
-      }
-    };
-
+  // 차트 초기화
+  useEffect(() => {
+    initializeChart();
     window.addEventListener('resize', handleResize);
 
     return () => {
@@ -201,75 +226,53 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
         chartRef.current = null;
       }
     };
-  }, [chartHeight, chartType, onChartReady]);
+  }, [initializeChart, handleResize]);
 
-  // 차트 높이 업데이트
+  // 마커 업데이트
   useEffect(() => {
-    if (chartRef.current) {
-      chartRef.current.applyOptions({
-        height: chartHeight
-      });
-    }
-  }, [chartHeight]);
-
-  // 매수/매도 마커 업데이트
-  useEffect(() => {
-    if (candleSeriesRef.current && crossPoints.length > 0) {
-      const markers = createTradeMarkers(crossPoints);
-      
+    if (seriesRefs.current.candle && crossPoints.length > 0) {
       try {
-        if (candleSeriesRef.current) {
-          createSeriesMarkers(candleSeriesRef.current, markers);
-        }
+        const markers = createTradeMarkers(crossPoints);
+        createSeriesMarkers(seriesRefs.current.candle, markers);
       } catch (error) {
         console.error('마커 업데이트 실패:', error);
       }
     }
   }, [crossPoints, createTradeMarkers]);
 
-  // 전체화면 이벤트 감지
+  // 전체화면 변경 시 차트 크기 조정
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      // 전체화면 상태 확인은 상위 컴포넌트에서 이미 관리
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
+    handleResize();
+  }, [isFullscreen, handleResize]);
 
   return (
-    <div>
-      {/* 차트 제목과 전체화면 버튼 */}
+    <div className="chart-container">
       <div className="flex justify-between items-center mb-4">
-        <div className="text-white text-lg font-bold">
+        <h2 className="text-white text-lg font-bold">
           {symbol} {chartType} 차트
-        </div>
+        </h2>
         <button
           onClick={toggleFullscreen}
           className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded flex items-center"
         >
-          {isFullscreen ? (
-            <span>⊖ 축소</span>
-          ) : (
-            <span>⊕ 전체화면</span>
-          )}
+          {isFullscreen ? "⊖ 축소" : "⊕ 전체화면"}
         </button>
       </div>
 
-      {/* 차트 컨테이너 */}
       <div 
         ref={chartContainerRef}
         className={`relative ${isFullscreen ? 'bg-[#1e1e1e] p-4' : ''}`}
       >
         <div 
           ref={container} 
-          id="chart" 
-          className="w-full"
+          className="w-full chart-wrapper"
           style={{ height: isFullscreen ? '90vh' : `${chartHeight}px` }}
         />
       </div>
     </div>
   );
-};
+});
+
+ChartContainer.displayName = 'ChartContainer';
 
 export default ChartContainer; 
