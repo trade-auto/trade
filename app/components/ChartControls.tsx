@@ -52,8 +52,8 @@ const ChartControls: React.FC<ChartControlsProps> = ({
       {/* 날짜 범위 설정 */}
       <div className="bg-gray-800 p-4 rounded-lg">
         <div className="text-white font-medium mb-3">날짜 범위 설정</div>
-        <div className="flex flex-wrap gap-3">
-          <div className="w-full md:w-auto">
+        <div className="flex flex-wrap gap-3 z-10">
+          <div className="w-full md:w-auto z-10">
             <div className="text-sm text-gray-400 mb-1">시작 날짜</div>
             <DatePicker
               selected={dateRange.startDate}
@@ -65,10 +65,10 @@ const ChartControls: React.FC<ChartControlsProps> = ({
               timeIntervals={15}
               timeCaption="시간"
               dateFormat="yyyy-MM-dd HH:mm"
-              className="bg-gray-700 text-white px-3 py-2 rounded w-full"
+              className="bg-gray-700 text-white px-3 py-2 rounded w-full "
             />
           </div>
-          <div className="w-full md:w-auto">
+          <div className="w-full md:w-auto z-10">
             <div className="text-sm text-gray-400 mb-1">종료 날짜</div>
             <DatePicker
               selected={dateRange.endDate}
