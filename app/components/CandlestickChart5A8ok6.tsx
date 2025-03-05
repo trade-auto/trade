@@ -589,7 +589,43 @@ export const CandlestickChart: React.FC<ChartProps> = ({
           size: 2
     }));
   };
-
+  const calculateEMA = useCallback((data: ExtendedCandlestickData[], period: number): LineData<Time>[] => {
+    if (!data || data.length === 0 || period <= 0) return [];
+    
+    const emaData: LineData<Time>[] = [];
+    const multiplier = 2 / (period + 1);
+    let initialSMA = 0;
+    
+    const validData = data.filter(item => item && item.close !== undefined);
+    if (validData.length === 0) return [];
+    
+    // 초기 SMA 계산
+    for (let i = 0; i < Math.min(period, validData.length); i++) {
+      initialSMA += validData[i].close;
+    }
+    initialSMA /= Math.min(period, validData.length);
+    
+    // 첫 번째 EMA는 SMA와 동일
+    if (validData.length > 0) {
+      emaData.push({
+        time: validData[0].time,
+        value: initialSMA
+      });
+    }
+    
+    // 나머지 EMA 계산
+    for (let i = 1; i < validData.length; i++) {
+      const previousEMA = emaData[i - 1].value;
+      const currentEMA = (validData[i].close - previousEMA) * multiplier + previousEMA;
+      
+      emaData.push({
+        time: validData[i].time,
+        value: currentEMA
+      });
+    }
+    
+    return emaData;
+  }, []); // 외부 의존성이 없으므로 빈 배열
   // MA 기간 변경 핸들러
   // const handleMAChange = (type:   'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty', value: number) => {
   //   updateMAPeriod(type, value);
@@ -640,6 +676,85 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   //   if (minutes === 7200) return 200; // 월봉 (200개월)
   //   return 30;                        // 년봉 (30년)
   // };
+  const calculateBacktestResult = useCallback((candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
+    const trades: Trade[] = [];
+    let buyPoint: CrossPoint | null = null;
+    const feeRate = 0.0005;
+    
+    for (let i = 0; i < crossPoints.length; i++) {
+      const point = crossPoints[i];
+      
+      if (point.position === 'buy') {
+        buyPoint = point;
+      } else if (point.position === 'sell' && buyPoint) {
+        // 360MA 위에 있으면 매도 신호 무시 (백테스트에서도 적용)
+        if (point.isAbove360MA) {
+          console.log(`Backtest: SELL signal ignored at ${new Date((point.time as number) * 1000).toLocaleTimeString()} - price is above 360MA`);
+          continue; // 다음 포인트로 넘어감
+        }
+        
+        const entryPrice = buyPoint.price;
+        const exitPrice = point.price;
+        const returnRate = (exitPrice - entryPrice) / entryPrice;
+        
+        trades.push({
+          entryTime: buyPoint.time,
+          exitTime: point.time,
+          entryPrice,
+          exitPrice,
+          return: returnRate,
+          isSuccess: returnRate > 0,
+          mode: mode === 'test' ? 'test-auto' : 'live-auto',
+          angles: {
+            //entryMa40: buyPoint.slopes.ma40,
+            entryMa360: buyPoint.slopes.ma360,
+            //exitMa40: point.slopes.ma40,
+            exitMa360: point.slopes.ma360,
+            entryMa120: buyPoint.slopes.ma120,
+            exitMa120: point.slopes.ma120
+          }
+        });
+        
+        buyPoint = null;
+      }
+    }
+
+    // 나머지 코드는 동일...
+    const totalTrades = trades.length;
+    const successfulTrades = trades.filter(trade => trade.isSuccess).length;
+    
+    // 수수료 제외 총 수익률 (매수+매도 수수료 고려)
+    const totalReturn = trades.reduce((sum, trade) => sum + trade.return, 0);
+    
+    // 수수료 포함 순수익률 계산 (각 거래마다 매수+매도 수수료 차감)
+    const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - (feeRate * 2)), 0);
+    
+    return {
+      totalTrades,
+      successfulTrades,
+      totalReturn,
+      totalNetReturn,
+      successRate: totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0,
+      averageReturn: totalTrades > 0 ? totalReturn / totalTrades : 0,
+      averageNetReturn: totalTrades > 0 ? totalNetReturn / totalTrades : 0,
+      trades
+    };
+  }, [mode]); // mode를 의존성으로 추가
+  // 마커 업데이트를 위한 함수 통합
+  const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
+    if (!candleSeriesRef.current) return;
+    
+    try {
+      // 기존 마커 제거
+      createSeriesMarkers(candleSeriesRef.current, []);
+      
+      // 새 마커 생성 및 설정
+      const markers = createTradeMarkers(crossPoints);
+    createSeriesMarkers(candleSeriesRef.current, markers);
+    } catch (error) {
+      console.error('마커 업데이트 실패:', error);
+    }
+  }, []);
 
   // 전체 데이터 로드 함수를 먼저 선언
   const loadAllData = useCallback(async (startDate: Date, endDate: Date) => {
@@ -747,7 +862,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       setIsLoading(false);
       setProgress(0);
     }
-  }, [symbol, chartType, maPeriods ]);
+  }, [symbol, chartType, maPeriods, calculateBacktestResult, calculateEMA, updateChartMarkers]);
 
   // 그 다음에 resetAndLoadData 함수 선언
   const resetAndLoadData = useCallback(async (start: Date, end: Date) => {
@@ -936,7 +1051,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
       }
     }
-  }, [showMA, maPeriods]);  // candleData 제거
+  }, [showMA, maPeriods, calculateEMA]);  // candleData 제거
 
   // 차트 생성 시 스크롤 이벤트 구독
   useEffect(() => {
@@ -968,7 +1083,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     return () => {
       chartRef.current?.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
     };
-  }, [loadAllData]);
+  }, [loadAllData, dateRange.endDate]);
 
   // 실시간 가격 업데이트 처리
   useEffect(() => {
@@ -1002,113 +1117,10 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   }, [currentPrice, chartType]);
 
   // EMA 계산 함수
-  const calculateEMA = (data: ExtendedCandlestickData[], period: number): LineData<Time>[] => {
-    if (!data || data.length === 0 || period <= 0) return [];
-    
-    const emaData: LineData<Time>[] = [];
-    const multiplier = 2 / (period + 1);
-    let initialSMA = 0;
-    
-    // 유효한 데이터만 필터링
-    const validData = data.filter(item => item && item.close !== undefined);
-    
-    if (validData.length === 0) return [];
-    
-    // 초기 SMA 계산
-    for (let i = 0; i < Math.min(period, validData.length); i++) {
-      initialSMA += validData[i].close;
-    }
-    initialSMA /= Math.min(period, validData.length);
-    
-    // 첫 번째 EMA는 SMA와 동일
-    if (validData.length > 0) {
-      emaData.push({
-        time: validData[0].time,
-        value: initialSMA
-      });
-    }
-    
-    // 나머지 EMA 계산
-    for (let i = 1; i < validData.length; i++) {
-      const previousEMA = emaData[i - 1].value;
-      const currentEMA = (validData[i].close - previousEMA) * multiplier + previousEMA;
-      
-      emaData.push({
-        time: validData[i].time,
-        value: currentEMA
-      });
-    }
-    
-    return emaData;
-  };
+ 
 
   // 백테스트 결과 계산 함수 수정
-  const calculateBacktestResult = (candleData: ExtendedCandlestickData[], crossPoints: CrossPoint[]): BacktestResult => {
-    const trades: Trade[] = [];
-    let buyPoint: CrossPoint | null = null;
-    
-    // 수수료율 변경 (0.1% -> 0.05%)
-    const feeRate = 0.0005; // 0.05%
-    
-    for (let i = 0; i < crossPoints.length; i++) {
-      const point = crossPoints[i];
-      
-      if (point.position === 'buy') {
-        buyPoint = point;
-      } else if (point.position === 'sell' && buyPoint) {
-        // 360MA 위에 있으면 매도 신호 무시 (백테스트에서도 적용)
-        if (point.isAbove360MA) {
-          console.log(`Backtest: SELL signal ignored at ${new Date((point.time as number) * 1000).toLocaleTimeString()} - price is above 360MA`);
-          continue; // 다음 포인트로 넘어감
-        }
-        
-        const entryPrice = buyPoint.price;
-        const exitPrice = point.price;
-        const returnRate = (exitPrice - entryPrice) / entryPrice;
-        
-        trades.push({
-          entryTime: buyPoint.time,
-          exitTime: point.time,
-          entryPrice,
-          exitPrice,
-          return: returnRate,
-          isSuccess: returnRate > 0,
-          mode: mode === 'test' ? 'test-auto' : 'live-auto',
-          angles: {
-            //entryMa40: buyPoint.slopes.ma40,
-            entryMa360: buyPoint.slopes.ma360,
-            //exitMa40: point.slopes.ma40,
-            exitMa360: point.slopes.ma360,
-            entryMa120: buyPoint.slopes.ma120,
-            exitMa120: point.slopes.ma120
-          }
-        });
-        
-        buyPoint = null;
-      }
-    }
-
-    // 나머지 코드는 동일...
-    const totalTrades = trades.length;
-    const successfulTrades = trades.filter(trade => trade.isSuccess).length;
-    
-    // 수수료 제외 총 수익률 (매수+매도 수수료 고려)
-    const totalReturn = trades.reduce((sum, trade) => sum + trade.return, 0);
-    
-    // 수수료 포함 순수익률 계산 (각 거래마다 매수+매도 수수료 차감)
-    const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - (feeRate * 2)), 0);
-    
-    return {
-      totalTrades,
-      successfulTrades,
-      totalReturn,
-      totalNetReturn,
-      successRate: totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0,
-      averageReturn: totalTrades > 0 ? totalReturn / totalTrades : 0,
-      averageNetReturn: totalTrades > 0 ? totalNetReturn / totalTrades : 0,
-      trades
-    };
-  };
+ 
 
   // 시세 차이 계산
   const priceDiff = currentPrice > 0 && chartPrice > 0 
@@ -1117,36 +1129,36 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const priceDiffPercentage = currentPrice > 0 && chartPrice > 0
     ? (priceDiff / chartPrice) * 100
     : 0;
-
+const calculateVMA = useCallback((data: ExtendedCandlestickData[], period: number): number => {
+  const volumes = data.slice(-period).map(candle => candle.volume || 0);
+  const totalVolume = volumes.reduce((sum, volume) => sum + volume, 0);
+  return totalVolume / period;
+}, []);
   // 거래량 기반 신호 판단 함수
-  const evaluateVolumeSignals = (candleData: ExtendedCandlestickData[], currentVolume: number, currentPrice: number): string => {
-    const VMA10 = calculateVMA(candleData, 10); // 10봉 평균 거래량
+  const evaluateVolumeSignals = useCallback((candleData: ExtendedCandlestickData[], currentVolume: number, currentPrice: number): string => {
+    const VMA10 = calculateVMA(candleData, 10);
     const lastCandle = candleData[candleData.length - 1];
     const volumeRatio = (currentVolume / VMA10) * 100;
 
     if (currentVolume >= VMA10 * 2) {
       if (currentPrice > lastCandle.close) {
-        return '강한 매수 신호'; // 거래량 급증 + 상승
+        return '강한 매수 신호';
       } else {
-        return '강한 매도 신호'; // 거래량 급증 + 하락
+        return '강한 매도 신호';
       }
     }
 
     if (volumeRatio > 150) {
-      return '강한 상승 신호'; // VR > 150%
+      return '강한 상승 신호';
     } else if (volumeRatio < 50) {
-      return '약한 매매세력'; // VR < 50%
+      return '약한 매매세력';
     }
 
     return '';
-  };
+  }, [calculateVMA]);
 
   // VMA 계산 함수
-  const calculateVMA = (data: ExtendedCandlestickData[], period: number): number => {
-    const volumes = data.slice(-period).map(candle => candle.volume || 0);
-    const totalVolume = volumes.reduce((sum, volume) => sum + volume, 0);
-    return totalVolume / period;
-  };
+
 
   // OBV 계산 함수
   const calculateOBV = (data: ExtendedCandlestickData[]): number => {
@@ -1183,7 +1195,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     console.log('OBV:', obv);
 
     // 추가적인 로직을 통해 신호를 차트에 표시하거나 백테스팅에 활용할 수 있습니다.
-  }, [candleSeriesRef.current, volumeSeriesRef.current]);
+  }, [evaluateVolumeSignals]);
 
   // 컴포넌트 내부에 상태 추가
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -2044,7 +2056,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   }, [tickers, symbol]);
 
   // new: 캔들 완료 처리 함수 (완료된 캔들을 누적 업데이트)
-  const handleCompletedCandle = (newCandle: ExtendedCandlestickData) => {
+  const handleCompletedCandle = useCallback((newCandle: ExtendedCandlestickData) => {
     // 기존 완료된 캔들 데이터 취득 (없다면 빈 배열)
     const existingData = candleSeriesRef.current?.data() as ExtendedCandlestickData[] || [];
 
@@ -2076,7 +2088,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // 백테스팅 결과 업데이트
     const result = calculateBacktestResult(updatedData, crossPoints);
     setBacktestResult(result);
-  };
+  }, [maPeriods.sixty, calculateBacktestResult, calculateEMA]);
 
   // WebSocket에서 캔들 완료 시 호출하는 콜백 등록:
   useEffect(() => {
@@ -2323,7 +2335,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
         });
       }
     }
-  }, [maPeriods, showMA]);
+}, [maPeriods, showMA, calculateEMA]);
   // 상태 선언을 먼저
   const [candleData, setCandleData] = useState<ExtendedCandlestickData[]>([]);
   // 데이터 업데이트 useEffect 수정
@@ -2344,7 +2356,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
         });
       }
     }
-  }, [candleData, showMA, maPeriods]);  // 의존성 배열에 showMA와 maPeriods 추가
+  }, [candleData, showMA, maPeriods, calculateEMA]);
 
 
 
@@ -2390,7 +2402,17 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
   //   }
   //   return trade;
   // }, [calculateSlopes]);
-
+  const calculateSlope = useCallback((data: ExtendedCandlestickData[], period: number): number => {
+    if (data.length < 2) return 0;
+    
+    const maData = calculateEMA(data, period);
+    if (maData.length < 2) return 0;
+    
+    const last = maData[maData.length - 1].value;
+    const prev = maData[maData.length - 2].value;
+    
+    return ((last - prev) / prev) * 100;
+  }, [calculateEMA]);
   // 백테스트 결과 업데이트 시 기울기 저장
   useEffect(() => {
     if (backtestResult?.trades && candleSeriesRef.current) {
@@ -2438,20 +2460,10 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
         trades: updatedTrades
       } : null);
     }
-  }, [backtestResult?.trades, maPeriods.threeHundredSixty]);
+  }, [backtestResult?.trades, maPeriods.threeHundredSixty, maPeriods.forty, calculateSlope]);
 
   // 기울기 계산 함수 추가
-  const calculateSlope = (data: ExtendedCandlestickData[], period: number): number => {
-    if (data.length < 2) return 0;
-    
-    const maData = calculateEMA(data, period);
-    if (maData.length < 2) return 0;
-    
-    const last = maData[maData.length - 1].value;
-    const prev = maData[maData.length - 2].value;
-    
-    return ((last - prev) / prev) * 100; // 변화율을 퍼센트로 반환
-  };
+
 
   // 자동 업데이트 효과
   useEffect(() => {
@@ -2503,22 +2515,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
     </button>
   </div>
 
-  // 마커 업데이트를 위한 함수 통합
-  const updateChartMarkers = useCallback((crossPoints: CrossPoint[]) => {
-    if (!candleSeriesRef.current) return;
-    
-    try {
-      // 기존 마커 제거
-      createSeriesMarkers(candleSeriesRef.current, []);
-      
-      // 새 마커 생성 및 설정
-      const markers = createTradeMarkers(crossPoints);
-    createSeriesMarkers(candleSeriesRef.current, markers);
-    } catch (error) {
-      console.error('마커 업데이트 실패:', error);
-    }
-  }, []);
-
+ 
    
 
   // 시리즈 제거 함수
@@ -2603,7 +2600,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
       const twoFortyEMAData = calculateEMA(updatedData, maPeriods.twoForty);
       twoFortyEMASeriesRef.current.setData(twoFortyEMAData);
     }
-  }, [candleSeriesRef, maPeriods.twoForty]);
+  }, [maPeriods.twoForty, calculateEMA]);
 
   // formatTime 함수 추가
   const formatTime = (time: Time): string => {
