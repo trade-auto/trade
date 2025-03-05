@@ -9,8 +9,7 @@ import {
   CrossPoint, 
   DateRange,
   BacktestResult,
-  Trade,
-  UpbitCandle
+  Trade
 } from '../types/candlestick';
 
 /**

@@ -30,9 +30,21 @@ import {
   formatDate,
 } from '../utils/chartHelpers';
 
+interface OrderParams {
+  market: string;
+  side: 'bid' | 'ask';
+  volume: string;
+  price: string;
+  ord_type: string;
+  mode: string;
+}
+
 interface CandlestickChartProps {
   symbol: string;
   chartType: string;
+  initialAutoUpdate?: boolean;
+  mode?: 'live' | 'test';
+  handleOrder?: (params: OrderParams) => Promise<void>;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onOrder?: (price: number, isMarketOrder: boolean) => void;
 }
@@ -40,6 +52,11 @@ interface CandlestickChartProps {
 const CandlestickChart: React.FC<CandlestickChartProps> = ({
   symbol,
   chartType,
+  initialAutoUpdate,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  mode,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  handleOrder,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onOrder,
 }) => {
@@ -57,7 +74,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   
   // 설정 상태
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
-  const [isAutoUpdate, setIsAutoUpdate] = useState(true);
+  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate ?? true);
   const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState(true);
   const [showMA, setShowMA] = useState<MASettings>({
     sixty: true,
@@ -88,7 +105,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 타임스탬프 처리 유틸리티 함수
-  const getTimeValue = (time: Time | BusinessDay | string): number => {
+  const getTimeValue = useCallback((time: Time | BusinessDay | string): number => {
     if (typeof time === 'number') {
       return time;
     } else if (typeof time === 'string') {
@@ -104,7 +121,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     
     // 기본값
     return new Date().getTime() / 1000;
-  };
+  }, []);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -412,7 +429,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     } finally {
       setCsvLoading(false);
     }
-  }, [allData, csvDateRange, symbol, chartType]);
+  }, [allData, csvDateRange, symbol, chartType, csvLoading, getTimeValue]);
 
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">

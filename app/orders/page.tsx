@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { NavigationHeader } from '../components/NavigationHeader';
 import { OrderList } from '../components/OrderList';
 import { OrderHistory } from '../components/OrderHistory';
@@ -87,7 +87,7 @@ export default function OrdersPage() {
   }, [selectedSymbol]);
 
   // 잔고 정보 로드
-  const loadBalance = async () => {
+  const loadBalance = useCallback(async () => {
     try {
       const accounts = await getAccountBalance();
       const coinBalance = accounts.find(
@@ -104,12 +104,12 @@ export default function OrdersPage() {
     } catch (error) {
       console.error('잔고 조회 실패:', error);
     }
-  };
+  }, [selectedSymbol]);
 
   // 심볼이 변경될 때마다 잔고 정보 업데이트
   useEffect(() => {
     loadBalance();
-  }, [selectedSymbol]);
+  }, [selectedSymbol, loadBalance]);
 
   const handleOrderCreated = () => {
     // OpenOrders 컴포넌트의 새로고침 함수 호출

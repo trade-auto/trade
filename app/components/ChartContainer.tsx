@@ -12,6 +12,7 @@ import {
 import { SeriesMarker } from 'lightweight-charts';
 import { CrossPoint } from '../types/candlestick';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
   setMarkers(markers: SeriesMarker<Time>[]): void;
 }

@@ -41,10 +41,9 @@ export interface BusinessDay {
   month: number;
   day: number;
 }
-export interface ExtendedCandlestickData extends Candle {
-  // 추가 프로퍼티가 필요하면 여기에 작성
-} 
 
+// 인터페이스 대신 타입 별칭 사용
+export type ExtendedCandlestickData = Candle;
 
 export interface ChartProps {
   symbol: string;

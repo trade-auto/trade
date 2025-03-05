@@ -1,12 +1,9 @@
 'use client';
 
 import { useUpbitWebSocket } from './hooks/useUpbitWebSocket';
-//import { CandlestickChart } from './components/CandlestickChart5A2_1';
 import { CandlestickChart } from './components/CandlestickChart';
 import { useUpbitStore } from './store/useUpbitStore';
 import { useState } from 'react';
-import { getAccountBalance } from './api/upbitAccount';
-import { OrderChanceInfo } from './components/OrderChanceInfo';
 import { NavigationHeader } from './components/NavigationHeader';
 import { OrderLimitSettings } from './components/OrderLimitSettings';
 
@@ -32,24 +29,10 @@ const CHART_TYPES = [
 // 추가: 차트 모드 상태 (live vs test)
 type ChartMode = "live" | "test";
 
-// 계좌 정보 인터페이스 추가
-interface AccountInfo {
-  currency: string;
-  balance: number;
-  avgBuyPrice: number;
-  unitCurrency: string;
-}
-
 export default function Home() {
   const [selectedSymbol, setSelectedSymbol] = useState('KRW-BTC');
-  const [selectedChartType, setSelectedChartType] = useState('minutes/1');
   // 추가: 차트 모드 상태 변수 (기본은 test)
   const [chartMode, setChartMode] = useState<ChartMode>("test");
-  
-  // 계좌 정보 상태 추가
-  const [accounts, setAccounts] = useState<AccountInfo[]>([]);
-  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
-  const [accountError, setAccountError] = useState<string | null>(null);
   
   // 선택된 심볼에 대해서만 WebSocket 연결
   useUpbitWebSocket(selectedSymbol);
@@ -57,20 +40,11 @@ export default function Home() {
   const { isConnected, prices } = useUpbitStore();
   const lastUpdated = prices[selectedSymbol]?.lastUpdated ?? '-';
   
-  // 계좌 정보 로드 함수
+  // 계좌 정보 로드 함수 - 현재 사용하지 않음
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const loadAccountInfo = async () => {
-    try {
-      setIsLoadingAccounts(true);
-      setAccountError(null);
-      const accountData = await getAccountBalance();
-      setAccounts(accountData);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      setAccountError(`계좌 정보 로딩 실패: ${errorMsg}`);
-      console.error('계좌 정보 로딩 오류:', error);
-    } finally {
-      setIsLoadingAccounts(false);
-    }
+    // 실제 구현은 필요할 때 작성
+    console.log('계좌 정보 로드 함수');
   };
 
   // Set the default mode to a valid value
