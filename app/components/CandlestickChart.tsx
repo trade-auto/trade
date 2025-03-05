@@ -345,6 +345,11 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   }, []);
 
+  // 차트 높이 변경 핸들러
+  const handleHeightChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setChartHeight(Number(e.target.value));
+  }, []);
+
   // CSV 저장 함수
   const saveToCSV = useCallback(async () => {
     if (csvLoading || !allData || allData.length === 0) {
@@ -461,7 +466,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
               showMA={showMA}
               updateShowMA={updateShowMA}
               chartHeight={chartHeight}
-              handleHeightChange={(e) => setChartHeight(Number(e.target.value))}
+              handleHeightChange={handleHeightChange}
             />
           </div>
           

@@ -28,93 +28,71 @@ const ChartControls: React.FC<ChartControlsProps> = ({
 }) => {
   return (
     <div className="mb-4 space-y-4">
-      {/* 데이터 로딩 제어 버튼 */}
-      <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
-        <div className="text-gray-400 text-sm">자동 데이터 업데이트</div>
-        <div className="flex space-x-4">
+      {/* 자동 업데이트 설정 */}
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-white font-medium mb-3">실시간 업데이트 설정</div>
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={handleAutoUpdateToggle}
-            className={`px-4 py-2 rounded-lg font-bold ${
-              isAutoUpdate 
-                ? 'bg-green-600 hover:bg-green-700' 
-                : 'bg-gray-600 hover:bg-gray-700'
-            } text-white`}
+            className={`px-4 py-2 rounded-md text-sm font-medium 
+              ${isAutoUpdate ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
           >
-            {isAutoUpdate ? '✓ 자동 업데이트' : '자동 업데이트'}
+            {isAutoUpdate ? '자동 업데이트 ON' : '자동 업데이트 OFF'}
           </button>
-          
           <button
             onClick={handleRealtimeAPIToggle}
-            className={`px-4 py-2 rounded-lg font-bold ${
-              isRealtimeAPIEnabled 
-                ? 'bg-blue-600 hover:bg-blue-700' 
-                : 'bg-gray-600 hover:bg-gray-700'
-            } text-white`}
+            className={`px-4 py-2 rounded-md text-sm font-medium 
+              ${isRealtimeAPIEnabled ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
           >
-            {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
+            {isRealtimeAPIEnabled ? '실시간 API ON' : '실시간 API OFF'}
           </button>
         </div>
       </div>
-
-      {/* 시작 날짜 설정 패널 */}
+      
+      {/* 날짜 범위 설정 */}
       <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">시작 날짜</div>
-        <DatePicker
-          selected={dateRange.startDate}
-          onChange={(date: Date | null) => {
-            if (date) handleDateRangeChange(date);
-          }}
-          showTimeSelect
-          timeFormat="HH:mm"
-          timeIntervals={1}
-          timeCaption="시간"
-          dateFormat="yyyy-MM-dd HH:mm"
-          maxDate={new Date()}
-          className="bg-gray-700 text-white p-2 rounded w-full"
-          popperClassName="react-datepicker-popper"
-          popperPlacement="right-start"
-          withPortal
-          portalId="datepicker-portal"
-        />
+        <div className="text-white font-medium mb-3">날짜 범위 설정</div>
+        <div className="flex flex-wrap gap-3">
+          <div className="w-full md:w-auto">
+            <div className="text-sm text-gray-400 mb-1">시작 날짜</div>
+            <DatePicker
+              selected={dateRange.startDate}
+              onChange={(date: Date | null) => {
+                if (date) handleDateRangeChange(date);
+              }}
+              showTimeSelect
+              timeFormat="HH:mm"
+              timeIntervals={15}
+              timeCaption="시간"
+              dateFormat="yyyy-MM-dd HH:mm"
+              className="bg-gray-700 text-white px-3 py-2 rounded w-full"
+            />
+          </div>
+          <div className="w-full md:w-auto">
+            <div className="text-sm text-gray-400 mb-1">종료 날짜</div>
+            <DatePicker
+              selected={dateRange.endDate}
+              onChange={(date: Date | null) => {
+                if (date) handleEndDateChange(date);
+              }}
+              showTimeSelect
+              timeFormat="HH:mm"
+              timeIntervals={15}
+              timeCaption="시간"
+              dateFormat="yyyy-MM-dd HH:mm"
+              className="bg-gray-700 text-white px-3 py-2 rounded w-full"
+            />
+          </div>
+        </div>
       </div>
-
-      {/* 종료 날짜 설정 패널 */}
-      <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">종료 날짜</div>
-        <DatePicker
-          selected={
-            dateRange.endDate && dateRange.startDate &&
-            dateRange.endDate.getTime() === new Date(dateRange.startDate.getTime() + 30 * 60 * 1000).getTime()
-              ? null
-              : dateRange.endDate
-          }
-          onChange={(date: Date | null) => {
-            if (date) {
-              handleEndDateChange(date);
-            }
-          }}
-          showTimeSelect
-          timeFormat="HH:mm"
-          timeIntervals={1}
-          timeCaption="시간"
-          dateFormat="yyyy-MM-dd HH:mm"
-          maxDate={new Date()}
-          className="bg-gray-700 text-white p-2 rounded w-full"
-          popperClassName="react-datepicker-popper"
-          popperPlacement="right-start"
-          withPortal
-          portalId="datepicker-portal"
-          placeholderText="종료 날짜 선택"
-        />
-      </div>
-
+      
       {/* 로딩 프로그레스 바 */}
       {isLoading && (
-        <div className="mb-4">
-          <div className="text-gray-400 text-sm mb-2">데이터 로딩 중... {progress.toFixed(1)}%</div>
-          <div className="w-full bg-gray-700 rounded-full h-2.5">
-            <div
-              className="bg-blue-600 h-2.5 rounded-full"
+        <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-white text-sm mb-2">데이터 로드 중: {progress}%</div>
+          <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-in-out"
               style={{ width: `${progress}%` }}
             ></div>
           </div>

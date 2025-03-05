@@ -22,60 +22,55 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
   };
 
   return (
-    <div className="bg-gray-700 rounded-lg p-4">
-      <div className="text-white text-lg font-bold mb-4">설정</div>
-      
-      {/* MA 설정 */}
-      <div className="mb-4">
-        <div className="text-white mb-2">이동 평균선</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <button
-            onClick={() => toggleMA('sixty')}
-            className={`px-3 py-2 rounded-md text-sm ${
-              showMA.sixty ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'
-            }`}
-          >
-            60MA
-          </button>
-          <button
-            onClick={() => toggleMA('oneTwenty')}
-            className={`px-3 py-2 rounded-md text-sm ${
-              showMA.oneTwenty ? 'bg-purple-600 text-white' : 'bg-gray-600 text-gray-300'
-            }`}
-          >
-            120MA
-          </button>
-          <button
-            onClick={() => toggleMA('twoForty')}
-            className={`px-3 py-2 rounded-md text-sm ${
-              showMA.twoForty ? 'bg-orange-500 text-white' : 'bg-gray-600 text-gray-300'
-            }`}
-          >
-            240MA
-          </button>
-          <button
-            onClick={() => toggleMA('threeHundredSixty')}
-            className={`px-3 py-2 rounded-md text-sm ${
-              showMA.threeHundredSixty ? 'bg-gray-900 text-white' : 'bg-gray-600 text-gray-300'
-            }`}
-          >
-            360MA
-          </button>
+    <div className="mb-4 space-y-4">
+      {/* MA 설정 패널 */}
+      <div className="grid grid-cols-3 gap-4 bg-gray-800 p-4 rounded-lg">
+        <div className="bg-gray-700 p-3 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">MA 설정</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => toggleMA('sixty')}
+              className={`px-2 py-1 rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.sixty ? '✓ 60MA 보기' : '60MA 숨김'}
+            </button>
+            <button
+              onClick={() => toggleMA('oneTwenty')}
+              className={`px-2 py-1 rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.oneTwenty ? '✓ 120MA 보기' : '120MA 숨김'}
+            </button>
+            <button
+              onClick={() => toggleMA('twoForty')}
+              className={`px-2 py-1 rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.twoForty ? '✓ 240MA 보기' : '240MA 숨김'}
+            </button>
+            <button
+              onClick={() => toggleMA('threeHundredSixty')}
+              className={`px-2 py-1 rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.threeHundredSixty ? '✓ 360MA 보기' : '360MA 숨김'}
+            </button>
+          </div>
         </div>
       </div>
       
-      {/* 높이 설정 */}
-      <div>
-        <div className="text-white mb-2">차트 높이 설정: {chartHeight}px</div>
-        <input
-          type="range"
-          min="300"
-          max="800"
-          step="50"
-          value={chartHeight}
-          onChange={handleHeightChange}
-          className="w-full"
-        />
+      {/* 차트 높이 조절 패널 */}
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm mb-2">차트 높이 조절</div>
+        <div className="flex items-center space-x-4">
+          <input
+            type="range"
+            min="300"
+            max="800"
+            step="50"
+            value={chartHeight}
+            onChange={handleHeightChange}
+            className="flex-1"
+          />
+          <div className="text-white font-bold w-20 text-center">{chartHeight}px</div>
+        </div>
       </div>
     </div>
   );

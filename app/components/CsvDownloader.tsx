@@ -30,9 +30,9 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
   return (
     <div className="mb-4">
       <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div className="text-gray-400 text-sm">CSV 다운로드 기간 설정</div>
-          <div className="flex space-x-4">
+          <div className="flex flex-wrap gap-3">
             <div>
               <DatePicker
                 selected={csvDateRange.startDate}
@@ -44,11 +44,11 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
                 }}
                 showTimeSelect
                 timeFormat="HH:mm"
-                timeIntervals={1}
+                timeIntervals={15}
                 timeCaption="시간"
                 dateFormat="yyyy-MM-dd HH:mm"
                 maxDate={new Date()}
-                className="bg-gray-700 text-white p-2 rounded"
+                className="bg-gray-700 text-white px-3 py-2 rounded"
                 popperClassName="react-datepicker-popper"
                 popperPlacement="right-start"
                 withPortal
@@ -66,76 +66,39 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
                 }}
                 showTimeSelect
                 timeFormat="HH:mm"
-                timeIntervals={1}
+                timeIntervals={15}
                 timeCaption="시간"
                 dateFormat="yyyy-MM-dd HH:mm"
                 maxDate={new Date()}
                 minDate={csvDateRange.startDate || undefined}
-                className="bg-gray-700 text-white p-2 rounded"
+                className="bg-gray-700 text-white px-3 py-2 rounded"
                 popperClassName="react-datepicker-popper"
                 popperPlacement="right-start"
                 withPortal
                 placeholderText="종료 날짜 선택"
               />
             </div>
-            <div className="flex space-x-2">
-              <button
-                onClick={saveToCSV}
-                disabled={csvLoading}
-                className={`px-4 py-2 rounded-lg font-bold ${
-                  csvLoading 
-                    ? 'bg-gray-600 cursor-not-allowed' 
-                    : 'bg-blue-600 hover:bg-blue-700'
-                } text-white`}
-              >
-                {csvLoading ? `데이터 가져오는 중... ${csvProgress}%` : '데이터 가져오기'}
-              </button>
-              <button
-                onClick={() => {
-                  if (allData.length > 0) {
-                    const header = 'timestamp,open,high,low,close,volume\n';
-                    const csvContent = allData
-                      .map(candle => {
-                        const kstDate = new Date(candle.candle_date_time_kst);
-                        const formattedDate = kstDate.toISOString().replace('T', ' ').slice(0, 19);
-                        return `${formattedDate},${candle.opening_price},${candle.high_price},${candle.low_price},${candle.trade_price},${candle.candle_acc_trade_volume}`;
-                      })
-                      .join('\n');
-                    
-                    const fullContent = header + csvContent;
-                    const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(blob);
-                    const fileName = `${symbol}_${chartType}_${csvDateRange.startDate?.toISOString().slice(0,19)}_${csvDateRange.endDate?.toISOString().slice(0,19)}.csv`;
-                    
-                    const link = document.createElement('a');
-                    link.setAttribute('href', url);
-                    link.setAttribute('download', fileName);
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
-                  } else {
-                    alert('먼저 데이터를 가져와주세요.');
-                  }
-                }}
-                disabled={csvLoading || allData.length === 0}
-                className={`px-4 py-2 rounded-lg font-bold ${
-                  csvLoading || allData.length === 0
-                    ? 'bg-gray-600 cursor-not-allowed'
-                    : 'bg-green-600 hover:bg-green-700'
-                } text-white`}
-              >
-                CSV 다운로드
-              </button>
-            </div>
+            <button
+              onClick={saveToCSV}
+              disabled={csvLoading || !allData || allData.length === 0}
+              className={`px-4 py-2 rounded-lg font-bold ${
+                csvLoading || !allData || allData.length === 0
+                  ? 'bg-gray-600 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+              } text-white`}
+            >
+              {csvLoading ? 'CSV 생성 중...' : 'CSV 다운로드'}
+            </button>
           </div>
         </div>
-        {/* 로딩 프로그레스 바 */}
+        
+        {/* 진행 상태 표시 */}
         {csvLoading && (
-          <div className="mt-4">
-            <div className="w-full bg-gray-700 rounded-full h-2.5">
-              <div
-                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+          <div>
+            <div className="text-gray-400 text-sm mb-2">CSV 생성 중... {csvProgress}%</div>
+            <div className="w-full bg-gray-700 rounded-full h-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${csvProgress}%` }}
               ></div>
             </div>
