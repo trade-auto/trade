@@ -149,7 +149,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     nineHundredEMA: null,
   });
   const prevMarkersRef = useRef<SeriesMarker<Time>[]>([]);
-  const markersInitializedRef = useRef<boolean>(false);
+  const initialMarkersRef = useRef<SeriesMarker<Time>[]>([]);
+  const initialMarkersSetRef = useRef<boolean>(false);
 
   // 차트 크기 조정 핸들러
   const handleResize = useCallback(() => {
@@ -232,25 +233,33 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     try {
       const newMarkers = crossPoints.length > 0 ? createTradeMarkers(crossPoints) : [];
       
-      // 초기 마커 설정 또는 마커 변경이 있을 때만 업데이트
-      if (!markersInitializedRef.current || JSON.stringify(prevMarkersRef.current) !== JSON.stringify(newMarkers)) {
-        // 기존 마커와 새 마커 비교
-        const existingMarkers = prevMarkersRef.current;
+      // 초기 마커 설정 (한 번만 실행)
+      if (!initialMarkersSetRef.current && newMarkers.length > 0) {
+        initialMarkersRef.current = newMarkers;
+        createSeriesMarkers(seriesRefs.current.candle, newMarkers);
+        prevMarkersRef.current = newMarkers;
+        initialMarkersSetRef.current = true;
+        return;
+      }
+
+      // 이후 업데이트: 초기 마커는 유지하고 새로운 마커만 추가
+      if (initialMarkersSetRef.current) {
         const markersToAdd = newMarkers.filter(newMarker => 
-          !existingMarkers.some(existing => 
-            existing.time === newMarker.time && 
-            existing.position === newMarker.position
+          !initialMarkersRef.current.some(initial => 
+            initial.time === newMarker.time && 
+            initial.position === newMarker.position
+          ) &&
+          !prevMarkersRef.current.some(prev => 
+            prev.time === newMarker.time && 
+            prev.position === newMarker.position
           )
         );
 
-        // 새로운 마커만 추가
         if (markersToAdd.length > 0) {
-          const allMarkers = [...existingMarkers, ...markersToAdd];
+          const allMarkers = [...initialMarkersRef.current, ...markersToAdd];
           createSeriesMarkers(seriesRefs.current.candle, allMarkers);
           prevMarkersRef.current = allMarkers;
         }
-
-        markersInitializedRef.current = true;
       }
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
