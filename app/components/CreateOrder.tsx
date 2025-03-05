@@ -79,57 +79,6 @@ const calculateMA = (priceData: number[], period: number): number[] => {
   return result;
 };
 
-const getAngle = (maValues: number[]): number => {
-  if (maValues.length < 2) return 0;
-  const delta = maValues[maValues.length - 1] - maValues[maValues.length - 2];
-  return (Math.atan(delta) * 180) / Math.PI;
-};
-
-type ConditionStartTimes = Record<"60MA_angle_above_45" | "60MA_angle_below_minus45", number | null>;
-
-declare global {
-  interface Window {
-    _conditionStartTimes: ConditionStartTimes;
-  }
-}
-
-if (!window._conditionStartTimes) {
-  window._conditionStartTimes = {
-    "60MA_angle_above_45": null,
-    "60MA_angle_below_minus45": null
-  };
-}
-const conditionStartTimes = window._conditionStartTimes;
-
-const updateConditionDuration = (
-  condition: "60MA_angle_above_45" | "60MA_angle_below_minus45",
-  currentAngle: number
-): number => {
-  const now = Date.now() / 1000; // 초 단위
-  if (condition === "60MA_angle_above_45") {
-    if (currentAngle >= 45) {
-      if (conditionStartTimes[condition] === null) {
-        conditionStartTimes[condition] = now;
-      }
-      return now - conditionStartTimes[condition];
-    } else {
-      conditionStartTimes[condition] = null;
-      return 0;
-    }
-  } else if (condition === "60MA_angle_below_minus45") {
-    if (currentAngle <= -45) {
-      if (conditionStartTimes[condition] === null) {
-        conditionStartTimes[condition] = now;
-      }
-      return now - conditionStartTimes[condition];
-    } else {
-      conditionStartTimes[condition] = null;
-      return 0;
-    }
-  }
-  return 0;
-};
-
 // RSI 계산 함수 추가
 const calculateRSI = (prices: number[], period: number = 14): number => {
   if (prices.length < period + 1) return 50; // 충분한 데이터가 없으면 중립값 반환
@@ -233,132 +182,82 @@ const isBollingerBandSignal = (prices: number[], period: number = 20, stdDev: nu
   return 'hold';
 };
 
-// 단기 이동평균이 중기 이동평균을 돌파하는지 확인하는 함수
-const detectMAReversal = (prices: number[], shortPeriod: number = 3, midPeriod: number = 10, longPeriod: number = 20): 'buy' | 'sell' | 'hold' => {
-  if (prices.length < longPeriod + 2) return 'hold'; // 충분한 데이터가 없으면 홀드
-  
-  const shortMA = calculateMA(prices, shortPeriod);
-  const midMA = calculateMA(prices, midPeriod);
-  const longMA = calculateMA(prices, longPeriod);
-  
-  // 이전 캔들에서 단기 < 중기였다가 현재 캔들에서 단기 > 중기가 되면 매수 신호
-  const prevShortMA = shortMA[shortMA.length - 2];
-  const prevMidMA = midMA[midMA.length - 2];
-  const currentShortMA = shortMA[shortMA.length - 1];
-  const currentMidMA = midMA[midMA.length - 1];
-  const currentLongMA = longMA[longMA.length - 1];
-  
-  // 추세 방향 확인 (장기 이동평균 기준)
-  const isUptrend = currentShortMA > currentLongMA && currentMidMA > currentLongMA;
-  const isDowntrend = currentShortMA < currentLongMA && currentMidMA < currentLongMA;
-  
-  if (prevShortMA < prevMidMA && currentShortMA > currentMidMA && isUptrend) {
-    return 'buy'; // 상승 돌파 + 상승 추세
-  } else if (prevShortMA > prevMidMA && currentShortMA < currentMidMA && isDowntrend) {
-    return 'sell'; // 하락 돌파 + 하락 추세
-  }
-  
-  return 'hold';
+// 상수 정의
+//const MIN_PROFIT_PCT = 0.3; // 최소 수익률 0.3%
+//const MIN_HOLD_PERIODS = 10 * 60; // 최소 보유 기간 (10분)
+//const MAX_HOLD_PERIODS = 600 * 60; // 최대 보유 기간 (600분)
+const MA900_UPTREND_WINDOW = 20;
+const MA900_UPTREND_MIN_SLOPE = 0.0001;
+
+// 기술적 지표 계산 함수들
+const detectPriceSurge = (prices: number[], window: number = 5, threshold: number = 0.003): boolean => {
+  if (prices.length < window + 1) return false;
+
+  const recentPrices = prices.slice(-window - 1);
+  const priceChange = (recentPrices[recentPrices.length - 1] - recentPrices[0]) / recentPrices[0];
+
+  return Math.abs(priceChange) >= threshold;
 };
 
-// 거래 시그널 함수 수정
+const isMATrendUp = (maSeries: number[], window: number = MA900_UPTREND_WINDOW, minSlope: number = MA900_UPTREND_MIN_SLOPE): boolean => {
+  if (maSeries.length < window + 1) return false;
+
+  const recentMA = maSeries.slice(-window - 1);
+  const slope = (recentMA[recentMA.length - 1] - recentMA[0]) / recentMA[0];
+
+  return slope >= minSlope;
+};
+
+// 매매 상태 및 행동 결정 함수
+const getState = (
+  currentRSI: number,
+  macdBullish: boolean,
+  uptrend6EA: boolean,
+  momentum: number,
+  surge: boolean
+): string => {
+  if (currentRSI < 30 && macdBullish && uptrend6EA) return 'STRONG_BUY';
+  if (currentRSI < 40 && macdBullish) return 'BUY';
+  if (currentRSI > 70 && !macdBullish && !uptrend6EA) return 'STRONG_SELL';
+  if (currentRSI > 60 && !macdBullish) return 'SELL';
+  if (surge && momentum > 0) return 'MOMENTUM_BUY';
+  if (surge && momentum < 0) return 'MOMENTUM_SELL';
+  return 'HOLD';
+};
+
+const chooseAction = (state: string): 'buy' | 'sell' | 'hold' => {
+  switch (state) {
+    case 'STRONG_BUY':
+    case 'BUY':
+    case 'MOMENTUM_BUY':
+      return 'buy';
+    case 'STRONG_SELL':
+    case 'SELL':
+    case 'MOMENTUM_SELL':
+      return 'sell';
+    default:
+      return 'hold';
+  }
+};
+
+// getTradeSignal 함수 수정
 const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sell" | "hold" => {
-  const ma60 = calculateMA(priceData, 60);
-  const ma120 = calculateMA(priceData, 120);
-  const ma300 = calculateMA(priceData, 300);
-  const ma360 = calculateMA(priceData, 360);
-  const ma900 = calculateMA(priceData, 900);
-  if (ma60.length === 0 || ma120.length === 0 || ma300.length === 0 || ma360.length === 0 || ma900.length === 0) return "hold";
-
-  const ma120_latest = ma120[ma120.length - 1];
-  const ma360_latest = ma360[ma360.length - 1];
-
-  const angle60 = getAngle(ma60);
-  const angle300 = getAngle(ma300);
-  const angle900 = getAngle(ma900);
-  const prevPrice = priceData[priceData.length - 2];
-  const prev_ma120 = ma120[ma120.length - 2];
-
-  const buy120Cross = prev_ma120 !== undefined && prevPrice < prev_ma120 && currentPrice >= ma120_latest;
-  const sell120Cross = prev_ma120 !== undefined && prevPrice > prev_ma120 && currentPrice <= ma120_latest;
-
-  const buyAngleDuration = updateConditionDuration("60MA_angle_above_45", angle60);
-  const sellAngleDuration = updateConditionDuration("60MA_angle_below_minus45", angle60);
-
-  if (!ma360_latest) return "hold";
-
-  // 300MA와 900MA의 기울기 정보도 조건에 활용
-  const is300MASloping = angle300 > 0;
-  const is900MASloping = angle900 > 0;
-  
-  // 추가 지표 계산
   const rsi = calculateRSI(priceData);
   const macd = calculateMACD(priceData);
+  const surge = detectPriceSurge(priceData);
+  const ma900 = calculateMA(priceData, 900);
+  const isUptrend = isMATrendUp(ma900);
   const bollingerSignal = isBollingerBandSignal(priceData);
-  const maReversalSignal = detectMAReversal(priceData);
-  
-  // 매수 조건
-  if (currentPrice < ma360_latest) {
-    // 1. 기울기 조건: 60MA 각도 45도 이상 & 30초 이상 유지 또는 120MA 상방 돌파
-    const slopeCondition = (angle60 >= 45 && buyAngleDuration >= 30) || buy120Cross;
-    
-    // 2. 장기 추세 조건: 300MA와 900MA의 기울기가 모두 양수
-    const longTermTrendCondition = is300MASloping && is900MASloping;
-    
-    // 3. RSI 조건: 과매도 구간(40 이하)에서 회복 중
-    const rsiCondition = rsi < 40;
-    
-    // 4. MACD 조건: MACD가 시그널 라인을 상향 돌파
-    const macdCondition = macd.histogram > 0 && macd.macd > 0;
-    
-    // 5. 볼린저 밴드 조건
-    const bollingerCondition = bollingerSignal === 'buy';
-    
-    // 6. MA 반전 조건
-    const maReversalCondition = maReversalSignal === 'buy';
-    
-    // 매수 결정: 기본 조건 + (추가 지표 중 최소 2개 이상 충족)
-    const additionalIndicatorsCount = [
-      rsiCondition, 
-      macdCondition, 
-      bollingerCondition, 
-      maReversalCondition
-    ].filter(Boolean).length;
-    
-    if (slopeCondition && longTermTrendCondition && additionalIndicatorsCount >= 2) {
-      return "buy";
-    }
-    return "hold";
-  } else {
-    // 매도 조건
-    // 1. 기울기 조건: 60MA 각도 -45도 이하 & 30초 이상 유지 또는 120MA 하방 돌파
-    const slopeCondition = (angle60 <= -45 && sellAngleDuration >= 30) || sell120Cross;
-    
-    // 2. RSI 조건: 과매수 구간(70 이상)
-    const rsiCondition = rsi > 70;
-    
-    // 3. MACD 조건: MACD가 시그널 라인을 하향 돌파
-    const macdCondition = macd.histogram < 0 && macd.macd < 0;
-    
-    // 4. 볼린저 밴드 조건
-    const bollingerCondition = bollingerSignal === 'sell';
-    
-    // 5. MA 반전 조건
-    const maReversalCondition = maReversalSignal === 'sell';
-    
-    // 매도 결정: 기본 조건 + (추가 지표 중 최소 2개 이상 충족)
-    const additionalIndicatorsCount = [
-      rsiCondition, 
-      macdCondition, 
-      bollingerCondition, 
-      maReversalCondition
-    ].filter(Boolean).length;
-    
-    if (slopeCondition && additionalIndicatorsCount >= 2) {
-      return "sell";
-    }
-    return "hold";
-  }
+
+  const state = getState(
+    rsi,
+    macd.histogram > 0 && bollingerSignal === 'buy',
+    isUptrend,
+    currentPrice - priceData[priceData.length - 2],
+    surge
+  );
+
+  return chooseAction(state);
 };
 
 const calculateOrderVolume = (currentPrice: number): string => {
@@ -530,10 +429,7 @@ export const CreateOrder = forwardRef<
         setMa3Price(ma3);
 
         // 가격 히스토리 업데이트
-        setPriceHistory(prev => {
-          const newHistory = [...prev, current].slice(-300); // 최근 300개 가격만 유지
-          return newHistory;
-        });
+        setPriceHistory(prev => [...prev, current].slice(-300)); // 최근 300개 가격만 유지
 
         // 지정가 주문이 아닐 때는 현재가로 자동 업데이트
         if (ordType !== 'limit' && current) {
@@ -581,55 +477,6 @@ export const CreateOrder = forwardRef<
     // 수량 변경시 부모에게 전달
     onQuantityUpdate(Number(volume));
   }, [volume, onQuantityUpdate]);
-
-  // 수익률 계산 함수
-  // const _calculateProfitRate = (buyPrice: number, sellPrice: number) => {
-  //   if (buyPrice === 0) return 0;
-  //   return ((sellPrice - buyPrice) / buyPrice) * 100;
-  // };
-
-  // 매매 사이클 업데이트 함수 수정
-  // const _updateTradeCycle = (status: string) => {
-  //   const currentTime = new Date().toLocaleTimeString('ko-KR', { 
-  //     hour: '2-digit', 
-  //     minute: '2-digit', 
-  //     second: '2-digit' 
-  //   });
-    
-  //   setTradeCycles(prev => {
-  //     const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime, buyPrice: null, sellPrice: null, profit: null, profitAmount: null };
-      
-  //     // 새로운 사이클 시작 조건 수정
-  //     if (prev.length === 0 && status === '매수 대기') {
-  //       // 첫 번째 사이클인 경우에만 매수 대기 상태 추가
-  //       return [{ 
-  //         cycle: [status], 
-  //         times: [currentTime],
-  //         time: currentTime,
-  //         buyPrice: null,
-  //         sellPrice: null,
-  //         profit: null,
-  //         profitAmount: null
-  //       }];
-  //     }
-      
-  //     // 기존 사이클 업데이트
-  //     if (lastCycle.cycle.length < 4) {
-  //       const updatedCycle = {
-  //         cycle: [...lastCycle.cycle, status],
-  //         times: [...lastCycle.times, currentTime],
-  //         time: lastCycle.time,
-  //         buyPrice: lastCycle.buyPrice,
-  //         sellPrice: lastCycle.sellPrice,
-  //         profit: lastCycle.profit,
-  //         profitAmount: lastCycle.profitAmount
-  //       };
-  //       return [updatedCycle, ...prev.slice(1)];
-  //     }
-
-  //     return prev;
-  //   });
-  // };
 
   // 매매 전략 상태 표시 추가
   const [currentStrategy   ] = useState<string>('');
