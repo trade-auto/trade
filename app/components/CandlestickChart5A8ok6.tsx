@@ -83,32 +83,32 @@ interface BacktestResult {
   trades: Trade[];  // Trade 인터페이스를 사용하도록 변경
 }
 
-interface TickerData {
-  trade_volume: number;
-  trade_price: number;
-  opening_price: number;
-  high_price: number;
-  low_price: number;
-  prev_closing_price: number;
-  change: string;
-  change_price: number;
-  change_rate: number;
-  signed_change_price: number;
-  signed_change_rate: number;
-  trade_date: string;
-  trade_time: string;
-  trade_timestamp: number;
-  timestamp: number;
-  acc_trade_price: number;
-  acc_trade_price_24h: number;
-  acc_trade_volume: number;
-  acc_trade_volume_24h: number;
-  highest_52_week_price: number;
-  highest_52_week_date: string;
-  lowest_52_week_price: number;
-  lowest_52_week_date: string;
-  market_state: string;
-}
+// interface TickerData {
+//   trade_volume: number;
+//   trade_price: number;
+//   opening_price: number;
+//   high_price: number;
+//   low_price: number;
+//   prev_closing_price: number;
+//   change: string;
+//   change_price: number;
+//   change_rate: number;
+//   signed_change_price: number;
+//   signed_change_rate: number;
+//   trade_date: string;
+//   trade_time: string;
+//   trade_timestamp: number;
+//   timestamp: number;
+//   acc_trade_price: number;
+//   acc_trade_price_24h: number;
+//   acc_trade_volume: number;
+//   acc_trade_volume_24h: number;
+//   highest_52_week_price: number;
+//   highest_52_week_date: string;
+//   lowest_52_week_price: number;
+//   lowest_52_week_date: string;
+//   market_state: string;
+// }
 
 // Define a Trade interface
 interface Trade {
@@ -248,8 +248,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   const isLoadingRef = useRef<boolean>(false); // 데이터 로딩 상태를 추적하기 위한 ref
  
   
-  const { prices, tickers, updateTradeState, orderLimits, maPeriods, updateMAPeriod, showMA, updateShowMA } = useUpbitStore();
-  const [tickerData, setTickerData] = useState<TickerData | null>(null);
+  const { tickers, updateTradeState, orderLimits, maPeriods,   showMA, updateShowMA } = useUpbitStore();
   const [lastUpdated, setLastUpdated] = useState<string>('-');
   const [chartPrice, setChartPrice] = useState<number>(0);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
@@ -264,7 +263,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   //const tradeIdRef = useRef<number>(1);
 
   // 상태 추가
-  const [isDataLoadingEnabled, setIsDataLoadingEnabled] = useState<boolean>(false);
+  const [isDataLoadingEnabled ] = useState<boolean>(false);
 
   // 자동 업데이트 상태 추가
   const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
@@ -501,7 +500,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   };
 
   // 컴포넌트 레벨에서 tradeStrategy 가져오기
-  const { tradeStrategy } = useUpbitStore();
+  //const { tradeStrategy } = useUpbitStore();
 
   // 새로운 각도 계산 함수 - 360MA 전용 (정규화)
   // const calculateAngleNormalized = (ma: LineData<Time>[], index: number): number => {
@@ -580,7 +579,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   //   return duration >= 1 ? duration : 0; // 5초 미만이면 0으로 처리
   // };
 
-  const createTradeMarkers = (crossPoints: CrossPoint[], strategy: TradeStrategy): SeriesMarker<Time>[] => {
+  const createTradeMarkers = (crossPoints: CrossPoint[]): SeriesMarker<Time>[] => {
     return crossPoints.map(point => ({
           time: point.time,
       position: point.position === 'buy' ? 'belowBar' : 'aboveBar',
@@ -630,17 +629,17 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     }
   };
 
-  // 차트 타입에 따른 데이터 개수 결정
-  const getChartCount = (type: string) => {
-    if (type.startsWith('seconds/')) {
-      return 1500; // 초봉 데이터 개수 증가 (330 -> 500) 1500
-    }
-    const minutes = parseInt(type);
-    if (minutes <= 3) return 430;     // 분봉
-    if (minutes === 240) return 200;  // 일봉 (200일)
-    if (minutes === 7200) return 200; // 월봉 (200개월)
-    return 30;                        // 년봉 (30년)
-  };
+  // // 차트 타입에 따른 데이터 개수 결정
+  // const getChartCount = (type: string) => {
+  //   if (type.startsWith('seconds/')) {
+  //     return 1500; // 초봉 데이터 개수 증가 (330 -> 500) 1500
+  //   }
+  //   const minutes = parseInt(type);
+  //   if (minutes <= 3) return 430;     // 분봉
+  //   if (minutes === 240) return 200;  // 일봉 (200일)
+  //   if (minutes === 7200) return 200; // 월봉 (200개월)
+  //   return 30;                        // 년봉 (30년)
+  // };
 
   // 전체 데이터 로드 함수를 먼저 선언
   const loadAllData = useCallback(async (startDate: Date, endDate: Date) => {
@@ -748,7 +747,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
       setIsLoading(false);
       setProgress(0);
     }
-  }, [symbol, chartType, maPeriods, tradeStrategy]);
+  }, [symbol, chartType, maPeriods ]);
 
   // 그 다음에 resetAndLoadData 함수 선언
   const resetAndLoadData = useCallback(async (start: Date, end: Date) => {
@@ -903,7 +902,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         chartRef.current = null;
       }
     };
-  }, [loadAllData]);
+  }, [loadAllData,chartType, dateRange.startDate, dateRange.endDate]);
 
   // MA 표시 상태 변경 시 업데이트
   useEffect(() => {
@@ -1660,7 +1659,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
 
   // 상태 변수 추가
   const [ma3Price, setMa3Price] = useState<number | null>(null);
-  const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
+  const [lastTradeType ] = useState<'bid' | 'ask' | null>(null);
 
   // 기존 useEffect 수정
   useEffect(() => {
@@ -1701,7 +1700,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         }
       }
     }
-  }, [currentPrice, ma3Price, lastTradeType, mode]);
+  }, [currentPrice, ma3Price, lastTradeType, mode,updateTradeState]);
 
   // 상태 변수 추가
   //const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string }[]>([]);
@@ -1919,7 +1918,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
         clearInterval(interval);
       }
     };
-  }, [symbol, isAutoUpdate]); // isAutoUpdate 의존성 추가
+  }, [symbol, isAutoUpdate,updatePrices]); // isAutoUpdate 의존성 추가
 
   // 웹소켓 토글 핸들러 수정
   // const handleWebSocketToggle = () => {
@@ -2040,7 +2039,6 @@ export const CandlestickChart: React.FC<ChartProps> = ({
   useEffect(() => {
     const currentTicker = tickers[symbol];
     if (currentTicker) {
-      setTickerData(currentTicker);
       setLastUpdated(new Date().toLocaleString());
     }
   }, [tickers, symbol]);
@@ -2070,7 +2068,7 @@ export const CandlestickChart: React.FC<ChartProps> = ({
     // 크로스 포인트(매수/매도 신호) 계산 및 마커 업데이트
     const crossPoints = findCrossPoints(sixtyEMAData);
     crossPointsRef.current = crossPoints;
-    const markers = createTradeMarkers(crossPoints, tradeStrategy);
+    const markers = createTradeMarkers(crossPoints);
     if (candleSeriesRef.current) {
       createSeriesMarkers(candleSeriesRef.current, markers);
     }
@@ -2161,7 +2159,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
               // 크로스 포인트 및 마커 업데이트
               const crossPoints = findCrossPoints(sixtyEMAData);
               crossPointsRef.current = crossPoints;
-              const markers = createTradeMarkers(crossPoints, tradeStrategy);
+              const markers = createTradeMarkers(crossPoints);
               if (candleSeriesRef.current) {
                 updateTradeMarkers(candleSeriesRef.current, markers);
                 const lastCrossPoint = crossPoints[crossPoints.length - 1];
@@ -2514,12 +2512,12 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
       createSeriesMarkers(candleSeriesRef.current, []);
       
       // 새 마커 생성 및 설정
-      const markers = createTradeMarkers(crossPoints, tradeStrategy);
+      const markers = createTradeMarkers(crossPoints);
     createSeriesMarkers(candleSeriesRef.current, markers);
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }
-  }, [tradeStrategy]);
+  }, []);
 
    
 
@@ -2587,7 +2585,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
         visible: showMA.twoForty // 가시성 속성 추가
       });
     }
-  }, []);
+  }, [  showMA.twoForty]);
 
   // showMA 상태가 변경될 때 240MA 가시성 업데이트
   useEffect(() => {
@@ -2639,7 +2637,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
     if (crossPointsRef.current) {
       updateChartMarkers(crossPointsRef.current);
     }
-  }, [crossPointsRef.current]);
+  }, [ updateChartMarkers]);
 
   // 차트의 timeScale을 직접 조작하여 표시 범위를 1시간으로 설정
   useEffect(() => {
@@ -2657,7 +2655,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
         console.error('차트 범위 설정 중 오류:', error);
       }
     }
-  }, [chartRef.current]);
+  }, [chartRef ]);
 
   // 차트 초기화 완료 후 실행
   useEffect(() => {
@@ -2675,7 +2673,7 @@ interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
         console.error('차트 범위 설정 중 오류:', error);
       }
     }
-  }, [chartRef.current, candleSeriesRef.current]);
+  }, [chartRef, candleSeriesRef]);
 
   // 각도 계산 함수 추가 (새로운 함수)
   // const calculateAngle = (currentValue: number, previousValue: number, timeDiff: number = 10): number => {
