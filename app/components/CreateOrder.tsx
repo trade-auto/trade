@@ -10,6 +10,8 @@ interface CreateOrderProps {
   onOrderCreated: () => void;
   onPriceUpdate: (price: number) => void;
   onQuantityUpdate: (quantity: number) => void;
+  onBacktestStart?: (startDate: Date, endDate: Date) => void;  // 백테스트 시작 시 호출될 콜백 추가
+  onBacktestEnd?: () => void;                                  // 백테스트 종료 시 호출될 콜백 추가
 }
 
 // 파라미터 타입 정의
@@ -268,7 +270,7 @@ const calculateOrderVolume = (currentPrice: number): string => {
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
->(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate }, ref) => {
+>(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate, onBacktestStart, onBacktestEnd }, ref) => {
   const { tradeState, updateTradeState, maPeriods, tradeStrategy, updateTradeStrategy } = useUpbitStore();
   
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
@@ -293,6 +295,12 @@ export const CreateOrder = forwardRef<
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [currentCycle, setCurrentCycle] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
   const [totalProfit, setTotalProfit] = useState<string>('0.00');
+  
+  // 백테스트 관련 상태
+  const [isBacktesting, setIsBacktesting] = useState(false);
+  const [backtestStartDate, setBacktestStartDate] = useState<Date | null>(null);
+  const [backtestEndDate, setBacktestEndDate] = useState<Date | null>(null);
+  const [backtestPeriod, setBacktestPeriod] = useState<'1D' | '1W' | '1M' | '3M'>('1W');
 
   // 볼린저 밴드 계산을 위한 상태 추가
   //const [upperBand, setUpperBand] = useState<number | null>(null);
@@ -484,7 +492,7 @@ export const CreateOrder = forwardRef<
 
   // 매매 조건 체크 부분 수정
   useEffect(() => {
-    if (!autoTrading || !currentPrice) return;
+    if ((!autoTrading && !isBacktesting) || !currentPrice) return;
 
     let signal = '';
 
@@ -577,9 +585,9 @@ export const CreateOrder = forwardRef<
 
     if (signal !== lastSignal) {
       setLastSignal(signal);
-      console.log(signal); // 콘솔에 신호 출력
+      console.log(signal);
     }
-  }, [autoTrading, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred, market, mode]);
+  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred, market, mode]);
 
   // 이동평균 계산 함수 추가
   const calculateMA = (prices: number[], period: number) => {
@@ -879,6 +887,74 @@ export const CreateOrder = forwardRef<
   // 전략 변경 핸들러 수정
   const handleStrategyChange = (strategy: TradeStrategy) => {
     updateTradeStrategy(strategy);
+  };
+
+  // 백테스트 기간 설정 함수 수정
+  const setBacktestDates = (period: '1D' | '1W' | '1M' | '3M') => {
+    const end = new Date();
+    const start = new Date();
+    
+    switch (period) {
+      case '1D':
+        start.setDate(start.getDate() - 1);
+        break;
+      case '1W':
+        start.setDate(start.getDate() - 7);
+        break;
+      case '1M':
+        start.setMonth(start.getMonth() - 1);
+        break;
+      case '3M':
+        start.setMonth(start.getMonth() - 3);
+        break;
+    }
+    
+    setBacktestStartDate(start);
+    setBacktestEndDate(end);
+    setBacktestPeriod(period);
+
+    // 백테스트 중이라면 즉시 날짜 범위 업데이트
+    if (isBacktesting && onBacktestStart) {
+      onBacktestStart(start, end);
+    }
+  };
+
+  // 백테스트 시작 함수 수정
+  const handleBacktestStart = () => {
+    if (isBacktesting) {
+      setIsBacktesting(false);
+      setBacktestStartDate(null);
+      setBacktestEndDate(null);
+      
+      // 백테스트 종료 콜백 호출
+      if (onBacktestEnd) {
+        onBacktestEnd();
+      }
+      
+      // 차트 초기화
+      if (onOrderCreated) {
+        onOrderCreated();
+      }
+    } else {
+      if (!backtestStartDate || !backtestEndDate) {
+        console.error('백테스트 기간이 설정되지 않았습니다.');
+        return;
+      }
+
+      setIsBacktesting(true);
+      setTradeCycles([]); // 거래 기록 초기화
+      setTotalProfit('0.00'); // 수익률 초기화
+      
+      // 선택된 전략으로 백테스트 시작
+      if (tradeStrategy) {
+        console.log(`${tradeStrategy} 전략으로 백테스트 시작 (${backtestPeriod} 기간)`);
+        
+        // 부모 컴포넌트에 백테스트 시작 알림
+        if (onBacktestStart) {
+          onBacktestStart(backtestStartDate, backtestEndDate);
+        }
+      }
+    }
   };
 
   return (
@@ -1191,64 +1267,135 @@ export const CreateOrder = forwardRef<
                 ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-gray-600 hover:bg-gray-700'
             } text-white`}
+            disabled={isBacktesting}
           >
             {autoTrading ? '자동 거래 중지' : '자동 거래 시작'}
           </button>
 
-          {/* 매매 전략 선택 버튼 수정 */}
-          <div className="flex gap-2">
+          {/* 백테스트 기간 선택 및 시작 버튼 */}
+          <div className="flex items-center gap-2">
+            <div className="flex gap-2 bg-gray-700 p-2 rounded">
+              {(['1D', '1W', '1M', '3M'] as const).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setBacktestDates(period)}
+                  className={`px-3 py-1 rounded ${
+                    backtestPeriod === period
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-600 text-gray-300'
+                  }`}
+                  disabled={isBacktesting || autoTrading}
+                >
+                  {period}
+                </button>
+              ))}
+            </div>
             <button
-              onClick={() => handleStrategyChange('BOLLINGER')}
-              disabled={autoTrading}
-              className={`px-4 py-2 rounded font-bold ${
-                tradeStrategy === 'BOLLINGER'
-                  ? 'bg-blue-600 ring-2 ring-white'
-                  : autoTrading
-                    ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                    : 'bg-gray-600 hover:bg-gray-700'
-              } text-white transition-all duration-200`}
+              onClick={handleBacktestStart}
+              className={`px-6 py-2 rounded font-bold ${
+                isBacktesting 
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              } text-white`}
+              disabled={autoTrading || !backtestPeriod}
             >
-              {tradeStrategy === 'BOLLINGER' ? '✓ 볼린저 밴드' : '볼린저 밴드'}
+              {isBacktesting ? '백테스트 중지' : '백테스트 시작'}
             </button>
-            <button
-              onClick={() => handleStrategyChange('MA_CROSS')}
-              disabled={autoTrading}
-              className={`px-4 py-2 rounded font-bold ${
-                tradeStrategy === 'MA_CROSS'
-                  ? 'bg-blue-600 ring-2 ring-white'
-                  : autoTrading
-                    ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                    : 'bg-gray-600 hover:bg-gray-700'
-              } text-white transition-all duration-200`}
-            >
-              {tradeStrategy === 'MA_CROSS' ? '✓ 이동평균선 교차' : '이동평균선 교차'}
-            </button>
-            <button
-              onClick={() => handleStrategyChange('MA_CROSS_DEVIATION')}
-              disabled={autoTrading}
-              className={`px-4 py-2 rounded font-bold ${
-                tradeStrategy === 'MA_CROSS_DEVIATION'
-                  ? 'bg-blue-600 ring-2 ring-white'
-                  : autoTrading
-                    ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                    : 'bg-gray-600 hover:bg-gray-700'
-              } text-white transition-all duration-200`}
-            >
-              {tradeStrategy === 'MA_CROSS_DEVIATION' ? '✓ 이격도 MA 교차' : '이격도 MA 교차'}
-            </button>
-            <button
-              onClick={() => handleStrategyChange('SLOPE_FILTER')}
-              disabled={autoTrading}
-              className={`px-4 py-2 rounded font-bold ${
-                tradeStrategy === 'SLOPE_FILTER'
-                  ? 'bg-blue-600 ring-2 ring-white'
-                  : autoTrading
-                    ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                    : 'bg-gray-600 hover:bg-gray-700'
-              } text-white transition-all duration-200`}
-            >
-              {tradeStrategy === 'SLOPE_FILTER' ? '✓ 기울기 필터' : '기울기 필터'}
-            </button>
+          </div>
+
+          {/* 백테스트 상태 표시 */}
+          {isBacktesting && (
+            <div className="px-4 py-2 bg-gray-700 rounded">
+              <span className="text-white">
+                백테스트 기간: {backtestStartDate?.toLocaleDateString()} ~ {backtestEndDate?.toLocaleDateString()}
+              </span>
+            </div>
+          )}
+
+          {/* 매매 전략 선택 스위치 */}
+          <div className="flex flex-col gap-2 bg-gray-700 p-4 rounded-lg">
+            <h3 className="text-white font-bold mb-2">매매 전략 선택</h3>
+            <div className="grid grid-cols-1 gap-2">
+              <label className={`flex items-center p-3 rounded cursor-pointer ${
+                tradeStrategy === 'BOLLINGER' 
+                  ? 'bg-blue-600 ring-2 ring-white' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              }`}>
+                <input
+                  type="radio"
+                  name="tradeStrategy"
+                  value="BOLLINGER"
+                  checked={tradeStrategy === 'BOLLINGER'}
+                  onChange={() => handleStrategyChange('BOLLINGER')}
+                  disabled={autoTrading || isBacktesting}
+                  className="hidden"
+                />
+                <div className="flex flex-col">
+                  <span className="text-white font-medium">볼린저 밴드 전략</span>
+                  <span className="text-gray-300 text-sm">20일 기준, 2 표준편차 상/하단 돌파 시 매매</span>
+                </div>
+              </label>
+
+              <label className={`flex items-center p-3 rounded cursor-pointer ${
+                tradeStrategy === 'MA_CROSS' 
+                  ? 'bg-blue-600 ring-2 ring-white' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              }`}>
+                <input
+                  type="radio"
+                  name="tradeStrategy"
+                  value="MA_CROSS"
+                  checked={tradeStrategy === 'MA_CROSS'}
+                  onChange={() => handleStrategyChange('MA_CROSS')}
+                  disabled={autoTrading || isBacktesting}
+                  className="hidden"
+                />
+                <div className="flex flex-col">
+                  <span className="text-white font-medium">이동평균선 교차 전략</span>
+                  <span className="text-gray-300 text-sm">30MA/40MA, 40MA/60MA 교차 시 매매</span>
+                </div>
+              </label>
+
+              <label className={`flex items-center p-3 rounded cursor-pointer ${
+                tradeStrategy === 'MA_CROSS_DEVIATION' 
+                  ? 'bg-blue-600 ring-2 ring-white' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              }`}>
+                <input
+                  type="radio"
+                  name="tradeStrategy"
+                  value="MA_CROSS_DEVIATION"
+                  checked={tradeStrategy === 'MA_CROSS_DEVIATION'}
+                  onChange={() => handleStrategyChange('MA_CROSS_DEVIATION')}
+                  disabled={autoTrading || isBacktesting}
+                  className="hidden"
+                />
+                <div className="flex flex-col">
+                  <span className="text-white font-medium">이격도 MA 교차 전략</span>
+                  <span className="text-gray-300 text-sm">60MA/120MA 이격도 2% 이상 시 매매</span>
+                </div>
+              </label>
+
+              <label className={`flex items-center p-3 rounded cursor-pointer ${
+                tradeStrategy === 'SLOPE_FILTER' 
+                  ? 'bg-blue-600 ring-2 ring-white' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+              }`}>
+                <input
+                  type="radio"
+                  name="tradeStrategy"
+                  value="SLOPE_FILTER"
+                  checked={tradeStrategy === 'SLOPE_FILTER'}
+                  onChange={() => handleStrategyChange('SLOPE_FILTER')}
+                  disabled={autoTrading || isBacktesting}
+                  className="hidden"
+                />
+                <div className="flex flex-col">
+                  <span className="text-white font-medium">기울기 필터 전략</span>
+                  <span className="text-gray-300 text-sm">RSI, MACD, MA 기울기 복합 분석</span>
+                </div>
+              </label>
+            </div>
           </div>
 
           {autoTrading && (
