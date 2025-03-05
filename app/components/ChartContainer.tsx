@@ -148,7 +148,6 @@ const ChartContainer = memo<ChartContainerProps>(({
     threeHundredEMA: null,
     nineHundredEMA: null,
   });
-  const onChartReadyRef = useRef(onChartReady);
 
   // 차트 크기 조정 핸들러
   const handleResize = useCallback(() => {
@@ -195,9 +194,7 @@ const ChartContainer = memo<ChartContainerProps>(({
       });
     });
 
-    // onChartReady를 ref로 저장하여 의존성 제거
-    onChartReadyRef.current = onChartReady;
-    onChartReadyRef.current(
+    onChartReady(
       chart,
       seriesRefs.current.candle!,
       seriesRefs.current.volume!,
@@ -208,8 +205,7 @@ const ChartContainer = memo<ChartContainerProps>(({
       seriesRefs.current.threeHundredEMA!,
       seriesRefs.current.nineHundredEMA!
     );
-
-  }, [chartHeight, chartType]);
+  }, [chartHeight, chartType, onChartReady]);
 
   // 차트 옵션 업데이트를 위한 별도 함수 추가
   const updateChartOptions = useCallback(() => {
@@ -257,10 +253,6 @@ const ChartContainer = memo<ChartContainerProps>(({
   useEffect(() => {
     handleResize();
   }, [isFullscreen, handleResize]);
-
-  useEffect(() => {
-    onChartReadyRef.current = onChartReady;
-  }, [onChartReady]);
 
   return (
     <div className="chart-container">
