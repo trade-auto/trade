@@ -137,122 +137,135 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     
     try {
       const endpoint = getChartEndpoint(chartType);
-      const count = chartType.startsWith('seconds/') ? 200 : 200; // 초봉은 200개씩 가져오기
+      const allProcessedData: ExtendedCandlestickData[] = [];
+      let currentTo = dateRange.endDate ? dateRange.endDate : new Date();
+      const startDate = dateRange.startDate;
       
-      const to = dateRange.endDate ? dateRange.endDate.toISOString() : new Date().toISOString();
-      
-      console.log(`API 요청: https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${count}`);
-      
-      const response = await fetch(
-        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${count}`
-      );
-      
-      if (!response.ok) {
-        throw new Error('데이터 로딩 실패');
-      }
-      
-      const data: UpbitCandle[] = await response.json();
-      
-      if (data && data.length > 0) {
-        // 진행 상태 업데이트
-        setProgress(30);
+      // 시작 날짜에 도달할 때까지 반복해서 데이터 가져오기
+      while (true) {
+        const to = currentTo.toISOString();
+        const response = await fetch(
+          `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=200`
+        );
         
-        // 데이터 처리
-        const processedData: ExtendedCandlestickData[] = data.map((candle: UpbitCandle) => {
-          const time = new Date(candle.candle_date_time_kst).getTime() / 1000;
-          return {
-            time: time as Time,
-            open: candle.opening_price,
-            high: candle.high_price,
-            low: candle.low_price,
-            close: candle.trade_price,
-            volume: candle.candle_acc_trade_volume,
-          };
-        });
-        
-        // 진행 상태 업데이트
-        setProgress(50);
-        
-        // 데이터 정렬 (최신 데이터가 마지막에 오도록)
-        processedData.sort((a, b) => {
-          if (typeof a.time === 'number' && typeof b.time === 'number') {
-            return a.time - b.time;
-          }
-          return 0;
-        });
-        
-        // 진행 상태 업데이트
-        setProgress(70);
-        
-        // 시리즈 데이터 업데이트
-        if (
-          candleSeriesRef.current && 
-          volumeSeriesRef.current && 
-          sixtyEMASeriesRef.current && 
-          oneTwentyEMASeriesRef.current && 
-          twoFortyEMASeriesRef.current && 
-          threeHundredSixtyEMASeriesRef.current &&
-          threeHundredEMASeriesRef.current &&
-          nineHundredEMASeriesRef.current
-        ) {
-          // 캔들 데이터 설정
-          candleSeriesRef.current.setData(processedData);
-          
-          // 볼륨 데이터 설정
-          const volumeData = processedData.map((d) => ({
-            time: d.time,
-            value: d.volume,
-            color: d.close >= d.open ? '#26a69a' : '#ef5350',
-          }));
-          volumeSeriesRef.current.setData(volumeData);
-          
-          // EMA 계산 및 설정
-          const ema60Data = calculateEMA(processedData, 60);
-          const ema120Data = calculateEMA(processedData, 120);
-          const ema240Data = calculateEMA(processedData, 240);
-          const ema360Data = calculateEMA(processedData, 360);
-          const ema300Data = calculateEMA(processedData, 300);
-          const ema900Data = calculateEMA(processedData, 900);
-          
-          sixtyEMASeriesRef.current.setData(ema60Data);
-          oneTwentyEMASeriesRef.current.setData(ema120Data);
-          twoFortyEMASeriesRef.current.setData(ema240Data);
-          threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-          threeHundredEMASeriesRef.current.setData(ema300Data);
-          nineHundredEMASeriesRef.current.setData(ema900Data);
-          
-          // 시리즈 가시성 설정
-          sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
-          oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
-          twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
-          threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
-          threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
-          nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
-          
-          // 매수/매도 포인트 계산
-          const cross = findCrossPoints(ema60Data, ema120Data, ema240Data, ema360Data);
-          setCrossPoints(cross);
-          
-          // 백테스트 결과 계산
-          const backtestResult = calculateBacktestResult(processedData, cross, 'test');
-          setBacktestResult(backtestResult);
-          
-          // 현재 가격 설정
-          if (processedData.length > 0) {
-            const lastCandle = processedData[processedData.length - 1];
-            setChartPrice(lastCandle.close);
-          }
-          
-          // 타임스케일 피팅
-          if (chartApiRef.current) {
-            chartApiRef.current.timeScale().fitContent();
-          }
+        if (!response.ok) {
+          throw new Error('데이터 로딩 실패');
         }
         
-        // 모든 데이터 저장
-        setAllData(processedData);
-        setLastUpdated(new Date());
+        const data: UpbitCandle[] = await response.json();
+        
+        if (!data || data.length === 0) break;
+        
+        // 데이터 처리
+        const processedData = data.map((candle: UpbitCandle) => ({
+          time: new Date(candle.candle_date_time_kst).getTime() / 1000 as Time,
+          open: candle.opening_price,
+          high: candle.high_price,
+          low: candle.low_price,
+          close: candle.trade_price,
+          volume: candle.candle_acc_trade_volume,
+        }));
+        
+        allProcessedData.push(...processedData);
+        
+        // 마지막 캔들의 시간으로 다음 요청의 기준 시간 설정
+        const lastCandle = data[data.length - 1];
+        currentTo = new Date(lastCandle.candle_date_time_kst);
+        
+        // 시작 날짜에 도달했거나 지났으면 중단
+        if (startDate && currentTo <= startDate) break;
+        
+        // API 호출 제한을 위한 딜레이
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
+      
+      // 시간순 정렬
+      allProcessedData.sort((a, b) => {
+        if (typeof a.time === 'number' && typeof b.time === 'number') {
+          return a.time - b.time;
+        }
+        return 0;
+      });
+      
+      // 진행 상태 업데이트
+      setProgress(30);
+      
+      // 데이터 정렬 (최신 데이터가 마지막에 오도록)
+      allProcessedData.sort((a, b) => {
+        if (typeof a.time === 'number' && typeof b.time === 'number') {
+          return a.time - b.time;
+        }
+        return 0;
+      });
+      
+      // 시리즈 데이터 업데이트
+      if (
+        candleSeriesRef.current && 
+        volumeSeriesRef.current && 
+        sixtyEMASeriesRef.current && 
+        oneTwentyEMASeriesRef.current && 
+        twoFortyEMASeriesRef.current && 
+        threeHundredSixtyEMASeriesRef.current &&
+        threeHundredEMASeriesRef.current &&
+        nineHundredEMASeriesRef.current
+      ) {
+        // 캔들 데이터 설정
+        candleSeriesRef.current.setData(allProcessedData);
+        
+        // 볼륨 데이터 설정
+        const volumeData = allProcessedData.map((d) => ({
+          time: d.time,
+          value: d.volume,
+          color: d.close >= d.open ? '#26a69a' : '#ef5350',
+        }));
+        volumeSeriesRef.current.setData(volumeData);
+        
+        // EMA 계산 및 설정
+        const ema60Data = calculateEMA(allProcessedData, 60);
+        const ema120Data = calculateEMA(allProcessedData, 120);
+        const ema240Data = calculateEMA(allProcessedData, 240);
+        const ema360Data = calculateEMA(allProcessedData, 360);
+        const ema300Data = calculateEMA(allProcessedData, 300);
+        const ema900Data = calculateEMA(allProcessedData, 900);
+        
+        sixtyEMASeriesRef.current.setData(ema60Data);
+        oneTwentyEMASeriesRef.current.setData(ema120Data);
+        twoFortyEMASeriesRef.current.setData(ema240Data);
+        threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+        threeHundredEMASeriesRef.current.setData(ema300Data);
+        nineHundredEMASeriesRef.current.setData(ema900Data);
+        
+        // 시리즈 가시성 설정
+        sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+        oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+        twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+        threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+        threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
+        nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+        
+        // 매수/매도 포인트 계산
+        const cross = findCrossPoints(ema60Data, ema120Data, ema240Data, ema360Data);
+        setCrossPoints(cross);
+        
+        // 백테스트 결과 계산
+        const backtestResult = calculateBacktestResult(allProcessedData, cross, 'test');
+        setBacktestResult(backtestResult);
+        
+        // 현재 가격 설정
+        if (allProcessedData.length > 0) {
+          const lastCandle = allProcessedData[allProcessedData.length - 1];
+          setChartPrice(lastCandle.close);
+        }
+        
+        // 타임스케일 피팅
+        if (chartApiRef.current) {
+          chartApiRef.current.timeScale().fitContent();
+        }
+      }
+      
+      // 모든 데이터 저장
+      setAllData(allProcessedData);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('데이터 로드 오류:', error);
     } finally {
