@@ -69,7 +69,7 @@ const calculateRelativeSlope = (ma: number[]) => {
 // ------------------------------
 // 보조 함수들 (SLOPE_FILTER 전략용)
 // ------------------------------
-const getMA = (priceData: number[], period: number): number[] => {
+const calculateMA = (priceData: number[], period: number): number[] => {
   if (priceData.length < period) return [];
   const result: number[] = [];
   for (let i = 0; i <= priceData.length - period; i++) {
@@ -130,12 +130,144 @@ const updateConditionDuration = (
   return 0;
 };
 
+// RSI 계산 함수 추가
+const calculateRSI = (prices: number[], period: number = 14): number => {
+  if (prices.length < period + 1) return 50; // 충분한 데이터가 없으면 중립값 반환
+  
+  let gains = 0;
+  let losses = 0;
+  
+  // 가격 변화 계산
+  for (let i = 1; i <= period; i++) {
+    const change = prices[prices.length - i] - prices[prices.length - i - 1];
+    if (change >= 0) {
+      gains += change;
+    } else {
+      losses -= change; // 손실은 양수로 변환
+    }
+  }
+  
+  // 평균 이득과 손실 계산
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  
+  // 상대강도(RS) 계산
+  if (avgLoss === 0) return 100; // 손실이 없으면 RSI는 100
+  const rs = avgGain / avgLoss;
+  
+  // RSI 계산
+  return 100 - (100 / (1 + rs));
+};
+
+// MACD 계산 함수 추가
+const calculateMACD = (prices: number[], fastPeriod: number = 12, slowPeriod: number = 26, signalPeriod: number = 9): { macd: number, signal: number, histogram: number } => {
+  // EMA 계산 헬퍼 함수
+  const calculateEMA = (data: number[], period: number): number[] => {
+    const k = 2 / (period + 1);
+    const emaData: number[] = [];
+    let ema = data[0];
+    
+    for (let i = 0; i < data.length; i++) {
+      ema = data[i] * k + ema * (1 - k);
+      emaData.push(ema);
+    }
+    
+    return emaData;
+  };
+  
+  if (prices.length < slowPeriod + signalPeriod) {
+    return { macd: 0, signal: 0, histogram: 0 }; // 충분한 데이터가 없으면 기본값 반환
+  }
+  
+  // 빠른 EMA와 느린 EMA 계산
+  const fastEMA = calculateEMA(prices, fastPeriod);
+  const slowEMA = calculateEMA(prices, slowPeriod);
+  
+  // MACD 라인 계산 (빠른 EMA - 느린 EMA)
+  const macdLine: number[] = [];
+  for (let i = 0; i < slowEMA.length; i++) {
+    if (i >= slowEMA.length - fastEMA.length) {
+      const fastIndex = i - (slowEMA.length - fastEMA.length);
+      macdLine.push(fastEMA[fastIndex] - slowEMA[i]);
+    }
+  }
+  
+  // 시그널 라인 계산 (MACD의 EMA)
+  const signalLine = calculateEMA(macdLine, signalPeriod);
+  
+  // 히스토그램 계산 (MACD - 시그널)
+  const histogram = macdLine[macdLine.length - 1] - signalLine[signalLine.length - 1];
+  
+  return {
+    macd: macdLine[macdLine.length - 1],
+    signal: signalLine[signalLine.length - 1],
+    histogram: histogram
+  };
+};
+
+// 볼린저 밴드 계산 함수
+const calculateBollingerBands = (prices: number[], period: number = 20, multiplier: number = 2): { upper: number, middle: number, lower: number } | null => {
+  if (prices.length < period) return null;
+
+  const sma = prices.slice(-period).reduce((a, b) => a + b) / period;
+  const squaredDiffs = prices.slice(-period).map(p => Math.pow(p - sma, 2));
+  const standardDeviation = Math.sqrt(squaredDiffs.reduce((a, b) => a + b) / period);
+  
+  return {
+    upper: sma + (standardDeviation * multiplier),
+    lower: sma - (standardDeviation * multiplier),
+    middle: sma
+  };
+};
+
+// 볼린저 밴드 검사 함수 추가
+const isBollingerBandSignal = (prices: number[], period: number = 20, stdDev: number = 2): 'buy' | 'sell' | 'hold' => {
+  if (prices.length < period) return 'hold';
+  
+  const bands = calculateBollingerBands(prices, period, stdDev);
+  const currentPrice = prices[prices.length - 1];
+  
+  if (bands === null) return 'hold';
+  if (currentPrice < bands.lower) return 'buy'; // 하단 밴드 돌파 시 매수
+  if (currentPrice > bands.upper) return 'sell'; // 상단 밴드 돌파 시 매도
+  return 'hold';
+};
+
+// 단기 이동평균이 중기 이동평균을 돌파하는지 확인하는 함수
+const detectMAReversal = (prices: number[], shortPeriod: number = 3, midPeriod: number = 10, longPeriod: number = 20): 'buy' | 'sell' | 'hold' => {
+  if (prices.length < longPeriod + 2) return 'hold'; // 충분한 데이터가 없으면 홀드
+  
+  const shortMA = calculateMA(prices, shortPeriod);
+  const midMA = calculateMA(prices, midPeriod);
+  const longMA = calculateMA(prices, longPeriod);
+  
+  // 이전 캔들에서 단기 < 중기였다가 현재 캔들에서 단기 > 중기가 되면 매수 신호
+  const prevShortMA = shortMA[shortMA.length - 2];
+  const prevMidMA = midMA[midMA.length - 2];
+  const currentShortMA = shortMA[shortMA.length - 1];
+  const currentMidMA = midMA[midMA.length - 1];
+  const currentLongMA = longMA[longMA.length - 1];
+  
+  // 추세 방향 확인 (장기 이동평균 기준)
+  const isUptrend = currentShortMA > currentLongMA && currentMidMA > currentLongMA;
+  const isDowntrend = currentShortMA < currentLongMA && currentMidMA < currentLongMA;
+  
+  if (prevShortMA < prevMidMA && currentShortMA > currentMidMA && isUptrend) {
+    return 'buy'; // 상승 돌파 + 상승 추세
+  } else if (prevShortMA > prevMidMA && currentShortMA < currentMidMA && isDowntrend) {
+    return 'sell'; // 하락 돌파 + 하락 추세
+  }
+  
+  return 'hold';
+};
+
+// 거래 시그널 함수 수정
 const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sell" | "hold" => {
-  const ma60 = getMA(priceData, 60);
-  const ma120 = getMA(priceData, 120);
-  const ma300 = getMA(priceData, 300);
-  const ma360 = getMA(priceData, 360);
-  const ma900 = getMA(priceData, 900);
+  const ma60 = calculateMA(priceData, 60);
+  const ma120 = calculateMA(priceData, 120);
+  const ma300 = calculateMA(priceData, 300);
+  const ma360 = calculateMA(priceData, 360);
+  const ma900 = calculateMA(priceData, 900);
   if (ma60.length === 0 || ma120.length === 0 || ma300.length === 0 || ma360.length === 0 || ma900.length === 0) return "hold";
 
   const ma120_latest = ma120[ma120.length - 1];
@@ -155,28 +287,78 @@ const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sel
 
   if (!ma360_latest) return "hold";
 
-  // 300MA와 900MA의 기울기 정보도 조건에 활용할 수 있습니다
-  // 예를 들어, 300MA의 기울기가 양수이고 900MA의 기울기도 양수일 때 매수 시그널을 강화할 수 있습니다
+  // 300MA와 900MA의 기울기 정보도 조건에 활용
   const is300MASloping = angle300 > 0;
   const is900MASloping = angle900 > 0;
-
+  
+  // 추가 지표 계산
+  const rsi = calculateRSI(priceData);
+  const macd = calculateMACD(priceData);
+  const bollingerSignal = isBollingerBandSignal(priceData);
+  const maReversalSignal = detectMAReversal(priceData);
+  
+  // 매수 조건
   if (currentPrice < ma360_latest) {
-    // 매수 조건: 현재 가격이 360MA 아래에 있고,
-    // (60MA 각도가 45도 이상이고 해당 조건이 30초 이상 유지되었거나, 120MA 상방 돌파)
-    // 추가로 300MA와 900MA의 기울기가 모두 양수일 때 더 강한 매수 신호로 간주
-    if (((angle60 >= 45 && buyAngleDuration >= 30) || buy120Cross) && (is300MASloping && is900MASloping)) {
+    // 1. 기울기 조건: 60MA 각도 45도 이상 & 30초 이상 유지 또는 120MA 상방 돌파
+    const slopeCondition = (angle60 >= 45 && buyAngleDuration >= 30) || buy120Cross;
+    
+    // 2. 장기 추세 조건: 300MA와 900MA의 기울기가 모두 양수
+    const longTermTrendCondition = is300MASloping && is900MASloping;
+    
+    // 3. RSI 조건: 과매도 구간(40 이하)에서 회복 중
+    const rsiCondition = rsi < 40;
+    
+    // 4. MACD 조건: MACD가 시그널 라인을 상향 돌파
+    const macdCondition = macd.histogram > 0 && macd.macd > 0;
+    
+    // 5. 볼린저 밴드 조건
+    const bollingerCondition = bollingerSignal === 'buy';
+    
+    // 6. MA 반전 조건
+    const maReversalCondition = maReversalSignal === 'buy';
+    
+    // 매수 결정: 기본 조건 + (추가 지표 중 최소 2개 이상 충족)
+    const additionalIndicatorsCount = [
+      rsiCondition, 
+      macdCondition, 
+      bollingerCondition, 
+      maReversalCondition
+    ].filter(Boolean).length;
+    
+    if (slopeCondition && longTermTrendCondition && additionalIndicatorsCount >= 2) {
       return "buy";
     }
     return "hold";
-  } else if (currentPrice > ma360_latest) {
-    // 매도 조건: 현재 가격이 360MA 위에 있고, 
-    // (60MA 각도가 -45도 이하이고 해당 조건이 30초 이상 지속되었거나, 120MA 하방 돌파)
-    if ((angle60 <= -45 && sellAngleDuration >= 30) || sell120Cross) {
+  } else {
+    // 매도 조건
+    // 1. 기울기 조건: 60MA 각도 -45도 이하 & 30초 이상 유지 또는 120MA 하방 돌파
+    const slopeCondition = (angle60 <= -45 && sellAngleDuration >= 30) || sell120Cross;
+    
+    // 2. RSI 조건: 과매수 구간(70 이상)
+    const rsiCondition = rsi > 70;
+    
+    // 3. MACD 조건: MACD가 시그널 라인을 하향 돌파
+    const macdCondition = macd.histogram < 0 && macd.macd < 0;
+    
+    // 4. 볼린저 밴드 조건
+    const bollingerCondition = bollingerSignal === 'sell';
+    
+    // 5. MA 반전 조건
+    const maReversalCondition = maReversalSignal === 'sell';
+    
+    // 매도 결정: 기본 조건 + (추가 지표 중 최소 2개 이상 충족)
+    const additionalIndicatorsCount = [
+      rsiCondition, 
+      macdCondition, 
+      bollingerCondition, 
+      maReversalCondition
+    ].filter(Boolean).length;
+    
+    if (slopeCondition && additionalIndicatorsCount >= 2) {
       return "sell";
     }
     return "hold";
   }
-  return "hold";
 };
 
 const calculateOrderVolume = (currentPrice: number): string => {
@@ -349,7 +531,7 @@ export const CreateOrder = forwardRef<
 
         // 가격 히스토리 업데이트
         setPriceHistory(prev => {
-          const newHistory = [...prev, current].slice(-3); // 최근 3개 가격만 유지
+          const newHistory = [...prev, current].slice(-300); // 최근 300개 가격만 유지
           return newHistory;
         });
 
@@ -448,21 +630,6 @@ export const CreateOrder = forwardRef<
   //     return prev;
   //   });
   // };
-
-  // 볼린저 밴드 계산 함수
-  const calculateBollingerBands = (prices: number[], period: number = 20, multiplier: number = 2) => {
-    if (prices.length < period) return null;
-
-    const sma = prices.slice(-period).reduce((a, b) => a + b) / period;
-    const squaredDiffs = prices.slice(-period).map(p => Math.pow(p - sma, 2));
-    const standardDeviation = Math.sqrt(squaredDiffs.reduce((a, b) => a + b) / period);
-    
-    return {
-      upper: sma + (standardDeviation * multiplier),
-      lower: sma - (standardDeviation * multiplier),
-      middle: sma
-    };
-  };
 
   // 매매 전략 상태 표시 추가
   const [currentStrategy   ] = useState<string>('');
@@ -580,7 +747,7 @@ export const CreateOrder = forwardRef<
   // 가격 히스토리 업데이트
   useEffect(() => {
     if (currentPrice) {
-      setPriceHistory(prev => [...prev, currentPrice].slice(-100)); // 최근 100개 가격만 유지
+      setPriceHistory(prev => [...prev, currentPrice].slice(-300)); // 최근 300개 가격만 유지
     }
   }, [currentPrice]);
 
