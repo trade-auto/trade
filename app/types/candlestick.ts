@@ -103,4 +103,6 @@ export interface MASettings {
   oneTwenty: boolean;
   twoForty: boolean;
   threeHundredSixty: boolean;
+  threeHundred: boolean;
+  nineHundred: boolean;
 }

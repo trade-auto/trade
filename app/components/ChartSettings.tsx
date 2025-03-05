@@ -52,6 +52,18 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
             >
               {showMA.threeHundredSixty ? '✓ 360MA 보기' : '360MA 숨김'}
             </button>
+            <button
+              onClick={() => toggleMA('threeHundred')}
+              className={`px-2 py-1 rounded ${showMA.threeHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.threeHundred ? '✓ 300MA 보기' : '300MA 숨김'}
+            </button>
+            <button
+              onClick={() => toggleMA('nineHundred')}
+              className={`px-2 py-1 rounded ${showMA.nineHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              {showMA.nineHundred ? '✓ 900MA 보기' : '900MA 숨김'}
+            </button>
           </div>
         </div>
       </div>

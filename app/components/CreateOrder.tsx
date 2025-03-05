@@ -132,14 +132,20 @@ const updateConditionDuration = (
 const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sell" | "hold" => {
   const ma40 = getMA(priceData, 40);
   const ma120 = getMA(priceData, 120);
+  const ma300 = getMA(priceData, 300);
   const ma360 = getMA(priceData, 360);
-  if (ma40.length === 0 || ma120.length === 0 || ma360.length === 0) return "hold";
+  const ma900 = getMA(priceData, 900);
+  if (ma40.length === 0 || ma120.length === 0 || ma300.length === 0 || ma360.length === 0 || ma900.length === 0) return "hold";
 
   //const ma40_latest = ma40[ma40.length - 1];
   const ma120_latest = ma120[ma120.length - 1];
+ // const _ma300_latest = ma300[ma300.length - 1];
   const ma360_latest = ma360[ma360.length - 1];
+ // const _ma900_latest = ma900[ma900.length - 1];
 
   const angle40 = getAngle(ma40);
+  const angle300 = getAngle(ma300);
+  const angle900 = getAngle(ma900);
   const prevPrice = priceData[priceData.length - 2];
   const prev_ma120 = ma120[ma120.length - 2];
 
@@ -151,10 +157,16 @@ const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sel
 
   if (!ma360_latest) return "hold";
 
+  // 300MA와 900MA의 기울기 정보도 조건에 활용할 수 있습니다
+  // 예를 들어, 300MA의 기울기가 양수이고 900MA의 기울기도 양수일 때 매수 시그널을 강화할 수 있습니다
+  const is300MASloping = angle300 > 0;
+  const is900MASloping = angle900 > 0;
+
   if (currentPrice < ma360_latest) {
     // 매수 조건: 현재 가격이 360MA 아래에 있고,
     // (40MA 각도가 45도 이상이고 해당 조건이 30초 이상 유지되었거나, 120MA 상방 돌파)
-    if ((angle40 >= 45 && buyAngleDuration >= 30) || buy120Cross) {
+    // 추가로 300MA와 900MA의 기울기가 모두 양수일 때 더 강한 매수 신호로 간주
+    if (((angle40 >= 45 && buyAngleDuration >= 30) || buy120Cross) && (is300MASloping && is900MASloping)) {
       return "buy";
     }
     return "hold";
@@ -555,7 +567,7 @@ export const CreateOrder = forwardRef<
       setLastSignal(signal);
       console.log(signal); // 콘솔에 신호 출력
     }
-  }, [autoTrading, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, market, mode]);
+  }, [autoTrading, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred, market, mode]);
 
   // 이동평균 계산 함수 추가
   const calculateMA = (prices: number[], period: number) => {

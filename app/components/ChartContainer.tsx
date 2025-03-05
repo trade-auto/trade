@@ -31,7 +31,9 @@ interface ChartContainerProps {
     sixtyEMASeries: ISeriesApi<"Line">,
     oneTwentyEMASeries: ISeriesApi<"Line">,
     twoFortyEMASeries: ISeriesApi<"Line">,
-    threeHundredSixtyEMASeries: ISeriesApi<"Line">
+    threeHundredSixtyEMASeries: ISeriesApi<"Line">,
+    threeHundredEMASeries: ISeriesApi<"Line">,
+    nineHundredEMASeries: ISeriesApi<"Line">
   ) => void;
   createTradeMarkers: (crossPoints: CrossPoint[]) => SeriesMarker<Time>[];
 }
@@ -55,6 +57,8 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
   const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const twoFortyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const threeHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const nineHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
 
   // 차트 초기화
   useEffect(() => {
@@ -150,7 +154,9 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
     sixtyEMASeriesRef.current = createMASeries('#0000FF'); // 60MA
     oneTwentyEMASeriesRef.current = createMASeries('#800080'); // 120MA
     twoFortyEMASeriesRef.current = createMASeries('#FFA500'); // 240MA
-    threeHundredSixtyEMASeriesRef.current = createMASeries('#000000'); // 360MA
+    threeHundredSixtyEMASeriesRef.current = createMASeries('#008000'); // 360MA
+    threeHundredEMASeriesRef.current = createMASeries('#00FFFF'); // 300MA
+    nineHundredEMASeriesRef.current = createMASeries('#FF00FF'); // 900MA
 
     // 컴포넌트 상위로 차트와 시리즈 객체 전달
     if (
@@ -160,7 +166,9 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
       sixtyEMASeriesRef.current && 
       oneTwentyEMASeriesRef.current && 
       twoFortyEMASeriesRef.current && 
-      threeHundredSixtyEMASeriesRef.current
+      threeHundredSixtyEMASeriesRef.current &&
+      threeHundredEMASeriesRef.current &&
+      nineHundredEMASeriesRef.current
     ) {
       onChartReady(
         chartRef.current,
@@ -169,7 +177,9 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
         sixtyEMASeriesRef.current,
         oneTwentyEMASeriesRef.current,
         twoFortyEMASeriesRef.current,
-        threeHundredSixtyEMASeriesRef.current
+        threeHundredSixtyEMASeriesRef.current,
+        threeHundredEMASeriesRef.current,
+        nineHundredEMASeriesRef.current
       );
     }
 

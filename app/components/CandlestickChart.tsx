@@ -81,6 +81,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     oneTwenty: true,
     twoForty: true,
     threeHundredSixty: true,
+    threeHundred: true,
+    nineHundred: true,
   });
   
   // CSV 상태
@@ -99,6 +101,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const twoFortyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const threeHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const nineHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   
   // 기타 상태
   const ongoingRequestRef = useRef<boolean>(false);
@@ -187,7 +191,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           sixtyEMASeriesRef.current && 
           oneTwentyEMASeriesRef.current && 
           twoFortyEMASeriesRef.current && 
-          threeHundredSixtyEMASeriesRef.current
+          threeHundredSixtyEMASeriesRef.current &&
+          threeHundredEMASeriesRef.current &&
+          nineHundredEMASeriesRef.current
         ) {
           // 캔들 데이터 설정
           candleSeriesRef.current.setData(processedData);
@@ -205,17 +211,23 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           const ema120Data = calculateEMA(processedData, 120);
           const ema240Data = calculateEMA(processedData, 240);
           const ema360Data = calculateEMA(processedData, 360);
+          const ema300Data = calculateEMA(processedData, 300);
+          const ema900Data = calculateEMA(processedData, 900);
           
           sixtyEMASeriesRef.current.setData(ema60Data);
           oneTwentyEMASeriesRef.current.setData(ema120Data);
           twoFortyEMASeriesRef.current.setData(ema240Data);
           threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+          threeHundredEMASeriesRef.current.setData(ema300Data);
+          nineHundredEMASeriesRef.current.setData(ema900Data);
           
           // 시리즈 가시성 설정
           sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
           oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
           twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
           threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+          threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
+          nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
           
           // 매수/매도 포인트 계산
           const cross = findCrossPoints(ema60Data, ema120Data, ema240Data, ema360Data);
@@ -305,7 +317,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     sixtyEMASeries: ISeriesApi<"Line">,
     oneTwentyEMASeries: ISeriesApi<"Line">,
     twoFortyEMASeries: ISeriesApi<"Line">,
-    threeHundredSixtyEMASeries: ISeriesApi<"Line">
+    threeHundredSixtyEMASeries: ISeriesApi<"Line">,
+    threeHundredEMASeries: ISeriesApi<"Line">,
+    nineHundredEMASeries: ISeriesApi<"Line">
   ) => {
     chartApiRef.current = chartApi;
     candleSeriesRef.current = candleSeries;
@@ -314,6 +328,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     oneTwentyEMASeriesRef.current = oneTwentyEMASeries;
     twoFortyEMASeriesRef.current = twoFortyEMASeries;
     threeHundredSixtyEMASeriesRef.current = threeHundredSixtyEMASeries;
+    threeHundredEMASeriesRef.current = threeHundredEMASeries;
+    nineHundredEMASeriesRef.current = nineHundredEMASeries;
     
     // 볼륨 시리즈 설정
     chartApi.priceScale('volume').applyOptions({

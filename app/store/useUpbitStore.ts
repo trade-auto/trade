@@ -56,6 +56,8 @@ interface MAType {
   oneTwenty: number;
   threeHundredSixty: number;
   twoForty: number;
+  threeHundred: number;
+  nineHundred: number;
 }
 
 interface UpbitStore {
@@ -81,7 +83,7 @@ interface UpbitStore {
     maxOrderPrice: number;
   };
   maPeriods: MAType;
-  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty', value: number) => void;
+  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred', value: number) => void;
   showMA: {
     thirty: boolean;
     forty: boolean;
@@ -89,8 +91,10 @@ interface UpbitStore {
     oneTwenty: boolean;
     twoForty: boolean;
     threeHundredSixty: boolean;
+    threeHundred: boolean;
+    nineHundred: boolean;
   };
-  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty') => void;
+  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred') => void;
   tradeStrategy: TradeStrategy;
   updateTradeStrategy: (strategy: TradeStrategy) => void;
 }
@@ -109,6 +113,8 @@ const loadMASettings = () => {
         oneTwenty: true,
         twoForty: true,
         threeHundredSixty: true,
+        threeHundred: true,
+        nineHundred: true,
       },
       maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : {
         thirty: 30,
@@ -117,6 +123,8 @@ const loadMASettings = () => {
         oneTwenty: 120,
         twoForty: 240,
         threeHundredSixty: 360,
+        threeHundred: 300,
+        nineHundred: 900,
       }
     };
   } catch (error) {
@@ -129,6 +137,8 @@ const loadMASettings = () => {
         oneTwenty: true,
         twoForty: true,
         threeHundredSixty: true,
+        threeHundred: true,
+        nineHundred: true,
       },
       maPeriods: {
         thirty: 30,
@@ -137,6 +147,8 @@ const loadMASettings = () => {
         oneTwenty: 120,
         twoForty: 240,
         threeHundredSixty: 360,
+        threeHundred: 300,
+        nineHundred: 900,
       }
     };
   }
