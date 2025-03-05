@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { format } from 'date-fns';
 import { DateRange } from '../types/candlestick';
-import { CandlestickData } from 'lightweight-charts';
+import { CandlestickData, Time } from 'lightweight-charts';
 
 interface PriceData {
   currentPrice: number;
@@ -80,8 +80,21 @@ export type TradeSignal = {
 // 매매 전략 인터페이스
 export interface TradingStrategy {
   name: TradeStrategy;
-  analyze: (data: CandlestickData[]) => TradeSignal[];
+  analyze: (data: CandlestickData<Time>[]) => TradeSignal[];
   description: string;
+}
+
+interface ExtendedMetadata {
+  deviation?: number;
+  slope?: number;
+  ma360?: number;
+  ma120?: number;
+  isAbove360MA?: boolean;
+  rsi?: number;
+  macd?: number;
+  momentum?: number;
+  ma300Slope?: number;
+  ma900Slope?: number;
 }
 
 // 볼린저 밴드 전략
@@ -163,6 +176,31 @@ const maCrossStrategy: TradingStrategy = {
   description: '단기/장기 이동평균선 교차 전략'
 };
 
+// EMA 계산 유틸리티 함수
+function calculateEMA(data: CandlestickData<Time>[], period: number): { time: Time; value: number }[] {
+  const k = 2 / (period + 1);
+  const emaData: { time: Time; value: number }[] = [];
+  let ema = data[0].close;
+
+  for (let i = 0; i < data.length; i++) {
+    ema = data[i].close * k + ema * (1 - k);
+    emaData.push({ time: data[i].time, value: ema });
+  }
+
+  return emaData;
+}
+
+// MACD 시그널 라인 계산을 위한 임시 데이터 생성 함수
+function createTempCandleData(time: Time, close: number): CandlestickData<Time> {
+  return {
+    time,
+    open: close,
+    high: close,
+    low: close,
+    close
+  };
+}
+
 // 이격도 MA 이탈
 const maDeviationStrategy: TradingStrategy = {
   name: 'MA_CROSS_DEVIATION',
@@ -170,37 +208,130 @@ const maDeviationStrategy: TradingStrategy = {
     const signals: TradeSignal[] = [];
     const period = 60;
     const deviationThreshold = 0.02;
+    const rsiPeriod = 14;
+    const macdFast = 12;
+    const macdSlow = 26;
+    const macdSignal = 9;
+    const momentumPeriod = 10;
+    const surgeThreshold = 0.003;
     let currentPosition: 'long' | 'short' | null = null;
 
-    for (let i = period; i < data.length; i++) {
-      const ma = data.slice(i - period, i).reduce((a, b) => a + b.close, 0) / period;
+    // 최소 필요한 데이터 포인트 계산
+    const minDataPoints = Math.max(period, rsiPeriod, macdSlow + macdSignal, 900);
+    if (data.length < minDataPoints) return signals;
+
+    for (let i = minDataPoints; i < data.length; i++) {
+      const prices = data.slice(0, i + 1).map(d => d.close);
+      
+      // MA 계산
+      const ma = prices.slice(-period).reduce((a, b) => a + b, 0) / period;
+      const ma300 = prices.slice(-300).reduce((a, b) => a + b, 0) / 300;
+      const ma900 = prices.slice(-900).reduce((a, b) => a + b, 0) / 900;
+      
+      // 이격도 계산
       const deviation = Math.abs(data[i].close - ma) / ma;
+      
+      // RSI 계산
+      const rsiSlice = prices.slice(-rsiPeriod * 2);
+      const gains = [];
+      const losses = [];
+      for (let j = 1; j < rsiSlice.length; j++) {
+        const diff = rsiSlice[j] - rsiSlice[j - 1];
+        if (diff >= 0) {
+          gains.push(diff);
+          losses.push(0);
+        } else {
+          gains.push(0);
+          losses.push(Math.abs(diff));
+        }
+      }
+      const avgGain = gains.slice(-rsiPeriod).reduce((a, b) => a + b, 0) / rsiPeriod;
+      const avgLoss = losses.slice(-rsiPeriod).reduce((a, b) => a + b, 0) / rsiPeriod;
+      const rs = avgGain / (avgLoss || 1);
+      const rsi = 100 - (100 / (1 + rs));
+
+      // MACD 계산
+      const emaFast = calculateEMA(data.slice(0, i + 1), macdFast).slice(-1)[0]?.value || 0;
+      const emaSlow = calculateEMA(data.slice(0, i + 1), macdSlow).slice(-1)[0]?.value || 0;
+      const macd = emaFast - emaSlow;
+      const macdSignalLine = calculateEMA(
+        data.slice(0, i + 1).map(d => createTempCandleData(d.time, 
+          calculateEMA([createTempCandleData(d.time, d.close)], macdFast)[0]?.value - 
+          calculateEMA([createTempCandleData(d.time, d.close)], macdSlow)[0]?.value || 0
+        )),
+        macdSignal
+      ).slice(-1)[0]?.value || 0;
+      const macdHistogram = macd - macdSignalLine;
+
+      // 모멘텀 계산
+      const momentum = prices[i] / prices[i - momentumPeriod] - 1;
+
+      // MA 기울기 계산
+      const ma300Slope = (ma300 - (prices.slice(-301, -1).reduce((a, b) => a + b, 0) / 300)) / ma300;
+      const ma900Slope = (ma900 - (prices.slice(-901, -1).reduce((a, b) => a + b, 0) / 900)) / ma900;
+
+      // 급등/급락 감지
+      const recentPrices = prices.slice(-5);
+      const priceChange = (recentPrices[recentPrices.length - 1] - recentPrices[0]) / recentPrices[0];
+      const isSurge = Math.abs(priceChange) > surgeThreshold;
 
       if (deviation > deviationThreshold) {
-        if (data[i].close > ma && currentPosition === 'long') {
-          signals.push({
-            time: data[i].time as number,
-            position: 'short',
-            price: data[i].close,
-            strategy: 'MA_CROSS_DEVIATION',
-            metadata: { deviation }
-          });
-          currentPosition = 'short';
-        } else if (data[i].close < ma && (currentPosition === null || currentPosition === 'short')) {
+        const isLongCondition = 
+          data[i].close < ma && // 가격이 MA 아래
+          rsi < 40 && // RSI 과매도
+          macdHistogram > 0 && // MACD 상승
+          momentum > 0 && // 모멘텀 양수
+          ma300Slope > 0 && // MA300 상승추세
+          ma900Slope > 0 && // MA900 상승추세
+          !isSurge; // 급등/급락 상태가 아님
+
+        const isShortCondition = 
+          data[i].close > ma && // 가격이 MA 위
+          rsi > 60 && // RSI 과매수
+          macdHistogram < 0 && // MACD 하락
+          momentum < 0 && // 모멘텀 음수
+          ma300Slope < 0 && // MA300 하락추세
+          ma900Slope < 0 && // MA900 하락추세
+          !isSurge; // 급등/급락 상태가 아님
+
+        if (isLongCondition && (currentPosition === null || currentPosition === 'short')) {
           signals.push({
             time: data[i].time as number,
             position: 'long',
             price: data[i].close,
             strategy: 'MA_CROSS_DEVIATION',
-            metadata: { deviation }
+            metadata: { 
+              deviation,
+              rsi,
+              macd: macdHistogram,
+              momentum,
+              ma300Slope,
+              ma900Slope
+            } as ExtendedMetadata
           });
           currentPosition = 'long';
+        } else if (isShortCondition && currentPosition === 'long') {
+          signals.push({
+            time: data[i].time as number,
+            position: 'short',
+            price: data[i].close,
+            strategy: 'MA_CROSS_DEVIATION',
+            metadata: { 
+              deviation,
+              rsi,
+              macd: macdHistogram,
+              momentum,
+              ma300Slope,
+              ma900Slope
+            } as ExtendedMetadata
+          });
+          currentPosition = 'short';
         }
       }
     }
     return signals;
   },
-  description: '이동평균선 이격도 기반 전략'
+  description: '이동평균선 이격도 기반 전략 (RSI, MACD, 모멘텀, MA 추세 통합)'
 };
 
 // 기울기 필터 전략
@@ -303,7 +434,7 @@ interface UpbitStore {
   updateDateRange: (startDate: Date, endDate: Date | null) => void;
   strategies: Record<TradeStrategy, TradingStrategy>;
   getStrategy: (name: TradeStrategy) => TradingStrategy;
-  analyzeStrategy: (data: CandlestickData[]) => TradeSignal[];
+  analyzeStrategy: (data: CandlestickData<Time>[]) => TradeSignal[];
 }
 
 // 로컬 스토리지에서 MA 설정 불러오기

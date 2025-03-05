@@ -1,5 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getClosedOrders } from '../api/upbitOrder';
+
+interface Order {
+  uuid: string;
+  created_at: string;
+  side: 'ask' | 'bid';
+  price: string;
+  volume: string;
+  state: 'wait' | 'done' | 'cancel';
+}
 
 interface ClosedOrdersProps {
   market: string;
@@ -7,27 +16,27 @@ interface ClosedOrdersProps {
 }
 
 export function ClosedOrders({ market, onSelectOrder }: ClosedOrdersProps) {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'1day' | '7days' | '30days' | 'all'>('7days');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  const loadClosedOrders = async () => {
+  const loadClosedOrders = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
       const data = await getClosedOrders(market);
       const filteredData = filterOrdersByDate(data, filter);
       setOrders(filteredData);
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [market, filter]);
 
-  const filterOrdersByDate = (orders: any[], filter: string) => {
+  const filterOrdersByDate = (orders: Order[], filter: string) => {
     const now = new Date();
     let filteredOrders = orders;
 
@@ -47,7 +56,7 @@ export function ClosedOrders({ market, onSelectOrder }: ClosedOrdersProps) {
 
   useEffect(() => {
     loadClosedOrders();
-  }, [market, filter]);
+  }, [loadClosedOrders]);
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg">
