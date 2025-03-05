@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BacktestResult, Trade } from '../types/candlestick';
 import { formatTime } from '../utils/chartHelpers';
 
@@ -7,9 +7,17 @@ interface BacktestResultsProps {
 }
 
 const BacktestResults: React.FC<BacktestResultsProps> = ({ backtestResult }) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   if (!backtestResult) {
     return null;
   }
+
+  const totalPages = Math.ceil(backtestResult.trades.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentTrades = backtestResult.trades.slice(startIndex, endIndex);
 
   return (
     <div className="mt-4 space-y-4">
@@ -61,7 +69,37 @@ const BacktestResults: React.FC<BacktestResultsProps> = ({ backtestResult }) => 
 
       {backtestResult.trades.length > 0 && (
         <div className="mt-4 bg-gray-800 p-4 rounded-lg">
-          <div className="text-white text-lg font-bold mb-4">거래 내역</div>
+          <div className="flex justify-between items-center mb-4">
+            <div className="text-white text-lg font-bold">거래 내역</div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className={`px-3 py-1 rounded ${
+                  currentPage === 1 
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                이전
+              </button>
+              <span className="text-white">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className={`px-3 py-1 rounded ${
+                  currentPage === totalPages 
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                다음
+              </button>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="min-w-full text-white">
               <thead>
@@ -79,37 +117,25 @@ const BacktestResults: React.FC<BacktestResultsProps> = ({ backtestResult }) => 
                 </tr>
               </thead>
               <tbody>
-                {backtestResult.trades.map((trade, index) => {
-                  const feeRate = 0.0005; // 0.05%
-                  const buyFee = feeRate * 100; // 매수 수수료 (%)
-                  const sellFee = feeRate * 100; // 매도 수수료 (%)
-                  const netReturn = trade.return - (feeRate * 2); // 매수+매도 수수료 차감
+                {currentTrades.map((trade, index) => {
+                  const feeRate = 0.0005;
+                  const buyFee = feeRate * 100;
+                  const sellFee = feeRate * 100;
+                  const netReturn = trade.return - (feeRate * 2);
                   const profitAmount = 1000000 * trade.return;
                   const netProfitAmount = 1000000 * netReturn;
                   
                   return (
-                    <tr key={index} className="border-t border-gray-700">
-                      <td className="px-4 py-2">
-                        {formatTime(trade.entryTime)}
-                      </td>
-                      <td className="px-4 py-2">
-                        {formatTime(trade.exitTime)}
-                      </td>
-                      <td className="px-4 py-2">
-                        {trade.entryPrice.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2">
-                        {trade.exitPrice.toLocaleString()}
-                      </td>
+                    <tr key={startIndex + index} className="border-t border-gray-700">
+                      <td className="px-4 py-2">{formatTime(trade.entryTime)}</td>
+                      <td className="px-4 py-2">{formatTime(trade.exitTime)}</td>
+                      <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
+                      <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
                       <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {(trade.return * 100).toFixed(2)}%
                       </td>
-                      <td className="px-4 py-2 text-red-500">
-                        {buyFee.toFixed(2)}%
-                      </td>
-                      <td className="px-4 py-2 text-red-500">
-                        {sellFee.toFixed(2)}%
-                      </td>
+                      <td className="px-4 py-2 text-red-500">{buyFee.toFixed(2)}%</td>
+                      <td className="px-4 py-2 text-red-500">{sellFee.toFixed(2)}%</td>
                       <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {(netReturn * 100).toFixed(2)}%
                       </td>

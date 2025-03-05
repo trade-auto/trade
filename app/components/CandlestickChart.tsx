@@ -3,7 +3,9 @@ import {
   IChartApi,
   ISeriesApi,
   Time,
-  SeriesMarker
+  SeriesMarker,
+  SeriesMarkerPosition,
+  SeriesMarkerShape
 } from 'lightweight-charts';
 import {
   DateRange,
@@ -67,6 +69,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const [allData, setAllData] = useState<ExtendedCandlestickData[]>([]);
   const [markers, setMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
+  const [backtestMarkers, setBacktestMarkers] = useState<SeriesMarker<Time>[]>([]);
   
   // 설정 상태
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
@@ -110,6 +113,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const [importedData, setImportedData] = useState<ExtendedCandlestickData[]>([]);
   const [isDataImported, setIsDataImported] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 새로운 상태 추가
+  const [csvBacktestResult, setCsvBacktestResult] = useState<BacktestResult | null>(null);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -538,20 +544,19 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       try {
         const text = e.target?.result as string;
         const rows = text.split('\n');
-        const headers = rows[0].split(',');
         
         // CSV 데이터 파싱
         const parsedData: ExtendedCandlestickData[] = rows.slice(1)
-          .filter(row => row.trim()) // 빈 줄 제거
+          .filter(row => row.trim())
           .map(row => {
             const columns = row.split(',');
             return {
-              time: parseInt(columns[0]) / 1000 as Time, // timestamp를 초 단위로 변환
-              open: parseFloat(columns[2]), // open_price
-              high: parseFloat(columns[3]), // high_price
-              low: parseFloat(columns[4]), // low_price
-              close: parseFloat(columns[5]), // trade_price
-              volume: parseFloat(columns[6]) // volume
+              time: parseInt(columns[0]) / 1000 as Time,
+              open: parseFloat(columns[2]),
+              high: parseFloat(columns[3]),
+              low: parseFloat(columns[4]),
+              close: parseFloat(columns[5]),
+              volume: parseFloat(columns[6])
             };
           })
           .sort((a, b) => (a.time as number) - (b.time as number));
@@ -559,68 +564,106 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         setImportedData(parsedData);
         setIsDataImported(true);
         
-        // 차트 데이터 업데이트
-        if (candleSeriesRef.current && volumeSeriesRef.current) {
-          candleSeriesRef.current.setData(parsedData);
-          
-          // 볼륨 데이터 설정
-          const volumeData = parsedData.map(d => ({
-            time: d.time,
-            value: d.volume,
-            color: d.close >= d.open ? '#26a69a' : '#ef5350',
-          }));
-          volumeSeriesRef.current.setData(volumeData);
-          
-          // EMA 계산 및 설정
-          if (
-            sixtyEMASeriesRef.current &&
-            oneTwentyEMASeriesRef.current &&
-            twoFortyEMASeriesRef.current &&
-            threeHundredSixtyEMASeriesRef.current &&
-            threeHundredEMASeriesRef.current &&
-            nineHundredEMASeriesRef.current
-          ) {
-            const ema60Data = calculateEMA(parsedData, 60);
-            const ema120Data = calculateEMA(parsedData, 120);
-            const ema240Data = calculateEMA(parsedData, 240);
-            const ema360Data = calculateEMA(parsedData, 360);
-            const ema300Data = calculateEMA(parsedData, 300);
-            const ema900Data = calculateEMA(parsedData, 900);
+        // 현재 선택된 전략에 대해서만 신호 분석
+        const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+        const signals = selectedStrategy.analyze(parsedData);
+        const strategyMarkers = signals.map(signal => ({
+          time: signal.time as Time,
+          position: signal.position === 'long' ? ('belowBar' as SeriesMarkerPosition) : ('aboveBar' as SeriesMarkerPosition),
+          color: signal.position === 'long' ? '#26a69a' : '#ef5350',
+          shape: signal.position === 'long' ? ('arrowUp' as SeriesMarkerShape) : ('arrowDown' as SeriesMarkerShape),
+          text: `${signal.position} @ ${signal.price.toLocaleString()}`,
+          size: 2
+        }));
 
-            sixtyEMASeriesRef.current.setData(ema60Data);
-            oneTwentyEMASeriesRef.current.setData(ema120Data);
-            twoFortyEMASeriesRef.current.setData(ema240Data);
-            threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-            threeHundredEMASeriesRef.current.setData(ema300Data);
-            nineHundredEMASeriesRef.current.setData(ema900Data);
-          }
+        setBacktestMarkers(strategyMarkers);
 
-          // 매매 신호 분석 및 마커 생성
-          const signals = useUpbitStore.getState().analyzeStrategy(parsedData);
-          const newMarkers = createTradeMarkers(signals);
-          setMarkers(newMarkers);
+        // CSV 데이터에 대한 백테스트 결과 계산
+        const csvResult = calculateBacktestResult(parsedData, signals, 'test');
+        setCsvBacktestResult(csvResult);
 
-          // 백테스트 결과 계산
-          const result = calculateBacktestResult(parsedData, signals, mode || 'test');
-          setBacktestResult(result);
-
-          // 차트 피팅
-          if (chartApiRef.current) {
-            chartApiRef.current.timeScale().fitContent();
-          }
-        }
       } catch (error) {
         console.error('CSV 파일 파싱 오류:', error);
         alert('CSV 파일 처리 중 오류가 발생했습니다.');
       }
     };
     reader.readAsText(file);
-  }, [mode]);
+  }, [tradeStrategy]);
 
   // 파일 선택 트리거
   const triggerFileInput = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  // 백테스트 차트 초기화 콜백
+  const handleBacktestChartReady = useCallback((
+    chartApi: IChartApi,
+    candleSeries: ISeriesApi<"Candlestick">,
+    volumeSeries: ISeriesApi<"Histogram">,
+    sixtyEMASeries: ISeriesApi<"Line">,
+    oneTwentyEMASeries: ISeriesApi<"Line">,
+    twoFortyEMASeries: ISeriesApi<"Line">,
+    threeHundredSixtyEMASeries: ISeriesApi<"Line">,
+    threeHundredEMASeries: ISeriesApi<"Line">,
+    nineHundredEMASeries: ISeriesApi<"Line">
+  ) => {
+    // 백테스트 차트용 레퍼런스 생성
+    const backtestChartApi = chartApi;
+    const backtestCandleSeries = candleSeries;
+    const backtestVolumeSeries = volumeSeries;
+    const backtestSixtyEMASeries = sixtyEMASeries;
+    const backtestOneTwentyEMASeries = oneTwentyEMASeries;
+    const backtestTwoFortyEMASeries = twoFortyEMASeries;
+    const backtestThreeHundredSixtyEMASeries = threeHundredSixtyEMASeries;
+    const backtestThreeHundredEMASeries = threeHundredEMASeries;
+    const backtestNineHundredEMASeries = nineHundredEMASeries;
+    
+    // 볼륨 시리즈 설정
+    backtestChartApi.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+      borderVisible: false,
+    });
+
+    // 임포트된 데이터가 있으면 차트에 표시
+    if (importedData.length > 0) {
+      // 캔들스틱 데이터 설정
+      backtestCandleSeries.setData(importedData);
+      
+      // 볼륨 데이터 설정
+      const volumeData = importedData.map(d => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? '#26a69a' : '#ef5350',
+      }));
+      backtestVolumeSeries.setData(volumeData);
+      
+      // EMA 데이터 설정
+      const ema60Data = calculateEMA(importedData, 60);
+      const ema120Data = calculateEMA(importedData, 120);
+      const ema240Data = calculateEMA(importedData, 240);
+      const ema360Data = calculateEMA(importedData, 360);
+      const ema300Data = calculateEMA(importedData, 300);
+      const ema900Data = calculateEMA(importedData, 900);
+
+      backtestSixtyEMASeries.setData(ema60Data);
+      backtestOneTwentyEMASeries.setData(ema120Data);
+      backtestTwoFortyEMASeries.setData(ema240Data);
+      backtestThreeHundredSixtyEMASeries.setData(ema360Data);
+      backtestThreeHundredEMASeries.setData(ema300Data);
+      backtestNineHundredEMASeries.setData(ema900Data);
+
+      // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
+      const signals = useUpbitStore.getState().analyzeStrategy(importedData);
+      const newMarkers = createTradeMarkers(signals);
+      setBacktestMarkers(newMarkers);
+
+      // 차트 피팅
+      backtestChartApi.timeScale().fitContent();
+    }
+  }, [importedData]);
 
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
@@ -704,17 +747,23 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           />
         </div>
         {isDataImported && (    
-           <div className="relative w-full">
+            <div>
+           <div className="relative w-full mt-4">
+            <div className="text-white text-lg font-bold mb-2">백테스트 차트</div>
             <ChartContainer
               isFullscreen={isFullscreen}
               chartHeight={chartHeight}
               toggleFullscreen={toggleFullscreen}
               symbol={symbol}
-              markers={markers}
+              markers={backtestMarkers}
               chartType={chartType}
-              onChartReady={handleChartReady}
+              onChartReady={handleBacktestChartReady}
             />
           </div>
+           <div>
+           <BacktestResults backtestResult={csvBacktestResult} />
+         </div>
+            </div>
         )}
         {/* CSV 임포트 버튼 */}
         <div className="mb-4">
