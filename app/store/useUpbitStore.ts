@@ -74,6 +74,8 @@ export type TradeSignal = {
     ma360?: number;
     ma120?: number;
     isAbove360MA?: boolean;
+    rsi?: number;
+    macd?: number;
   };
 };
 
@@ -87,14 +89,19 @@ export interface TradingStrategy {
 interface ExtendedMetadata {
   deviation?: number;
   slope?: number;
-  ma360?: number;
+  ma60?: number;
   ma120?: number;
-  isAbove360MA?: boolean;
+  ma240?: number;
+  ma300?: number;
+  ma360?: number;
+  ma900?: number;
   rsi?: number;
   macd?: number;
   momentum?: number;
   ma300Slope?: number;
   ma900Slope?: number;
+  upperBand?: number;
+  lowerBand?: number;
 }
 
 // 볼린저 밴드 전략
@@ -249,6 +256,7 @@ const maDeviationStrategy: TradingStrategy = {
       const avgLoss = losses.slice(-rsiPeriod).reduce((a, b) => a + b, 0) / rsiPeriod;
       const rs = avgGain / (avgLoss || 1);
       const rsi = 100 - (100 / (1 + rs));
+      const prevRsi = i > 0 ? calculateRSI(prices.slice(0, i)) : rsi;
 
       // MACD 계산
       const emaFast = calculateEMA(data.slice(0, i + 1), macdFast).slice(-1)[0]?.value || 0;
@@ -278,7 +286,7 @@ const maDeviationStrategy: TradingStrategy = {
       if (deviation > deviationThreshold) {
         const isLongCondition = 
           data[i].close < ma && // 가격이 MA 아래
-          rsi < 40 && // RSI 과매도
+          rsi < 40 && rsi > prevRsi && // RSI 과매도 및 상승 반전
           macdHistogram > 0 && // MACD 상승
           momentum > 0 && // 모멘텀 양수
           ma300Slope > 0 && // MA300 상승추세
@@ -334,56 +342,178 @@ const maDeviationStrategy: TradingStrategy = {
   description: '이동평균선 이격도 기반 전략 (RSI, MACD, 모멘텀, MA 추세 통합)'
 };
 
+// RSI 계산 헬퍼 함수
+function calculateRSI(prices: number[]): number {
+  const rsiPeriod = 14;
+  const gains = [];
+  const losses = [];
+  
+  for (let i = 1; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) {
+      gains.push(diff);
+      losses.push(0);
+    } else {
+      gains.push(0);
+      losses.push(Math.abs(diff));
+    }
+  }
+  
+  const avgGain = gains.slice(-rsiPeriod).reduce((a, b) => a + b, 0) / rsiPeriod;
+  const avgLoss = losses.slice(-rsiPeriod).reduce((a, b) => a + b, 0) / rsiPeriod;
+  const rs = avgGain / (avgLoss || 1);
+  return 100 - (100 / (1 + rs));
+}
+
 // 기울기 필터 전략
 const slopeFilterStrategy: TradingStrategy = {
   name: 'SLOPE_FILTER',
   analyze: (data) => {
     const signals: TradeSignal[] = [];
-    const period = 14;
-    const slopeThreshold = 0.001;
+    // 기본 파라미터 설정
+    const ma60Period = 60;
+    const ma120Period = 120;
+    const ma240Period = 240;
+    const ma300Period = 300;
+    const ma360Period = 360;
+    const ma900Period = 900;
+    const rsiPeriod = 14;
+    const macdFast = 12;
+    const macdSlow = 26;
+    const macdSignal = 9;
+    const bbandsLength = 20;
+    const bbandsStdDev = 2;
     let currentPosition: 'long' | 'short' | null = null;
 
-    for (let i = period; i < data.length; i++) {
-      const prices = data.slice(i - period, i).map(d => d.close);
-      const x = Array.from({length: period}, (_, i) => i);
-      const slope = calculateSlope(x, prices);
+    // 최소 필요 데이터 포인트 계산
+    const minDataPoints = Math.max(ma900Period, rsiPeriod, macdSlow + macdSignal);
+    if (data.length < minDataPoints) return signals;
 
-      if (Math.abs(slope) > slopeThreshold) {
-        if (slope > 0 && (currentPosition === null || currentPosition === 'short')) {
-          signals.push({
-            time: data[i].time as number,
-            position: 'long',
-            price: data[i].close,
-            strategy: 'SLOPE_FILTER',
-            metadata: { slope }
-          });
-          currentPosition = 'long';
-        } else if (slope < 0 && currentPosition === 'long') {
-          signals.push({
-            time: data[i].time as number,
-            position: 'short',
-            price: data[i].close,
-            strategy: 'SLOPE_FILTER',
-            metadata: { slope }
-          });
-          currentPosition = 'short';
+    for (let i = minDataPoints; i < data.length; i++) {
+      const prices = data.slice(0, i + 1).map(d => d.close);
+      
+      // 이동평균선 계산
+      const ma60 = prices.slice(-ma60Period).reduce((a, b) => a + b, 0) / ma60Period;
+      const ma120 = prices.slice(-ma120Period).reduce((a, b) => a + b, 0) / ma120Period;
+      const ma240 = prices.slice(-ma240Period).reduce((a, b) => a + b, 0) / ma240Period;
+      const ma300 = prices.slice(-ma300Period).reduce((a, b) => a + b, 0) / ma300Period;
+      const ma360 = prices.slice(-ma360Period).reduce((a, b) => a + b, 0) / ma360Period;
+      const ma900 = prices.slice(-ma900Period).reduce((a, b) => a + b, 0) / ma900Period;
+
+      // 이전 이동평균선 계산 (교차 확인용)
+      const prevMa60 = prices.slice(-ma60Period-1, -1).reduce((a, b) => a + b, 0) / ma60Period;
+      const prevMa120 = prices.slice(-ma120Period-1, -1).reduce((a, b) => a + b, 0) / ma120Period;
+
+      // MACD 계산
+      const emaFast = calculateEMA(data.slice(0, i + 1), macdFast).slice(-1)[0]?.value || 0;
+      const emaSlow = calculateEMA(data.slice(0, i + 1), macdSlow).slice(-1)[0]?.value || 0;
+      const macd = emaFast - emaSlow;
+      const macdSignalLine = calculateEMA(
+        data.slice(0, i + 1).map(d => createTempCandleData(d.time, 
+          calculateEMA([createTempCandleData(d.time, d.close)], macdFast)[0]?.value - 
+          calculateEMA([createTempCandleData(d.time, d.close)], macdSlow)[0]?.value || 0
+        )),
+        macdSignal
+      ).slice(-1)[0]?.value || 0;
+      const macdHistogram = macd - macdSignalLine;
+      const prevMacdHistogram = calculateEMA(
+        data.slice(0, i).map(d => createTempCandleData(d.time,
+          calculateEMA([createTempCandleData(d.time, d.close)], macdFast)[0]?.value -
+          calculateEMA([createTempCandleData(d.time, d.close)], macdSlow)[0]?.value || 0
+        )),
+        macdSignal
+      ).slice(-1)[0]?.value || 0;
+
+      // RSI 계산
+      const rsiSlice = prices.slice(-rsiPeriod * 2);
+      const gains = [];
+      const losses = [];
+      for (let j = 1; j < rsiSlice.length; j++) {
+        const diff = rsiSlice[j] - rsiSlice[j - 1];
+        if (diff >= 0) {
+          gains.push(diff);
+          losses.push(0);
+        } else {
+          gains.push(0);
+          losses.push(Math.abs(diff));
         }
+      }
+      const avgGain = gains.slice(-rsiPeriod).reduce((a, b) => a + b, 0) / rsiPeriod;
+      const avgLoss = losses.slice(-rsiPeriod).reduce((a, b) => a + b, 0) / rsiPeriod;
+      const rs = avgGain / (avgLoss || 1);
+      const rsi = 100 - (100 / (1 + rs));
+      const prevRsi = i > 0 ? calculateRSI(prices.slice(0, i)) : rsi;
+
+      // 볼린저 밴드 계산
+      const bbandsSlice = prices.slice(-bbandsLength);
+      const bbandsMA = bbandsSlice.reduce((a, b) => a + b, 0) / bbandsLength;
+      const bbandsStd = Math.sqrt(
+        bbandsSlice.reduce((a, b) => a + Math.pow(b - bbandsMA, 2), 0) / bbandsLength
+      );
+      const upperBand = bbandsMA + (bbandsStdDev * bbandsStd);
+      const lowerBand = bbandsMA - (bbandsStdDev * bbandsStd);
+
+      // 매수 조건 확인
+      const isLongCondition = 
+        // 이동평균선 정렬 및 교차 조건
+        ma60 > ma120 && ma120 > ma240 && ma240 > ma300 && ma300 > ma360 && ma360 > ma900 &&
+        prevMa60 <= prevMa120 && ma60 > ma120 && // MA60이 MA120 상향 돌파
+        // MACD 조건
+        macdHistogram > 0 && prevMacdHistogram <= 0 && // MACD 상향 돌파
+        // RSI 조건
+        ((rsi < 30 && rsi > prevRsi) || (rsi >= 40 && rsi <= 60)) && // RSI 상승 반전 또는 중립대역
+        // 볼린저 밴드 조건
+        data[i].close <= lowerBand;
+
+      // 매도 조건 확인
+      const isShortCondition = 
+        // 이동평균선 정렬 붕괴 또는 하향 돌파
+        (ma60 < ma120 || ma120 < ma240 || prevMa60 >= prevMa120 && ma60 < ma120) &&
+        // MACD 조건
+        macdHistogram < 0 && prevMacdHistogram >= 0 && // MACD 하향 돌파
+        // RSI 조건
+        rsi > 70 &&
+        // 볼린저 밴드 조건
+        data[i].close >= upperBand;
+
+      if (isLongCondition && (currentPosition === null || currentPosition === 'short')) {
+        signals.push({
+          time: data[i].time as number,
+          position: 'long',
+          price: data[i].close,
+          strategy: 'SLOPE_FILTER',
+          metadata: {
+            deviation: Math.abs(data[i].close - ma60) / ma60,
+            ma360,
+            ma120,
+            isAbove360MA: data[i].close > ma360,
+            rsi,
+            macd: macdHistogram
+          }
+        });
+        currentPosition = 'long';
+      } else if (isShortCondition && currentPosition === 'long') {
+        signals.push({
+          time: data[i].time as number,
+          position: 'short',
+          price: data[i].close,
+          strategy: 'SLOPE_FILTER',
+          metadata: {
+            deviation: Math.abs(data[i].close - ma60) / ma60,
+            ma360,
+            ma120,
+            isAbove360MA: data[i].close > ma360,
+            rsi,
+            macd: macdHistogram
+          }
+        });
+        currentPosition = 'short';
       }
     }
     return signals;
   },
-  description: '가격 기울기 기반 필터링 전략'
+  description: '통합 기술적 분석 전략 (MA/MACD/RSI/BB)'
 };
-
-// 기울기 계산 헬퍼 함수
-function calculateSlope(x: number[], y: number[]): number {
-  const n = x.length;
-  const sumX = x.reduce((a, b) => a + b, 0);
-  const sumY = y.reduce((a, b) => a + b, 0);
-  const sumXY = x.reduce((a, b, i) => a + b * y[i], 0);
-  const sumXX = x.reduce((a, b) => a + b * b, 0);
-  return (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-}
 
 // 전략 맵 정의
 const strategies: Record<TradeStrategy, TradingStrategy> = {

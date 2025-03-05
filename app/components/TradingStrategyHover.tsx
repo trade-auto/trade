@@ -29,7 +29,7 @@ const TradingStrategyHover: React.FC<TradingStrategyHoverProps> = ({
               {strategy === 'BOLLINGER' && '볼린저 밴드'}
               {strategy === 'MA_CROSS' && 'MA 크로스'}
               {strategy === 'MA_CROSS_DEVIATION' && 'MA 이탈'}
-              {strategy === 'SLOPE_FILTER' && '기울기 필터'}
+              {strategy === 'SLOPE_FILTER' && '기울기필터4전략'}
             </button>
           ))}
         </div>
