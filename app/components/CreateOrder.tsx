@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import { useUpbitStore } from '../store/useUpbitStore';
 
@@ -295,20 +295,20 @@ export const CreateOrder = forwardRef<
   const [activePercent, setActivePercent] = useState(25);
 
   // 25% 금액에 해당하는 수량 계산 함수
-  const calculatePercentVolume = () => {
+  const calculatePercentVolume = useCallback(() => {
     if (ma3Price && orderLimits.maxOrderPrice) {
       const quarterAmount = orderLimits.maxOrderPrice * 0.25; // 최대 주문 금액의 25%
       return (quarterAmount / ma3Price).toFixed(4);
     }
     return '0';
-  };
+  }, [ma3Price, orderLimits.maxOrderPrice]);
 
   // 컴포넌트 마운트 시 25% 수량 자동 설정
   useEffect(() => {
     if (ma3Price) {
       setVolume(calculatePercentVolume());
     }
-  }, [ma3Price, orderLimits.maxOrderPrice]);
+  }, [ma3Price, orderLimits.maxOrderPrice, calculatePercentVolume]);
 
   // 퍼센트 버튼 핸들러 수정
   const handlePercentage = (percent: number) => {
@@ -324,48 +324,40 @@ export const CreateOrder = forwardRef<
     setVolume('');
   };
 
-  // 가격 정보 업데이트 함수
-  const updatePrices = async () => {
-    try {
-      setPriceUpdateError(null);
-      const [current, ma3] = await Promise.all([
-        getCurrentPrice(market),
-        get3SecMA(market)
-      ]);
-      setCurrentPrice(current);
-      setMa3Price(ma3);
-
-      // 가격 히스토리 업데이트
-      setPriceHistory(prev => {
-        const newHistory = [...prev, current].slice(-3); // 최근 3개 가격만 유지
-        return newHistory;
-      });
-
-      // 지정가 주문이 아닐 때는 현재가로 자동 업데이트
-      if (ordType !== 'limit' && current) {
-        setPrice(current.toString());
-      }
-    } catch (error: unknown) {
-      setPriceUpdateError('가격 정보 업데이트 실패');
-      console.error('가격 업데이트 중 오류:', error);
-    }
-  };
-
-  // 3초 MA 가격 변경 시 현재가도 업데이트
-  const handleMa3PriceClick = () => {
-    if (ma3Price) {
-      setPrice(ma3Price.toString());
-      setCurrentPrice(ma3Price); // 현재가도 3초 MA 가격으로 업데이트
-    }
-  };
-
   // 주기적으로 가격 업데이트 (1초마다)
   useEffect(() => {
-    updatePrices();
-    const interval = setInterval(updatePrices, 1000); // 1초마다 업데이트
+    // 가격 정보 업데이트 함수를 내부로 이동
+    const updatePricesInEffect = async () => {
+      try {
+        setPriceUpdateError(null);
+        const [current, ma3] = await Promise.all([
+          getCurrentPrice(market),
+          get3SecMA(market)
+        ]);
+        setCurrentPrice(current);
+        setMa3Price(ma3);
+
+        // 가격 히스토리 업데이트
+        setPriceHistory(prev => {
+          const newHistory = [...prev, current].slice(-3); // 최근 3개 가격만 유지
+          return newHistory;
+        });
+
+        // 지정가 주문이 아닐 때는 현재가로 자동 업데이트
+        if (ordType !== 'limit' && current) {
+          setPrice(current.toString());
+        }
+      } catch (error: unknown) {
+        setPriceUpdateError('가격 정보 업데이트 실패');
+        console.error('가격 업데이트 중 오류:', error);
+      }
+    };
+
+    updatePricesInEffect();
+    const interval = setInterval(updatePricesInEffect, 1000); // 1초마다 업데이트
     
     return () => clearInterval(interval);
-  }, [market, ordType, updatePrices]); // updatePrices 의존성 추가
+  }, [market, ordType]); // updatePrices 의존성 제거
 
   // 주문 방식이 변경될 때 가격 자동 설정
   useEffect(() => {
@@ -563,7 +555,7 @@ export const CreateOrder = forwardRef<
       setLastSignal(signal);
       console.log(signal); // 콘솔에 신호 출력
     }
-  }, [autoTrading, currentPrice, priceHistory, tradeStrategy]);
+  }, [autoTrading, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, market, mode]);
 
   // 이동평균 계산 함수 추가
   const calculateMA = (prices: number[], period: number) => {
@@ -1025,8 +1017,13 @@ export const CreateOrder = forwardRef<
             {ma3Price && ordType === 'limit' && (
               <button
                 type="button"
-                onClick={handleMa3PriceClick}
-                className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded"
+                onClick={() => setPrice(ma3Price.toString())}
+                className={`px-4 py-2 ${
+                  ordType !== 'limit' 
+                    ? 'bg-gray-600 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                } text-white rounded`}
+                disabled={ordType !== 'limit'}
               >
                 3초 중간가: {ma3Price.toLocaleString()} KRW
               </button>
