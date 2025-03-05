@@ -68,7 +68,13 @@ export type TradeSignal = {
   position: 'long' | 'short' | 'close';
   price: number;
   strategy: TradeStrategy;
-  metadata?: Record<string, any>;
+  metadata?: {
+    deviation?: number;
+    slope?: number;
+    ma360?: number;
+    ma120?: number;
+    isAbove360MA?: boolean;
+  };
 };
 
 // 매매 전략 인터페이스

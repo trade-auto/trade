@@ -20,7 +20,12 @@ export interface Trade {
   isSuccess: boolean;
   isAutomatic?: boolean;
   mode: 'test' | 'test-auto' | 'live-auto';  // 'live'를 'live-auto'로 변경
-  metadata?: Record<string, any>;
+  metadata?: {
+    entryMa360?: number;
+    exitMa360?: number;
+    entryMa120?: number;
+    exitMa120?: number;
+  };
 }
 
 // 날짜 선택을 위한 인터페이스 추가
@@ -124,10 +129,8 @@ export interface TradeSignal {
   metadata?: {
     deviation?: number;
     slope?: number;
-    ma?: {
-      short?: number;
-      long?: number;
-    };
-    [key: string]: any;
+    ma360?: number;
+    ma120?: number;
+    isAbove360MA?: boolean;
   };
 }

@@ -6,7 +6,6 @@ import {
 } from 'lightweight-charts';
 import { 
   ExtendedCandlestickData, 
-  CrossPoint, 
   DateRange,
   BacktestResult,
   Trade,
