@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BacktestResult, Trade } from '../types/candlestick';
+import { BacktestResult  } from '../types/candlestick';
 import { formatTime } from '../utils/chartHelpers';
 
 interface BacktestResultsProps {
