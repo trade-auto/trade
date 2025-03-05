@@ -665,6 +665,20 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   }, [importedData]);
 
+  // 전략 변경 시 백테스트 차트 업데이트
+  useEffect(() => {
+    if (importedData.length > 0) {
+      const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+      const signals = selectedStrategy.analyze(importedData);
+      const strategyMarkers = createTradeMarkers(signals);
+      setBacktestMarkers(strategyMarkers);
+
+      // CSV 데이터에 대한 백테스트 결과 계산
+      const csvResult = calculateBacktestResult(importedData, signals, 'test');
+      setCsvBacktestResult(csvResult);
+    }
+  }, [tradeStrategy, importedData]);
+
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
       <TradingStrategyHover 
@@ -693,19 +707,19 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           </div>
         </div>
         
-     
+        
         {/* 차트 컨테이너 */}
-          <div className="relative w-full">
-            <ChartContainer
-              isFullscreen={isFullscreen}
-              chartHeight={chartHeight}
-              toggleFullscreen={toggleFullscreen}
-              symbol={symbol}
-              markers={markers}
-              chartType={chartType}
-              onChartReady={handleChartReady}
-            />
-          </div>
+        <div className="relative w-full">
+          <ChartContainer
+            isFullscreen={isFullscreen}
+            chartHeight={chartHeight}
+            toggleFullscreen={toggleFullscreen}
+            symbol={symbol}
+            markers={markers}
+            chartType={chartType}
+            onChartReady={handleChartReady}
+          />
+        </div>
       
 
         
