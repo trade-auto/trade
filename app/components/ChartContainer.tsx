@@ -11,6 +11,8 @@ import {
 } from 'lightweight-charts';
 import { SeriesMarker } from 'lightweight-charts';
 import { CrossPoint } from '../types/candlestick';
+import useChartStore from '../store/chartStore';
+import { updateChartSeries } from '../utils/chartUtils';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
@@ -23,7 +25,6 @@ interface ChartContainerProps {
   toggleFullscreen: () => void;
   symbol: string;
   chartType: string;
-  crossPoints: CrossPoint[];
   onChartReady: (
     chartApi: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
@@ -44,10 +45,16 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
   toggleFullscreen,
   symbol,
   chartType,
-  crossPoints,
   onChartReady,
   createTradeMarkers
 }) => {
+  // Zustand 스토어에서 필요한 데이터 가져오기
+  const { 
+    crossPoints, 
+    allData, 
+    showMA 
+  } = useChartStore();
+
   const container = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -236,6 +243,37 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
+
+  // 데이터 변경 시 차트 업데이트
+  useEffect(() => {
+    if (
+      allData.length > 0 &&
+      candleSeriesRef.current && 
+      volumeSeriesRef.current && 
+      sixtyEMASeriesRef.current && 
+      oneTwentyEMASeriesRef.current && 
+      twoFortyEMASeriesRef.current && 
+      threeHundredSixtyEMASeriesRef.current &&
+      threeHundredEMASeriesRef.current &&
+      nineHundredEMASeriesRef.current
+    ) {
+      updateChartSeries(
+        chartRef,
+        candleSeriesRef,
+        volumeSeriesRef,
+        {
+          sixtyEMA: sixtyEMASeriesRef,
+          oneTwentyEMA: oneTwentyEMASeriesRef,
+          twoFortyEMA: twoFortyEMASeriesRef,
+          threeHundredSixtyEMA: threeHundredSixtyEMASeriesRef,
+          threeHundredEMA: threeHundredEMASeriesRef,
+          nineHundredEMA: nineHundredEMASeriesRef
+        },
+        allData,
+        showMA
+      );
+    }
+  }, [allData, showMA]);
 
   return (
     <div>

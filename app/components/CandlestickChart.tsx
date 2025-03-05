@@ -3,16 +3,9 @@ import Websocket from 'react-websocket';
 import {
   IChartApi,
   ISeriesApi,
-  Time,
-  BusinessDay
 } from 'lightweight-charts';
 import {
-  DateRange,
-  ExtendedCandlestickData,
   UpbitCandle,
-  CrossPoint,
-  BacktestResult,
-  MASettings,
 } from '../types/candlestick';
 import ChartControls from './ChartControls';
 import ChartPrice from './ChartPrice';
@@ -21,14 +14,10 @@ import BacktestResults from './BacktestResults';
 import CsvDownloader from './CsvDownloader';
 import ChartContainer from './ChartContainer';
 import {
-  getInitialDateRange,
-  findCrossPoints,
   createTradeMarkers,
-  calculateEMA,
-  getChartEndpoint,
-  calculateBacktestResult,
-  formatDate,
 } from '../utils/chartHelpers';
+import useChartStore from '../store/chartStore';
+import { updateChartSeries } from '../utils/chartUtils';
 
 interface OrderParams {
   market: string;
@@ -60,33 +49,29 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onOrder,
 }) => {
-  // 차트 상태
+  // 차트 상태 - Zustand 스토어에서 가져오기
+  const {
+    isAutoUpdate,
+    isRealtimeAPIEnabled,
+    showMA,
+    lastUpdated,
+    currentPrice, 
+    chartPrice,
+    allData,
+    backtestResult,
+    setAutoUpdate,
+    setShowMA,
+    loadData,
+    updatePriceFromWebsocket,
+    getTimeValue
+  } = useChartStore();
+  
+  // 로컬 상태 - 전체화면 및 차트 높이 (UI 관련)
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chartHeight, setChartHeight] = useState(500);
-  const [currentPrice, setCurrentPrice] = useState(0);
-  const [chartPrice, setChartPrice] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [allData, setAllData] = useState<ExtendedCandlestickData[]>([]);
-  const [crossPoints, setCrossPoints] = useState<CrossPoint[]>([]);
-  const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   
-  // 설정 상태
-  const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
-  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate ?? true);
-  const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState(true);
-  const [showMA, setShowMA] = useState<MASettings>({
-    sixty: true,
-    oneTwenty: true,
-    twoForty: true,
-    threeHundredSixty: true,
-    threeHundred: true,
-    nineHundred: true,
-  });
-  
-  // CSV 상태
-  const [csvDateRange, setCsvDateRange] = useState<DateRange>({
+  // CSV 상태 (로컬 유지)
+  const [csvDateRange, setCsvDateRange] = useState({
     startDate: new Date(new Date().setDate(new Date().getDate() - 7)),
     endDate: new Date(),
   });
@@ -103,179 +88,13 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const threeHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const nineHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  
-  // 기타 상태
-  const ongoingRequestRef = useRef<boolean>(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 타임스탬프 처리 유틸리티 함수
-  const getTimeValue = useCallback((time: Time | BusinessDay | string): number => {
-    if (typeof time === 'number') {
-      return time;
-    } else if (typeof time === 'string') {
-      // ISO 날짜 문자열인 경우
-      return new Date(time).getTime() / 1000;
-    } else if ('timestamp' in time && typeof time.timestamp === 'number') {
-      return time.timestamp;
-    } else if ('year' in time && 'month' in time && 'day' in time) {
-      // BusinessDay 형식인 경우
-      const date = new Date(time.year, time.month - 1, time.day);
-      return date.getTime() / 1000;
+  // 초기화 시 자동 업데이트 설정
+  useEffect(() => {
+    if (initialAutoUpdate !== undefined) {
+      setAutoUpdate(initialAutoUpdate);
     }
-    
-    // 기본값
-    return new Date().getTime() / 1000;
-  }, []);
-
-  // 데이터 로드 함수
-  const loadData = useCallback(async () => {
-    if (ongoingRequestRef.current) return;
-    
-    ongoingRequestRef.current = true;
-    setIsLoading(true);
-    setProgress(0);
-    
-    try {
-      const endpoint = getChartEndpoint(chartType);
-      const count = chartType.startsWith('seconds/') ? 200 : 200; // 초봉은 200개씩 가져오기
-      
-      const to = dateRange.endDate ? dateRange.endDate.toISOString() : new Date().toISOString();
-      
-      console.log(`API 요청: https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${count}`);
-      
-      const response = await fetch(
-        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${count}`
-      );
-      
-      if (!response.ok) {
-        throw new Error('데이터 로딩 실패');
-      }
-      
-      const data: UpbitCandle[] = await response.json();
-      
-      if (data && data.length > 0) {
-        // 진행 상태 업데이트
-        setProgress(30);
-        
-        // 데이터 처리
-        const processedData: ExtendedCandlestickData[] = data.map((candle: UpbitCandle) => {
-          const time = new Date(candle.candle_date_time_kst).getTime() / 1000;
-          return {
-            time: time as Time,
-            open: candle.opening_price,
-            high: candle.high_price,
-            low: candle.low_price,
-            close: candle.trade_price,
-            volume: candle.candle_acc_trade_volume,
-          };
-        });
-        
-        // 진행 상태 업데이트
-        setProgress(50);
-        
-        // 데이터 정렬 (최신 데이터가 마지막에 오도록)
-        processedData.sort((a, b) => {
-          if (typeof a.time === 'number' && typeof b.time === 'number') {
-            return a.time - b.time;
-          }
-          return 0;
-        });
-        
-        // 진행 상태 업데이트
-        setProgress(70);
-        
-        // 시리즈 데이터 업데이트
-        if (
-          candleSeriesRef.current && 
-          volumeSeriesRef.current && 
-          sixtyEMASeriesRef.current && 
-          oneTwentyEMASeriesRef.current && 
-          twoFortyEMASeriesRef.current && 
-          threeHundredSixtyEMASeriesRef.current &&
-          threeHundredEMASeriesRef.current &&
-          nineHundredEMASeriesRef.current
-        ) {
-          // 캔들 데이터 설정
-          candleSeriesRef.current.setData(processedData);
-          
-          // 볼륨 데이터 설정
-          const volumeData = processedData.map((d) => ({
-            time: d.time,
-            value: d.volume,
-            color: d.close >= d.open ? '#26a69a' : '#ef5350',
-          }));
-          volumeSeriesRef.current.setData(volumeData);
-          
-          // EMA 계산 및 설정
-          const ema60Data = calculateEMA(processedData, 60);
-          const ema120Data = calculateEMA(processedData, 120);
-          const ema240Data = calculateEMA(processedData, 240);
-          const ema360Data = calculateEMA(processedData, 360);
-          const ema300Data = calculateEMA(processedData, 300);
-          const ema900Data = calculateEMA(processedData, 900);
-          
-          sixtyEMASeriesRef.current.setData(ema60Data);
-          oneTwentyEMASeriesRef.current.setData(ema120Data);
-          twoFortyEMASeriesRef.current.setData(ema240Data);
-          threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-          threeHundredEMASeriesRef.current.setData(ema300Data);
-          nineHundredEMASeriesRef.current.setData(ema900Data);
-          
-          // 시리즈 가시성 설정
-          sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
-          oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
-          twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
-          threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
-          threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
-          nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
-          
-          // 매수/매도 포인트 계산
-          const cross = findCrossPoints(ema60Data, ema120Data, ema240Data, ema360Data);
-          setCrossPoints(cross);
-          
-          // 백테스트 결과 계산
-          const backtestResult = calculateBacktestResult(processedData, cross, 'test');
-          setBacktestResult(backtestResult);
-          
-          // 현재 가격 설정
-          if (processedData.length > 0) {
-            const lastCandle = processedData[processedData.length - 1];
-            setChartPrice(lastCandle.close);
-          }
-          
-          // 타임스케일 피팅
-          if (chartApiRef.current) {
-            chartApiRef.current.timeScale().fitContent();
-          }
-        }
-        
-        // 모든 데이터 저장
-        setAllData(processedData);
-        setLastUpdated(new Date());
-      }
-    } catch (error) {
-      console.error('데이터 로드 오류:', error);
-    } finally {
-      setIsLoading(false);
-      setProgress(100);
-      ongoingRequestRef.current = false;
-    }
-  }, [dateRange, symbol, chartType, showMA]);
-
-  // 웹소켓 메시지 핸들러
-  const handleSocketData = useCallback((data: string) => {
-    if (!isRealtimeAPIEnabled) return;
-    
-    try {
-      const parsedData = JSON.parse(data);
-      if (parsedData && parsedData.type === 'ticker' && parsedData.code === symbol) {
-        const price = parsedData.trade_price;
-        setCurrentPrice(price);
-      }
-    } catch (error) {
-      console.error('웹소켓 데이터 파싱 오류:', error);
-    }
-  }, [isRealtimeAPIEnabled, symbol]);
+  }, [initialAutoUpdate, setAutoUpdate]);
 
   // 주기적 업데이트 설정
   useEffect(() => {
@@ -283,31 +102,17 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       const updateInterval = 10000; // 10초
       
       const updateTimer = setInterval(() => {
-        if (!ongoingRequestRef.current) {
-          const now = new Date();
-          setDateRange(prev => ({ ...prev, endDate: now }));
-        }
+        loadData(symbol, chartType);
       }, updateInterval);
       
       return () => clearInterval(updateTimer);
     }
-  }, [isAutoUpdate]);
+  }, [isAutoUpdate, loadData, symbol, chartType]);
 
-  // 데이터 로드 트리거
+  // 컴포넌트 마운트 시 데이터 로드
   useEffect(() => {
-    // 중복 요청 방지를 위한 디바운싱
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    
-    timeoutRef.current = setTimeout(() => {
-      loadData();
-    }, 300);
-    
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [dateRange, loadData]);
+    loadData(symbol, chartType);
+  }, [loadData, symbol, chartType]);
 
   // 차트 초기화 콜백
   const handleChartReady = useCallback((
@@ -341,8 +146,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     });
     
     // 차트 준비 후 데이터 로드
-    loadData();
-  }, [loadData]);
+    loadData(symbol, chartType);
+  }, [loadData, symbol, chartType]);
 
   // 전체화면 토글
   const toggleFullscreen = useCallback(() => {
@@ -360,23 +165,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     
     setIsFullscreen(!isFullscreen);
   }, [isFullscreen]);
-
-  // 이동평균선 표시 설정 업데이트
-  const updateShowMA = useCallback((newShowMA: MASettings) => {
-    setShowMA(newShowMA);
-    
-    if (
-      sixtyEMASeriesRef.current && 
-      oneTwentyEMASeriesRef.current && 
-      twoFortyEMASeriesRef.current && 
-      threeHundredSixtyEMASeriesRef.current
-    ) {
-      sixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.sixty });
-      oneTwentyEMASeriesRef.current.applyOptions({ visible: newShowMA.oneTwenty });
-      twoFortyEMASeriesRef.current.applyOptions({ visible: newShowMA.twoForty });
-      threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.threeHundredSixty });
-    }
-  }, []);
 
   // 차트 높이 변경 핸들러
   const handleHeightChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -432,6 +220,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
+      
+      // 파일명 포맷팅 함수 (formatDate 대체)
+      const formatDate = (date: Date) => {
+        return date.toISOString().split('T')[0];
+      };
+      
       link.setAttribute('download', `${symbol}_${chartType}_${formatDate(csvDateRange.startDate)}_to_${formatDate(csvDateRange.endDate || new Date())}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
@@ -447,6 +241,52 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   }, [allData, csvDateRange, symbol, chartType, csvLoading, getTimeValue]);
 
+  // 웹소켓 메시지 핸들러
+  const handleSocketData = useCallback((data: string) => {
+    if (!isRealtimeAPIEnabled) return;
+    
+    try {
+      const parsedData = JSON.parse(data);
+      if (parsedData && parsedData.type === 'ticker' && parsedData.code === symbol) {
+        const price = parsedData.trade_price;
+        updatePriceFromWebsocket(price);
+      }
+    } catch (error) {
+      console.error('웹소켓 데이터 파싱 오류:', error);
+    }
+  }, [isRealtimeAPIEnabled, symbol, updatePriceFromWebsocket]);
+
+  // 데이터 변경 시 차트 업데이트
+  useEffect(() => {
+    if (
+      allData.length > 0 &&
+      candleSeriesRef.current && 
+      volumeSeriesRef.current && 
+      sixtyEMASeriesRef.current && 
+      oneTwentyEMASeriesRef.current && 
+      twoFortyEMASeriesRef.current && 
+      threeHundredSixtyEMASeriesRef.current &&
+      threeHundredEMASeriesRef.current &&
+      nineHundredEMASeriesRef.current
+    ) {
+      updateChartSeries(
+        chartApiRef,
+        candleSeriesRef,
+        volumeSeriesRef,
+        {
+          sixtyEMA: sixtyEMASeriesRef,
+          oneTwentyEMA: oneTwentyEMASeriesRef,
+          twoFortyEMA: twoFortyEMASeriesRef,
+          threeHundredSixtyEMA: threeHundredSixtyEMASeriesRef,
+          threeHundredEMA: threeHundredEMASeriesRef,
+          nineHundredEMA: nineHundredEMASeriesRef
+        },
+        allData,
+        showMA
+      );
+    }
+  }, [allData, showMA]);
+
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
       <div className="grid grid-cols-1 gap-4">
@@ -455,15 +295,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           {/* 차트 컨트롤 */}
           <div className="w-full md:w-1/2">
             <ChartControls
-              isAutoUpdate={isAutoUpdate}
-              handleAutoUpdateToggle={() => setIsAutoUpdate(!isAutoUpdate)}
-              isRealtimeAPIEnabled={isRealtimeAPIEnabled}
-              handleRealtimeAPIToggle={() => setIsRealtimeAPIEnabled(!isRealtimeAPIEnabled)}
-              dateRange={dateRange}
-              handleDateRangeChange={(date) => setDateRange(prev => ({ ...prev, startDate: date }))}
-              handleEndDateChange={(date) => setDateRange(prev => ({ ...prev, endDate: date }))}
-              isLoading={isLoading}
-              progress={progress}
+              symbol={symbol}
+              chartType={chartType}
             />
           </div>
           
@@ -485,7 +318,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
             toggleFullscreen={toggleFullscreen}
             symbol={symbol}
             chartType={chartType}
-            crossPoints={crossPoints}
             onChartReady={handleChartReady}
             createTradeMarkers={createTradeMarkers}
           />
@@ -497,7 +329,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           <div>
             <ChartSettings 
               showMA={showMA}
-              updateShowMA={updateShowMA}
+              updateShowMA={setShowMA}
               chartHeight={chartHeight}
               handleHeightChange={handleHeightChange}
             />

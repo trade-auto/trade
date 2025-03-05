@@ -87,19 +87,32 @@ const getAngle = (maValues: number[]): number => {
 
 type ConditionStartTimes = Record<"60MA_angle_above_45" | "60MA_angle_below_minus45", number | null>;
 
+// Window 인터페이스 확장
 declare global {
   interface Window {
     _conditionStartTimes: ConditionStartTimes;
   }
 }
 
-if (!window._conditionStartTimes) {
-  window._conditionStartTimes = {
-    "60MA_angle_above_45": null,
-    "60MA_angle_below_minus45": null
-  };
+// 브라우저 환경인지 확인하는 헬퍼 함수
+const isBrowserEnv = typeof window !== 'undefined';
+
+// 안전한 conditionStartTimes 초기화
+let conditionStartTimes: ConditionStartTimes = {
+  "60MA_angle_above_45": null,
+  "60MA_angle_below_minus45": null
+};
+
+// 브라우저 환경에서만 window 객체 초기화
+if (isBrowserEnv) {
+  if (!window._conditionStartTimes) {
+    window._conditionStartTimes = {
+      "60MA_angle_above_45": null,
+      "60MA_angle_below_minus45": null
+    };
+  }
+  conditionStartTimes = window._conditionStartTimes;
 }
-const conditionStartTimes = window._conditionStartTimes;
 
 const updateConditionDuration = (
   condition: "60MA_angle_above_45" | "60MA_angle_below_minus45",
@@ -531,7 +544,7 @@ export const CreateOrder = forwardRef<
 
         // 가격 히스토리 업데이트
         setPriceHistory(prev => {
-          const newHistory = [...prev, current].slice(-300); // 최근 300개 가격만 유지
+          const newHistory = [...prev, current].slice(-3); // 최근 3개 가격만 유지
           return newHistory;
         });
 
@@ -747,7 +760,7 @@ export const CreateOrder = forwardRef<
   // 가격 히스토리 업데이트
   useEffect(() => {
     if (currentPrice) {
-      setPriceHistory(prev => [...prev, currentPrice].slice(-300)); // 최근 300개 가격만 유지
+      setPriceHistory(prev => [...prev, currentPrice].slice(-100)); // 최근 100개 가격만 유지
     }
   }, [currentPrice]);
 

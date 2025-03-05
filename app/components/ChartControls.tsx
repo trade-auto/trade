@@ -1,31 +1,45 @@
 import React from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
-import { DateRange } from '../types/candlestick';
+import useChartStore from '../store/chartStore';
 
 interface ChartControlsProps {
-  isAutoUpdate: boolean;
-  isRealtimeAPIEnabled: boolean;
-  dateRange: DateRange;
-  isLoading: boolean;
-  progress: number;
-  handleAutoUpdateToggle: () => void;
-  handleRealtimeAPIToggle: () => void;
-  handleDateRangeChange: (date: Date) => void;
-  handleEndDateChange: (date: Date) => void;
+  symbol: string;
+  chartType: string;
 }
 
 const ChartControls: React.FC<ChartControlsProps> = ({
-  isAutoUpdate,
-  isRealtimeAPIEnabled,
-  dateRange,
-  isLoading,
-  progress,
-  handleAutoUpdateToggle,
-  handleRealtimeAPIToggle,
-  handleDateRangeChange,
-  handleEndDateChange
+  symbol,
+  chartType
 }) => {
+  // Zustand 스토어에서 상태와 액션 가져오기
+  const {
+    isAutoUpdate,
+    isRealtimeAPIEnabled,
+    dateRange,
+    isLoading,
+    progress,
+    toggleAutoUpdate,
+    toggleRealtimeAPIEnabled,
+    setStartDate,
+    setEndDate,
+    loadData
+  } = useChartStore();
+
+  // 시작 날짜 변경 핸들러
+  const handleDateRangeChange = (date: Date) => {
+    setStartDate(date);
+    // 날짜 변경 시 데이터 다시 로드
+    loadData(symbol, chartType);
+  };
+
+  // 종료 날짜 변경 핸들러
+  const handleEndDateChange = (date: Date) => {
+    setEndDate(date);
+    // 날짜 변경 시 데이터 다시 로드
+    loadData(symbol, chartType);
+  };
+
   return (
     <div className="mb-4 space-y-4">
       {/* 자동 업데이트 설정 */}
@@ -33,14 +47,14 @@ const ChartControls: React.FC<ChartControlsProps> = ({
         <div className="text-white font-medium mb-3">실시간 업데이트 설정</div>
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={handleAutoUpdateToggle}
+            onClick={toggleAutoUpdate}
             className={`px-4 py-2 rounded-md text-sm font-medium 
               ${isAutoUpdate ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
           >
             {isAutoUpdate ? '자동 업데이트 ON' : '자동 업데이트 OFF'}
           </button>
           <button
-            onClick={handleRealtimeAPIToggle}
+            onClick={toggleRealtimeAPIEnabled}
             className={`px-4 py-2 rounded-md text-sm font-medium 
               ${isRealtimeAPIEnabled ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
           >

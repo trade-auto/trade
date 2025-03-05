@@ -99,6 +99,25 @@ interface UpbitStore {
   updateTradeStrategy: (strategy: TradeStrategy) => void;
 }
 
+// 브라우저 환경인지 확인하는 헬퍼 함수
+const isBrowser = () => typeof window !== 'undefined';
+
+// 안전하게 localStorage에서 값 가져오기
+const getLocalStorageItem = (key: string, defaultValue: any) => {
+  if (isBrowser()) {
+    const value = localStorage.getItem(key);
+    return value !== null ? value : defaultValue;
+  }
+  return defaultValue;
+};
+
+// 안전하게 localStorage에 값 저장하기
+const setLocalStorageItem = (key: string, value: any) => {
+  if (isBrowser()) {
+    localStorage.setItem(key, value);
+  }
+};
+
 // 로컬 스토리지에서 MA 설정 불러오기
 const loadMASettings = () => {
   try {
@@ -254,10 +273,10 @@ export const useUpbitStore = create<UpbitStore>()((set) => ({
   }),
 
   // 로컬 스토리지에서 마지막 전략 불러오기 또는 기본값 설정
-  tradeStrategy: (localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER',
+  tradeStrategy: getLocalStorageItem('lastTradeStrategy', 'BOLLINGER') as TradeStrategy,
   
   updateTradeStrategy: (strategy) => {
-    localStorage.setItem('lastTradeStrategy', strategy);
+    setLocalStorageItem('lastTradeStrategy', strategy);
     set({ tradeStrategy: strategy });
   },
 })); 

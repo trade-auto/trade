@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
   try {
     const response = await fetch(
-      `https://api.upbit.com/v1/candles/minutes/30?market=${market}&count=${count}`
+      `https://api.upbit.com/v1/candles/minutes/3?market=${market}&count=${count}`
     );
     
     if (!response.ok) {
