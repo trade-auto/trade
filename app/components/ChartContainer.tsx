@@ -8,14 +8,14 @@ import {
   LineSeries,
   HistogramSeries,
   createSeriesMarkers,
+  ISeriesMarkersPluginApi,
   LineWidth,
 } from 'lightweight-charts';
 import { SeriesMarker } from 'lightweight-charts';
-import { CrossPoint } from '../types/candlestick';
-
+import { useUpbitStore } from '../store/useUpbitStore';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
-  setMarkers(markers: SeriesMarker<Time>[]): void;
+  setMarkers?: (markers: SeriesMarker<Time>[]) => void;
 }
 
 interface ChartContainerProps {
@@ -24,7 +24,7 @@ interface ChartContainerProps {
   toggleFullscreen: () => void;
   symbol: string;
   chartType: string;
-  crossPoints: CrossPoint[];
+  markers: SeriesMarker<Time>[];
   onChartReady: (
     chartApi: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
@@ -36,7 +36,6 @@ interface ChartContainerProps {
     threeHundredEMASeries: ISeriesApi<"Line">,
     nineHundredEMASeries: ISeriesApi<"Line">
   ) => void;
-  createTradeMarkers: (crossPoints: CrossPoint[]) => SeriesMarker<Time>[];
 }
 
 // 차트 기본 설정 상수화
@@ -114,8 +113,8 @@ const getChartOptions = (width: number, height: number, chartType: string) => ({
 
 type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'threeHundredEMA' | 'nineHundredEMA';
 
-type SeriesRefs = {
-  candle: ISeriesApi<"Candlestick"> | null;
+interface SeriesRefs {
+  candle: CandlestickSeriesWithMarkers | null;
   volume: ISeriesApi<"Histogram"> | null;
   sixtyEMA: ISeriesApi<"Line"> | null;
   oneTwentyEMA: ISeriesApi<"Line"> | null;
@@ -123,7 +122,10 @@ type SeriesRefs = {
   threeHundredSixtyEMA: ISeriesApi<"Line"> | null;
   threeHundredEMA: ISeriesApi<"Line"> | null;
   nineHundredEMA: ISeriesApi<"Line"> | null;
-};
+}
+
+
+
 
 const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isFullscreen,
@@ -131,13 +133,13 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   toggleFullscreen,
   symbol,
   chartType,
-  crossPoints,
+  markers,
   onChartReady,
-  createTradeMarkers
 }) => {
   const container = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const markerPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const seriesRefs = useRef<SeriesRefs>({
     candle: null,
     volume: null,
@@ -148,11 +150,10 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     threeHundredEMA: null,
     nineHundredEMA: null,
   });
-  const prevMarkersRef = useRef<SeriesMarker<Time>[]>([]);
-  const initialMarkersRef = useRef<SeriesMarker<Time>[]>([]);
-  const initialMarkersSetRef = useRef<boolean>(false);
+  const { tradeStrategy } = useUpbitStore();
 
-  // 차트 크기 조정 핸들러
+
+  
   const handleResize = useCallback(() => {
     if (container.current && chartRef.current) {
       const { clientWidth } = container.current;
@@ -163,7 +164,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     }
   }, [chartHeight, isFullscreen]);
 
-  // 차트 초기화 - 한 번만 실행되도록 수정
   const initializeChart = useCallback(() => {
     if (!container.current || chartRef.current) return;
 
@@ -179,6 +179,9 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       wickUpColor: CHART_COLORS.upColor,
       wickDownColor: CHART_COLORS.downColor,
     });
+
+    // 마커 플러그인 초기화
+    markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
 
     seriesRefs.current.volume = chart.addSeries(HistogramSeries, {
       color: CHART_COLORS.upColor,
@@ -228,43 +231,16 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
 
   // 마커 업데이트 - 최적화
   useEffect(() => {
-    if (!seriesRefs.current.candle) return;
-
+    if (!markerPluginRef.current) return;
+    console.log('tradeStrategy 마커 업데이트', tradeStrategy);
     try {
-      const newMarkers = crossPoints.length > 0 ? createTradeMarkers(crossPoints) : [];
-      
-      // 초기 마커 설정 (한 번만 실행)
-      if (!initialMarkersSetRef.current && newMarkers.length > 0) {
-        initialMarkersRef.current = newMarkers;
-        createSeriesMarkers(seriesRefs.current.candle, newMarkers);
-        prevMarkersRef.current = newMarkers;
-        initialMarkersSetRef.current = true;
-        return;
-      }
+      markerPluginRef.current.setMarkers([]);
 
-      // 이후 업데이트: 초기 마커는 유지하고 새로운 마커만 추가
-      if (initialMarkersSetRef.current) {
-        const markersToAdd = newMarkers.filter(newMarker => 
-          !initialMarkersRef.current.some(initial => 
-            initial.time === newMarker.time && 
-            initial.position === newMarker.position
-          ) &&
-          !prevMarkersRef.current.some(prev => 
-            prev.time === newMarker.time && 
-            prev.position === newMarker.position
-          )
-        );
-
-        if (markersToAdd.length > 0) {
-          const allMarkers = [...initialMarkersRef.current, ...markersToAdd];
-          createSeriesMarkers(seriesRefs.current.candle, allMarkers);
-          prevMarkersRef.current = allMarkers;
-        }
-      }
+      markerPluginRef.current.setMarkers(markers);
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }
-  }, [crossPoints, createTradeMarkers]);
+  }, [markers, tradeStrategy]);
 
   // 전체화면 변경 시 차트 크기 조정
   useEffect(() => {

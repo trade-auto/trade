@@ -4,13 +4,13 @@ import {
   IChartApi,
   ISeriesApi,
   Time,
-  BusinessDay
+  BusinessDay,
+  SeriesMarker
 } from 'lightweight-charts';
 import {
   DateRange,
   ExtendedCandlestickData,
   UpbitCandle,
-  CrossPoint,
   BacktestResult,
   MASettings,
 } from '../types/candlestick';
@@ -22,7 +22,6 @@ import CsvDownloader from './CsvDownloader';
 import ChartContainer from './ChartContainer';
 import {
   getInitialDateRange,
-  findCrossPoints,
   createTradeMarkers,
   calculateEMA,
   getChartEndpoint,
@@ -30,6 +29,8 @@ import {
   formatDate,
 } from '../utils/chartHelpers';
 import { LineData } from 'lightweight-charts';
+import { useUpbitStore } from '../store/useUpbitStore';
+import TradingStrategyHover from './TradingStrategyHover';
 
 interface OrderParams {
   market: string;
@@ -69,7 +70,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [progress, setProgress] = useState(0);
   const [allData, setAllData] = useState<ExtendedCandlestickData[]>([]);
-  const [crossPoints, setCrossPoints] = useState<CrossPoint[]>([]);
+  const [markers, setMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   
   // 설정 상태
@@ -110,6 +111,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   
   // 실시간 캔들 업데이트를 위한 ref
   const lastCandleRef = useRef<ExtendedCandlestickData | null>(null);
+
+  const { tradeStrategy, updateTradeStrategy } = useUpbitStore();
 
   // 타임스탬프 처리 유틸리티 함수
   const getTimeValue = useCallback((time: Time | BusinessDay | string): number => {
@@ -262,13 +265,14 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         }
         
         setProgress(85);
-        
+            // 매매 신호 분석 및 마커 생성
+        const signals = useUpbitStore.getState().analyzeStrategy(allProcessedData);
+        const markers = createTradeMarkers(signals);  
         // 매수/매도 포인트 계산
-        const cross = findCrossPoints(ema60Data, ema120Data, ema240Data, ema360Data);
-        setCrossPoints(cross);
+        setMarkers(markers);
         
         // 백테스트 결과 계산
-        const backtestResult = calculateBacktestResult(allProcessedData, cross, 'test');
+        const backtestResult = calculateBacktestResult(allProcessedData, signals, 'test');
         setBacktestResult(backtestResult);
         
         // 현재 가격 설정
@@ -556,6 +560,10 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
 
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
+      <TradingStrategyHover 
+        tradeStrategy={tradeStrategy}
+        updateTradeStrategy={updateTradeStrategy}
+      />
       <div className="grid grid-cols-1 gap-4">
         {/* 가격 정보 및 컨트롤 섹션 */}
         <div className="flex flex-col md:flex-row gap-4">
@@ -590,10 +598,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
             chartHeight={chartHeight}
             toggleFullscreen={toggleFullscreen}
             symbol={symbol}
+            markers={markers}
             chartType={chartType}
-            crossPoints={crossPoints}
             onChartReady={handleChartReady}
-            createTradeMarkers={createTradeMarkers}
           />
         </div>
         

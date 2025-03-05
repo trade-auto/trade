@@ -270,8 +270,15 @@ const calculateOrderVolume = (currentPrice: number): string => {
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
->(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate, onBacktestStart, onBacktestEnd }, ref) => {
-  const { tradeState, updateTradeState, maPeriods, tradeStrategy, updateTradeStrategy } = useUpbitStore();
+>(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate, onBacktestStart }, ref) => {
+  const { 
+    tradeState, 
+    updateTradeState, 
+    maPeriods, 
+    tradeStrategy, 
+    updateTradeStrategy,
+    dateRange,
+  } = useUpbitStore();
   
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
@@ -284,11 +291,6 @@ export const CreateOrder = forwardRef<
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
   const [autoTrading, setAutoTrading] = useState(false);
-  //const [_lastTradeType, _setLastTradeType] = useState<'bid' | 'ask' | null>(null);
-  //const [_isTradeComplete, _setIsTradeComplete] = useState(false);
-  //const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
-  //const [statusChangeTime, setStatusChangeTime] = useState<string>(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-  //const [statusHistory, setStatusHistory] = useState<{ status: string, time: string }[]>([]);
   const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string, buyPrice: number | null, sellPrice: number | null, profit: string | null, profitAmount: string | null }[]>([]);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [actionStartTime, setActionStartTime] = useState<Date | null>(null);
@@ -298,14 +300,6 @@ export const CreateOrder = forwardRef<
   
   // 백테스트 관련 상태
   const [isBacktesting, setIsBacktesting] = useState(false);
-  const [backtestStartDate, setBacktestStartDate] = useState<Date | null>(null);
-  const [backtestEndDate, setBacktestEndDate] = useState<Date | null>(null);
-  const [backtestPeriod, setBacktestPeriod] = useState<'1D' | '1W' | '1M' | '3M'>('1W');
-
-  // 볼린저 밴드 계산을 위한 상태 추가
-  //const [upperBand, setUpperBand] = useState<number | null>(null);
-  //const [lowerBand, setLowerBand] = useState<number | null>(null);
-  //const [basis, setBasis] = useState<number | null>(null);
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
@@ -889,71 +883,15 @@ export const CreateOrder = forwardRef<
     updateTradeStrategy(strategy);
   };
 
-  // 백테스트 기간 설정 함수 수정
-  const setBacktestDates = (period: '1D' | '1W' | '1M' | '3M') => {
-    const end = new Date();
-    const start = new Date();
-    
-    switch (period) {
-      case '1D':
-        start.setDate(start.getDate() - 1);
-        break;
-      case '1W':
-        start.setDate(start.getDate() - 7);
-        break;
-      case '1M':
-        start.setMonth(start.getMonth() - 1);
-        break;
-      case '3M':
-        start.setMonth(start.getMonth() - 3);
-        break;
-    }
-    
-    setBacktestStartDate(start);
-    setBacktestEndDate(end);
-    setBacktestPeriod(period);
-
-    // 백테스트 중이라면 즉시 날짜 범위 업데이트
-    if (isBacktesting && onBacktestStart) {
-      onBacktestStart(start, end);
-    }
-  };
-
-  // 백테스트 시작 함수 수정
-  const handleBacktestStart = () => {
-    if (isBacktesting) {
-      setIsBacktesting(false);
-      setBacktestStartDate(null);
-      setBacktestEndDate(null);
-      
-      // 백테스트 종료 콜백 호출
-      if (onBacktestEnd) {
-        onBacktestEnd();
-      }
-      
-      // 차트 초기화
-      if (onOrderCreated) {
-        onOrderCreated();
+  // 백테스트 시작 함수
+  const handleBacktestStart = async () => {
+    if (!isBacktesting) {
+      setIsBacktesting(true);
+      if (onBacktestStart) {
+        onBacktestStart(dateRange.startDate, dateRange.endDate || new Date());
       }
     } else {
-      if (!backtestStartDate || !backtestEndDate) {
-        console.error('백테스트 기간이 설정되지 않았습니다.');
-        return;
-      }
-
-      setIsBacktesting(true);
-      setTradeCycles([]); // 거래 기록 초기화
-      setTotalProfit('0.00'); // 수익률 초기화
-      
-      // 선택된 전략으로 백테스트 시작
-      if (tradeStrategy) {
-        console.log(`${tradeStrategy} 전략으로 백테스트 시작 (${backtestPeriod} 기간)`);
-        
-        // 부모 컴포넌트에 백테스트 시작 알림
-        if (onBacktestStart) {
-          onBacktestStart(backtestStartDate, backtestEndDate);
-        }
-      }
+      setIsBacktesting(false);
     }
   };
 
@@ -1272,24 +1210,8 @@ export const CreateOrder = forwardRef<
             {autoTrading ? '자동 거래 중지' : '자동 거래 시작'}
           </button>
 
-          {/* 백테스트 기간 선택 및 시작 버튼 */}
+          {/* 백테스트 시작 버튼 */}
           <div className="flex items-center gap-2">
-            <div className="flex gap-2 bg-gray-700 p-2 rounded">
-              {(['1D', '1W', '1M', '3M'] as const).map((period) => (
-                <button
-                  key={period}
-                  onClick={() => setBacktestDates(period)}
-                  className={`px-3 py-1 rounded ${
-                    backtestPeriod === period
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-600 text-gray-300'
-                  }`}
-                  disabled={isBacktesting || autoTrading}
-                >
-                  {period}
-                </button>
-              ))}
-            </div>
             <button
               onClick={handleBacktestStart}
               className={`px-6 py-2 rounded font-bold ${
@@ -1297,7 +1219,7 @@ export const CreateOrder = forwardRef<
                   ? 'bg-red-600 hover:bg-red-700'
                   : 'bg-blue-600 hover:bg-blue-700'
               } text-white`}
-              disabled={autoTrading || !backtestPeriod}
+              disabled={autoTrading}
             >
               {isBacktesting ? '백테스트 중지' : '백테스트 시작'}
             </button>
@@ -1307,7 +1229,7 @@ export const CreateOrder = forwardRef<
           {isBacktesting && (
             <div className="px-4 py-2 bg-gray-700 rounded">
               <span className="text-white">
-                백테스트 기간: {backtestStartDate?.toLocaleDateString()} ~ {backtestEndDate?.toLocaleDateString()}
+                백테스트 기간: {dateRange.startDate.toLocaleDateString()} ~ {dateRange.endDate?.toLocaleDateString() || new Date().toLocaleDateString()}
               </span>
             </div>
           )}

@@ -1,12 +1,13 @@
 import { Time } from 'lightweight-charts';
+import { TradeStrategy } from '../store/useUpbitStore';
 
-export interface Candle {
+export interface CandlestickData {
   time: Time;
   open: number;
   high: number;
   low: number;
   close: number;
-  volume: number;
+  volume?: number;
 }
 
 // Define a Trade interface
@@ -19,14 +20,7 @@ export interface Trade {
   isSuccess: boolean;
   isAutomatic?: boolean;
   mode: 'test' | 'test-auto' | 'live-auto';  // 'live'를 'live-auto'로 변경
-  angles?: {
-    entryMa40?: number;
-    exitMa40?: number;
-    entryMa360?: number;
-    exitMa360?: number;
-    entryMa120?: number;
-    exitMa120?: number;
-  };
+  metadata?: Record<string, any>;
 }
 
 // 날짜 선택을 위한 인터페이스 추가
@@ -43,7 +37,7 @@ export interface BusinessDay {
 }
 
 // 인터페이스 대신 타입 별칭 사용
-export type ExtendedCandlestickData = Candle;
+export type ExtendedCandlestickData = CandlestickData;
 
 export interface ChartProps {
   symbol: string;
@@ -61,12 +55,17 @@ export interface ChartProps {
 }
 
 export interface UpbitCandle {
+  market: string;
+  candle_date_time_utc: string;
   candle_date_time_kst: string;
   opening_price: number;
   high_price: number;
   low_price: number;
   trade_price: number;
+  timestamp: number;
+  candle_acc_trade_price: number;
   candle_acc_trade_volume: number;
+  unit?: number;
 }
 
 export interface CrossPoint {
@@ -87,15 +86,25 @@ export interface CrossPoint {
   };
 }
 
+export interface SeriesMarker<T> {
+  time: T;
+  position: 'aboveBar' | 'belowBar' | 'inBar';
+  color: string;
+  shape: 'circle' | 'square' | 'arrowUp' | 'arrowDown';
+  text?: string;
+  size?: number;
+  id?: string;
+}
+
 export interface BacktestResult {
   totalTrades: number;
   successfulTrades: number;
   totalReturn: number;
-  totalNetReturn: number; // 수수료 제외 총 수익률 추가
+  totalNetReturn: number;
   successRate: number;
   averageReturn: number;
-  averageNetReturn: number; // 수수료 제외 평균 수익률 추가
-  trades: Trade[];  // Trade 인터페이스를 사용하도록 변경
+  averageNetReturn: number;
+  trades: Trade[];
 }
 
 export interface MASettings {
@@ -105,4 +114,20 @@ export interface MASettings {
   threeHundredSixty: boolean;
   threeHundred: boolean;
   nineHundred: boolean;
+}
+
+export interface TradeSignal {
+  time: number;
+  position: 'long' | 'short' | 'close';
+  price: number;
+  strategy: TradeStrategy;
+  metadata?: {
+    deviation?: number;
+    slope?: number;
+    ma?: {
+      short?: number;
+      long?: number;
+    };
+    [key: string]: any;
+  };
 }
