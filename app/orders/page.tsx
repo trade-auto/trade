@@ -9,7 +9,7 @@ import { OrderListById } from '../components/OrderListById';
 import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
-import { CandlestickChart } from '../components/CandlestickChart5A8ok6';
+import { CandlestickChart } from '../components/CandlestickChart';
 import { getAccountBalance } from '../api/upbitAccount';
 
 const SYMBOLS = [

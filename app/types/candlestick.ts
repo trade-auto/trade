@@ -98,3 +98,10 @@ export interface BacktestResult {
   averageNetReturn: number; // 수수료 제외 평균 수익률 추가
   trades: Trade[];  // Trade 인터페이스를 사용하도록 변경
 }
+
+export interface MASettings {
+  sixty: boolean;
+  oneTwenty: boolean;
+  twoForty: boolean;
+  threeHundredSixty: boolean;
+}
