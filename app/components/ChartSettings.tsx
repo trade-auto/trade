@@ -24,7 +24,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
   return (
     <div className="mb-4 space-y-4">
       {/* MA 설정 패널 */}
-      <div className="grid grid-cols-3 gap-4 bg-gray-800 p-4 rounded-lg">
+      <div className="grid grid-cols-1 gap-4 bg-gray-800 p-4 rounded-lg">
         <div className="bg-gray-700 p-3 rounded-lg">
           <div className="text-gray-400 text-sm mb-2">MA 설정</div>
           <div className="flex flex-wrap items-center gap-2">

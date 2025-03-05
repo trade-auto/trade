@@ -525,7 +525,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         </div>
         
         {/* 설정 및 결과 섹션 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
           {/* 차트 설정 */}
           <div>
             <ChartSettings 
