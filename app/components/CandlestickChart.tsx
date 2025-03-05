@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef, ChangeEvent } from 'react';
 import {
   IChartApi,
   ISeriesApi,
@@ -105,6 +105,11 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   // 실시간 캔들 업데이트를 위한 ref
 
   const { tradeStrategy, updateTradeStrategy } = useUpbitStore();
+
+  // CSV 임포트 관련 상태
+  const [importedData, setImportedData] = useState<ExtendedCandlestickData[]>([]);
+  const [isDataImported, setIsDataImported] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -523,6 +528,100 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   }, [csvDateRange, symbol, csvLoading]);
 
+  // CSV 파일 임포트 핸들러
+  const handleFileImport = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        const rows = text.split('\n');
+        const headers = rows[0].split(',');
+        
+        // CSV 데이터 파싱
+        const parsedData: ExtendedCandlestickData[] = rows.slice(1)
+          .filter(row => row.trim()) // 빈 줄 제거
+          .map(row => {
+            const columns = row.split(',');
+            return {
+              time: parseInt(columns[0]) / 1000 as Time, // timestamp를 초 단위로 변환
+              open: parseFloat(columns[2]), // open_price
+              high: parseFloat(columns[3]), // high_price
+              low: parseFloat(columns[4]), // low_price
+              close: parseFloat(columns[5]), // trade_price
+              volume: parseFloat(columns[6]) // volume
+            };
+          })
+          .sort((a, b) => (a.time as number) - (b.time as number));
+
+        setImportedData(parsedData);
+        setIsDataImported(true);
+        
+        // 차트 데이터 업데이트
+        if (candleSeriesRef.current && volumeSeriesRef.current) {
+          candleSeriesRef.current.setData(parsedData);
+          
+          // 볼륨 데이터 설정
+          const volumeData = parsedData.map(d => ({
+            time: d.time,
+            value: d.volume,
+            color: d.close >= d.open ? '#26a69a' : '#ef5350',
+          }));
+          volumeSeriesRef.current.setData(volumeData);
+          
+          // EMA 계산 및 설정
+          if (
+            sixtyEMASeriesRef.current &&
+            oneTwentyEMASeriesRef.current &&
+            twoFortyEMASeriesRef.current &&
+            threeHundredSixtyEMASeriesRef.current &&
+            threeHundredEMASeriesRef.current &&
+            nineHundredEMASeriesRef.current
+          ) {
+            const ema60Data = calculateEMA(parsedData, 60);
+            const ema120Data = calculateEMA(parsedData, 120);
+            const ema240Data = calculateEMA(parsedData, 240);
+            const ema360Data = calculateEMA(parsedData, 360);
+            const ema300Data = calculateEMA(parsedData, 300);
+            const ema900Data = calculateEMA(parsedData, 900);
+
+            sixtyEMASeriesRef.current.setData(ema60Data);
+            oneTwentyEMASeriesRef.current.setData(ema120Data);
+            twoFortyEMASeriesRef.current.setData(ema240Data);
+            threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+            threeHundredEMASeriesRef.current.setData(ema300Data);
+            nineHundredEMASeriesRef.current.setData(ema900Data);
+          }
+
+          // 매매 신호 분석 및 마커 생성
+          const signals = useUpbitStore.getState().analyzeStrategy(parsedData);
+          const newMarkers = createTradeMarkers(signals);
+          setMarkers(newMarkers);
+
+          // 백테스트 결과 계산
+          const result = calculateBacktestResult(parsedData, signals, mode || 'test');
+          setBacktestResult(result);
+
+          // 차트 피팅
+          if (chartApiRef.current) {
+            chartApiRef.current.timeScale().fitContent();
+          }
+        }
+      } catch (error) {
+        console.error('CSV 파일 파싱 오류:', error);
+        alert('CSV 파일 처리 중 오류가 발생했습니다.');
+      }
+    };
+    reader.readAsText(file);
+  }, [mode]);
+
+  // 파일 선택 트리거
+  const triggerFileInput = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
       <TradingStrategyHover 
@@ -553,18 +652,18 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         
      
         {/* 차트 컨테이너 */}
-            {/* 벡테스트용 차트 컨테이너 */}
-            <div className="relative w-full">
-          <ChartContainer
-            isFullscreen={isFullscreen}
-            chartHeight={chartHeight}
-            toggleFullscreen={toggleFullscreen}
-            symbol={symbol}
-            markers={markers}
-            chartType={chartType}
-            onChartReady={handleChartReady}
-          />
-        </div>
+          <div className="relative w-full">
+            <ChartContainer
+              isFullscreen={isFullscreen}
+              chartHeight={chartHeight}
+              toggleFullscreen={toggleFullscreen}
+              symbol={symbol}
+              markers={markers}
+              chartType={chartType}
+              onChartReady={handleChartReady}
+            />
+          </div>
+      
 
         
         {/* 설정 및 결과 섹션 */}
@@ -604,18 +703,35 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
             saveToCSV={saveToCSV}
           />
         </div>
-           {/* 벡테스트용 차트 컨테이너 */}
-        {/* <div className="relative w-full">
-          <ChartContainer
-            isFullscreen={isFullscreen}
-            chartHeight={chartHeight}
-            toggleFullscreen={toggleFullscreen}
-            symbol={symbol}
-            markers={markers}
-            chartType={chartType}
-            onChartReady={handleChartReady}
+        {isDataImported && (    
+           <div className="relative w-full">
+            <ChartContainer
+              isFullscreen={isFullscreen}
+              chartHeight={chartHeight}
+              toggleFullscreen={toggleFullscreen}
+              symbol={symbol}
+              markers={markers}
+              chartType={chartType}
+              onChartReady={handleChartReady}
+            />
+          </div>
+        )}
+        {/* CSV 임포트 버튼 */}
+        <div className="mb-4">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileImport}
+            accept=".csv"
+            className="hidden"
           />
-        </div> */}
+          <button
+            onClick={triggerFileInput}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+          >
+            CSV 데이터 임포트
+          </button>
+        </div>
       </div>
 
     </div>
