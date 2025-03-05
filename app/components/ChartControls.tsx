@@ -4,49 +4,20 @@ import "react-datepicker/dist/react-datepicker.css";
 import { DateRange } from '../types/candlestick';
 
 interface ChartControlsProps {
-  isAutoUpdate: boolean;
-  isRealtimeAPIEnabled: boolean;
   dateRange: DateRange;
   progress: number;
-  handleAutoUpdateToggle: () => void;
-  handleRealtimeAPIToggle: () => void;
   handleDateRangeChange: (date: Date) => void;
   handleEndDateChange: (date: Date) => void;
 }
 
 const ChartControls: React.FC<ChartControlsProps> = ({
-  isAutoUpdate,
-  isRealtimeAPIEnabled,
   dateRange,
   progress,
-  handleAutoUpdateToggle,
-  handleRealtimeAPIToggle,
   handleDateRangeChange,
   handleEndDateChange
 }) => {
   return (
     <div className="mb-4 space-y-4">
-      {/* 자동 업데이트 설정 */}
-      <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-white font-medium mb-3">실시간 업데이트 설정</div>
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={handleAutoUpdateToggle}
-            className={`px-4 py-2 rounded-md text-sm font-medium 
-              ${isAutoUpdate ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
-          >
-            {isAutoUpdate ? '자동 업데이트 ON' : '자동 업데이트 OFF'}
-          </button>
-          <button
-            onClick={handleRealtimeAPIToggle}
-            className={`px-4 py-2 rounded-md text-sm font-medium 
-              ${isRealtimeAPIEnabled ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
-          >
-            {isRealtimeAPIEnabled ? '실시간 API ON' : '실시간 API OFF'}
-          </button>
-        </div>
-      </div>
-      
       {/* 날짜 범위 설정 */}
       <div className="bg-gray-800 p-4 rounded-lg">
         <div className="text-white font-medium mb-3">날짜 범위 설정</div>

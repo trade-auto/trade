@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import Websocket from 'react-websocket';
 import {
   IChartApi,
   ISeriesApi,
   Time,
-  BusinessDay,
   SeriesMarker
 } from 'lightweight-charts';
 import {
@@ -28,9 +26,9 @@ import {
   calculateBacktestResult,
   formatDate,
 } from '../utils/chartHelpers';
-import { LineData } from 'lightweight-charts';
 import { useUpbitStore } from '../store/useUpbitStore';
 import TradingStrategyHover from './TradingStrategyHover';
+import axios from 'axios';
 
 interface OrderParams {
   market: string;
@@ -54,7 +52,6 @@ interface CandlestickChartProps {
 const CandlestickChart: React.FC<CandlestickChartProps> = ({
   symbol,
   chartType,
-  initialAutoUpdate,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   mode,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -65,9 +62,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   // 차트 상태
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chartHeight, setChartHeight] = useState(500);
-  const [currentPrice, setCurrentPrice] = useState(0);
   const [chartPrice, setChartPrice] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [progress, setProgress] = useState(0);
   const [allData, setAllData] = useState<ExtendedCandlestickData[]>([]);
   const [markers, setMarkers] = useState<SeriesMarker<Time>[]>([]);
@@ -75,8 +70,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   
   // 설정 상태
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
-  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate ?? true);
-  const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState(true);
   const [showMA, setShowMA] = useState<MASettings>({
     sixty: true,
     oneTwenty: true,
@@ -110,28 +103,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // 실시간 캔들 업데이트를 위한 ref
-  const lastCandleRef = useRef<ExtendedCandlestickData | null>(null);
 
   const { tradeStrategy, updateTradeStrategy } = useUpbitStore();
-
-  // 타임스탬프 처리 유틸리티 함수
-  const getTimeValue = useCallback((time: Time | BusinessDay | string): number => {
-    if (typeof time === 'number') {
-      return time;
-    } else if (typeof time === 'string') {
-      // ISO 날짜 문자열인 경우
-      return new Date(time).getTime() / 1000;
-    } else if ('timestamp' in time && typeof time.timestamp === 'number') {
-      return time.timestamp;
-    } else if ('year' in time && 'month' in time && 'day' in time) {
-      // BusinessDay 형식인 경우
-      const date = new Date(time.year, time.month - 1, time.day);
-      return date.getTime() / 1000;
-    }
-    
-    // 기본값
-    return new Date().getTime() / 1000;
-  }, []);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -289,7 +262,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       
       // 모든 데이터 저장
       setAllData(allProcessedData);
-      setLastUpdated(new Date());
       
     } catch (error) {
       console.error('데이터 로드 오류:', error);
@@ -299,99 +271,11 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   }, [dateRange, symbol, chartType, showMA]);
 
-  // 웹소켓 메시지 핸들러 개선
-  const handleSocketData = useCallback((data: string) => {
-    if (!isRealtimeAPIEnabled || !candleSeriesRef.current || !volumeSeriesRef.current) return;
-    
-    try {
-      const parsedData = JSON.parse(data);
-      if (parsedData && parsedData.type === 'trade' && parsedData.code === symbol) {
-        const price = parsedData.trade_price;
-        const volume = parsedData.trade_volume;
-        const timestamp = Math.floor(new Date(parsedData.trade_time).getTime() / 1000) as Time;
-        
-        setCurrentPrice(price);
-        
-        // 마지막 캔들 업데이트 또는 새 캔들 생성
-        if (lastCandleRef.current && lastCandleRef.current.time === timestamp) {
-          // 기존 캔들 업데이트
-          const updatedCandle = {
-            ...lastCandleRef.current,
-            high: Math.max(lastCandleRef.current.high, price),
-            low: Math.min(lastCandleRef.current.low, price),
-            close: price,
-            volume: lastCandleRef.current.volume + volume
-          };
-          
-          lastCandleRef.current = updatedCandle;
-          
-          // 차트 시리즈 업데이트
-          candleSeriesRef.current.update(updatedCandle);
-          volumeSeriesRef.current.update({
-            time: timestamp,
-            value: updatedCandle.volume,
-            color: updatedCandle.close >= updatedCandle.open ? '#26a69a' : '#ef5350'
-          });
-        } else {
-          // 새 캔들 생성
-          const newCandle: ExtendedCandlestickData = {
-            time: timestamp,
-            open: price,
-            high: price,
-            low: price,
-            close: price,
-            volume: volume
-          };
-          
-          // 이전 캔들이 있으면 EMA 업데이트
-          if (lastCandleRef.current && 
-              sixtyEMASeriesRef.current && 
-              oneTwentyEMASeriesRef.current && 
-              twoFortyEMASeriesRef.current && 
-              threeHundredSixtyEMASeriesRef.current) {
-            
-            // EMA 업데이트 로직
-            const updateEMA = (prevEMA: number, price: number, period: number) => {
-              const multiplier = 2 / (period + 1);
-              return price * multiplier + prevEMA * (1 - multiplier);
-            };
-            
-            // 각 EMA 업데이트
-            const emaData: LineData<Time> = {
-              time: timestamp,
-              value: 0
-            };
-            
-            if (sixtyEMASeriesRef.current.data().length > 0) {
-              const lastData = sixtyEMASeriesRef.current.data()[sixtyEMASeriesRef.current.data().length - 1] as LineData<Time>;
-              emaData.value = updateEMA(lastData.value, price, 60);
-              sixtyEMASeriesRef.current.update(emaData);
-            }
-            
-            // 다른 EMA 시리즈도 동일하게 업데이트
-            // ... 생략 ...
-          }
-          
-          lastCandleRef.current = newCandle;
-          
-          // 차트에 새 캔들 추가
-          candleSeriesRef.current.update(newCandle);
-          volumeSeriesRef.current.update({
-            time: timestamp,
-            value: volume,
-            color: price >= newCandle.open ? '#26a69a' : '#ef5350'
-          });
-        }
-      }
-    } catch (error) {
-      console.error('웹소켓 데이터 파싱 오류:', error);
-    }
-  }, [isRealtimeAPIEnabled, symbol]);
+  
 
   // 주기적 업데이트 설정
   useEffect(() => {
-    if (isAutoUpdate) {
-      const updateInterval = 10000; // 10초
+      const updateInterval = 1000; // 10초
       
       const updateTimer = setInterval(() => {
         if (!ongoingRequestRef.current) {
@@ -401,8 +285,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       }, updateInterval);
       
       return () => clearInterval(updateTimer);
-    }
-  }, [isAutoUpdate]);
+  }, []);
 
   // 데이터 로드 트리거
   useEffect(() => {
@@ -496,8 +379,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
 
   // CSV 저장 함수
   const saveToCSV = useCallback(async () => {
-    if (csvLoading || !allData || allData.length === 0) {
-      alert('데이터가 없습니다');
+    if (csvLoading) {
+      alert('이미 다운로드가 진행 중입니다');
       return;
     }
     
@@ -505,45 +388,117 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       setCsvLoading(true);
       setCsvProgress(0);
       
-      // 데이터 필터링
-      const csvFromTime = csvDateRange.startDate.getTime() / 1000;
-      const csvToTime = (csvDateRange.endDate || new Date()).getTime() / 1000;
+      const csvFromTime = csvDateRange.startDate.getTime();
+      const csvToTime = (csvDateRange.endDate || new Date()).getTime();
       
-      const filteredData = allData.filter((candle) => {
-        const candleTime = typeof candle.time === 'number' 
-          ? candle.time 
-          : getTimeValue(candle.time);
-        return candleTime >= csvFromTime && candleTime <= csvToTime;
-      });
+      // 초봉 데이터를 저장할 배열
+      const allCandleData: UpbitCandle[] = [];
+      let currentTo = new Date(csvToTime);
+      const batchSize = 200; // API 한 번에 가져올 수 있는 최대 캔들 수
+      let retryCount = 0;
+      const maxRetries = 3;
       
-      if (filteredData.length === 0) {
-        alert('선택한 기간 내 데이터가 없습니다');
-        setCsvLoading(false);
-        return;
+      while (currentTo.getTime() > csvFromTime) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+          const response = await axios.get('https://api.upbit.com/v1/candles/seconds', {
+            params: {
+              market: symbol,
+              to: currentTo.toISOString(),
+              count: batchSize
+            }
+          });
+
+          clearTimeout(timeoutId);
+          
+          const data: UpbitCandle[] = response.data;
+          
+          if (!data || data.length === 0) break;
+          
+          // 시작 날짜보다 이전 데이터는 필터링
+          const filteredData = data.filter(
+            candle => new Date(candle.candle_date_time_kst).getTime() >= csvFromTime
+          );
+          
+          allCandleData.push(...filteredData);
+          
+          // 진행률 업데이트
+          const progress = Math.min(
+            90,
+            ((csvToTime - currentTo.getTime()) / (csvToTime - csvFromTime)) * 100
+          );
+          setCsvProgress(Math.round(progress));
+          
+          // 마지막 캔들의 시간으로 다음 요청의 기준 시정 설정
+          const lastCandle = data[data.length - 1];
+          currentTo = new Date(lastCandle.candle_date_time_kst);
+          
+          // API 호출 제한을 위한 딜레이
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // 성공 시 재시도 카운트 초기화
+          retryCount = 0;
+          
+        } catch (error) {
+          console.error('데이터 가져오기 오류:', error);
+          retryCount++;
+          
+          if (axios.isAxiosError(error)) {
+            if (error.response) {
+              console.log(`Error Status Code: ${error.response.status}`);
+              console.log('Error Response Data:', error.response.data);
+            }
+          }
+          
+          if (retryCount >= maxRetries) {
+            throw new Error(`데이터 가져오기 실패: ${maxRetries}회 재시도 후 실패`);
+          }
+          
+          // 재시도 전 대기 시간 증가
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          continue; // 현재 시점 재시도
+        }
       }
       
+      if (allCandleData.length === 0) {
+        throw new Error('다운로드된 데이터가 없습니다');
+      }
+      
+      setCsvProgress(92);
+      
+      // 데이터 정렬
+      allCandleData.sort((a, b) => 
+        new Date(a.candle_date_time_kst).getTime() - new Date(b.candle_date_time_kst).getTime()
+      );
+      
+      setCsvProgress(95);
+      
       // CSV 헤더
-      let csv = 'time,open,high,low,close,volume\n';
+      let csv = 'timestamp,date_time,open_price,high_price,low_price,trade_price,volume\n';
       
       // CSV 데이터 행
-      filteredData.forEach((candle, index) => {
-        const time = typeof candle.time === 'number' 
-          ? new Date(candle.time * 1000).toISOString() 
-          : new Date(getTimeValue(candle.time) * 1000).toISOString();
-        
-        csv += `${time},${candle.open},${candle.high},${candle.low},${candle.close},${candle.volume}\n`;
-        
-        // 진행률 업데이트
-        const progress = Math.round((index + 1) / filteredData.length * 100);
-        setCsvProgress(progress);
+      allCandleData.forEach((candle) => {
+        const dateTime = new Date(candle.candle_date_time_kst);
+        const formattedDate = dateTime.getFullYear() + '-' +
+          String(dateTime.getMonth() + 1).padStart(2, '0') + '-' +
+          String(dateTime.getDate()).padStart(2, '0') + 'T' +
+          String(dateTime.getHours()).padStart(2, '0') + ':' +
+          String(dateTime.getMinutes()).padStart(2, '0') + ':' +
+          String(dateTime.getSeconds()).padStart(2, '0');
+
+        csv += `${dateTime.getTime()},${formattedDate},${candle.opening_price},${candle.high_price},${candle.low_price},${candle.trade_price},${candle.candle_acc_trade_volume}\n`;
       });
+      
+      setCsvProgress(98);
       
       // CSV 파일 생성 및 다운로드
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
-      link.setAttribute('download', `${symbol}_${chartType}_${formatDate(csvDateRange.startDate)}_to_${formatDate(csvDateRange.endDate || new Date())}.csv`);
+      link.setAttribute('download', `${symbol}_1sec_${formatDate(csvDateRange.startDate)}_to_${formatDate(csvDateRange.endDate || new Date())}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -552,11 +507,21 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       setCsvProgress(100);
     } catch (error) {
       console.error('CSV 생성 오류:', error);
-      alert('CSV 파일 생성 중 오류가 발생했습니다');
+      let errorMessage = '알 수 없는 오류가 발생했습니다';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to fetch')) {
+          errorMessage = '서버 연결에 실패했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도해주세요.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      alert(`CSV 파일 생성 중 오류가 발생했습니다.\n${errorMessage}`);
     } finally {
       setCsvLoading(false);
     }
-  }, [allData, csvDateRange, symbol, chartType, csvLoading, getTimeValue]);
+  }, [csvDateRange, symbol, csvLoading]);
 
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
@@ -570,10 +535,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           {/* 차트 컨트롤 */}
           <div className="w-full md:w-1/2">
             <ChartControls
-              isAutoUpdate={isAutoUpdate}
-              handleAutoUpdateToggle={() => setIsAutoUpdate(!isAutoUpdate)}
-              isRealtimeAPIEnabled={isRealtimeAPIEnabled}
-              handleRealtimeAPIToggle={() => setIsRealtimeAPIEnabled(!isRealtimeAPIEnabled)}
               dateRange={dateRange}
               handleDateRangeChange={(date) => setDateRange(prev => ({ ...prev, startDate: date }))}
               handleEndDateChange={(date) => setDateRange(prev => ({ ...prev, endDate: date }))}
@@ -584,15 +545,16 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           {/* 가격 정보 */}
           <div className="w-full md:w-1/2">
             <ChartPrice 
-              currentPrice={currentPrice}
+              market={symbol}
               chartPrice={chartPrice}
-              lastUpdated={lastUpdated}
             />
           </div>
         </div>
         
+     
         {/* 차트 컨테이너 */}
-        <div className="relative w-full">
+            {/* 벡테스트용 차트 컨테이너 */}
+            <div className="relative w-full">
           <ChartContainer
             isFullscreen={isFullscreen}
             chartHeight={chartHeight}
@@ -603,6 +565,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
             onChartReady={handleChartReady}
           />
         </div>
+
         
         {/* 설정 및 결과 섹션 */}
         <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
@@ -641,33 +604,20 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
             saveToCSV={saveToCSV}
           />
         </div>
+           {/* 벡테스트용 차트 컨테이너 */}
+        {/* <div className="relative w-full">
+          <ChartContainer
+            isFullscreen={isFullscreen}
+            chartHeight={chartHeight}
+            toggleFullscreen={toggleFullscreen}
+            symbol={symbol}
+            markers={markers}
+            chartType={chartType}
+            onChartReady={handleChartReady}
+          />
+        </div> */}
       </div>
-      
-      {/* 웹소켓 연결 */}
-      {isRealtimeAPIEnabled && (
-        <Websocket
-          url="wss://api.upbit.com/websocket/v1"
-          onOpen={() => {
-            console.log('웹소켓 연결됨');
-          }}
-          onMessage={handleSocketData}
-          onError={(error: Error) => {
-            console.error('웹소켓 오류:', error);
-          }}
-          onClose={() => {
-            console.log('웹소켓 연결 닫힘');
-          }}
-          options={{ 
-            shouldReconnect: () => isRealtimeAPIEnabled 
-          }}
-          protocols={[]}
-          reconnectIntervalInMilliSeconds={5000}
-          onSend={() => JSON.stringify([
-            { ticket: `ticker-${symbol}` },
-            { type: 'ticker', codes: [symbol] }
-          ])}
-        />
-      )}
+
     </div>
   );
 };

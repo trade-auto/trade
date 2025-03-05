@@ -1,16 +1,17 @@
 import React from 'react';
+import { useUpbitWebSocket } from '../hooks/useUpbitWebSocket';
 
 interface ChartPriceProps {
-  currentPrice: number;
   chartPrice: number;
-  lastUpdated: Date | null;
+  market: string;
 }
 
 const ChartPrice: React.FC<ChartPriceProps> = ({
-  currentPrice,
   chartPrice,
-  lastUpdated
+  market
 }) => {
+  const { currentPrice, lastUpdated } = useUpbitWebSocket(market);
+
   // 시세 차이 계산
   const priceDiff = currentPrice > 0 && chartPrice > 0 
     ? currentPrice - chartPrice 
