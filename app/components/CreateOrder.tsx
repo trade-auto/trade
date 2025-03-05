@@ -3,7 +3,6 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import { useUpbitStore } from '../store/useUpbitStore';
-import { Time } from 'lightweight-charts';
 
 interface CreateOrderProps {
   market: string;
@@ -192,11 +191,11 @@ export const CreateOrder = forwardRef<
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
   const [autoTrading, setAutoTrading] = useState(false);
-  const [lastTradeType, setLastTradeType] = useState<'bid' | 'ask' | null>(null);
-  const [isTradeComplete, setIsTradeComplete] = useState(false);
-  const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
-  const [statusChangeTime, setStatusChangeTime] = useState<string>(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-  const [statusHistory, setStatusHistory] = useState<{ status: string, time: string }[]>([]);
+  //const [_lastTradeType, _setLastTradeType] = useState<'bid' | 'ask' | null>(null);
+  //const [_isTradeComplete, _setIsTradeComplete] = useState(false);
+  //const [tradeStatus, setTradeStatus] = useState<'waiting_buy' | 'waiting_sell' | 'trading' | 'complete'>('waiting_buy');
+  //const [statusChangeTime, setStatusChangeTime] = useState<string>(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  //const [statusHistory, setStatusHistory] = useState<{ status: string, time: string }[]>([]);
   const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string, buyPrice: number | null, sellPrice: number | null, profit: string | null, profitAmount: string | null }[]>([]);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [actionStartTime, setActionStartTime] = useState<Date | null>(null);
@@ -205,9 +204,9 @@ export const CreateOrder = forwardRef<
   const [totalProfit, setTotalProfit] = useState<string>('0.00');
 
   // 볼린저 밴드 계산을 위한 상태 추가
-  const [upperBand, setUpperBand] = useState<number | null>(null);
-  const [lowerBand, setLowerBand] = useState<number | null>(null);
-  const [basis, setBasis] = useState<number | null>(null);
+  //const [upperBand, setUpperBand] = useState<number | null>(null);
+  //const [lowerBand, setLowerBand] = useState<number | null>(null);
+  //const [basis, setBasis] = useState<number | null>(null);
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
@@ -346,7 +345,7 @@ export const CreateOrder = forwardRef<
       if (ordType !== 'limit' && current) {
         setPrice(current.toString());
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setPriceUpdateError('가격 정보 업데이트 실패');
       console.error('가격 업데이트 중 오류:', error);
     }
@@ -366,7 +365,7 @@ export const CreateOrder = forwardRef<
     const interval = setInterval(updatePrices, 1000); // 1초마다 업데이트
     
     return () => clearInterval(interval);
-  }, [market, ordType]); // ordType이 변경될 때도 다시 설정
+  }, [market, ordType, updatePrices]); // updatePrices 의존성 추가
 
   // 주문 방식이 변경될 때 가격 자동 설정
   useEffect(() => {
@@ -400,53 +399,53 @@ export const CreateOrder = forwardRef<
   }, [volume, onQuantityUpdate]);
 
   // 수익률 계산 함수
-  const calculateProfitRate = (buyPrice: number, sellPrice: number) => {
-    if (buyPrice === 0) return 0;
-    return ((sellPrice - buyPrice) / buyPrice) * 100;
-  };
+  // const _calculateProfitRate = (buyPrice: number, sellPrice: number) => {
+  //   if (buyPrice === 0) return 0;
+  //   return ((sellPrice - buyPrice) / buyPrice) * 100;
+  // };
 
   // 매매 사이클 업데이트 함수 수정
-  const updateTradeCycle = (status: string) => {
-    const currentTime = new Date().toLocaleTimeString('ko-KR', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
-    });
+  // const _updateTradeCycle = (status: string) => {
+  //   const currentTime = new Date().toLocaleTimeString('ko-KR', { 
+  //     hour: '2-digit', 
+  //     minute: '2-digit', 
+  //     second: '2-digit' 
+  //   });
     
-    setTradeCycles(prev => {
-      const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime, buyPrice: null, sellPrice: null, profit: null, profitAmount: null };
+  //   setTradeCycles(prev => {
+  //     const lastCycle = prev[0] || { cycle: [], times: [], time: currentTime, buyPrice: null, sellPrice: null, profit: null, profitAmount: null };
       
-      // 새로운 사이클 시작 조건 수정
-      if (prev.length === 0 && status === '매수 대기') {
-        // 첫 번째 사이클인 경우에만 매수 대기 상태 추가
-        return [{ 
-          cycle: [status], 
-          times: [currentTime],
-          time: currentTime,
-          buyPrice: null,
-          sellPrice: null,
-          profit: null,
-          profitAmount: null
-        }];
-      }
+  //     // 새로운 사이클 시작 조건 수정
+  //     if (prev.length === 0 && status === '매수 대기') {
+  //       // 첫 번째 사이클인 경우에만 매수 대기 상태 추가
+  //       return [{ 
+  //         cycle: [status], 
+  //         times: [currentTime],
+  //         time: currentTime,
+  //         buyPrice: null,
+  //         sellPrice: null,
+  //         profit: null,
+  //         profitAmount: null
+  //       }];
+  //     }
       
-      // 기존 사이클 업데이트
-      if (lastCycle.cycle.length < 4) {
-        const updatedCycle = {
-          cycle: [...lastCycle.cycle, status],
-          times: [...lastCycle.times, currentTime],
-          time: lastCycle.time,
-          buyPrice: lastCycle.buyPrice,
-          sellPrice: lastCycle.sellPrice,
-          profit: lastCycle.profit,
-          profitAmount: lastCycle.profitAmount
-        };
-        return [updatedCycle, ...prev.slice(1)];
-      }
+  //     // 기존 사이클 업데이트
+  //     if (lastCycle.cycle.length < 4) {
+  //       const updatedCycle = {
+  //         cycle: [...lastCycle.cycle, status],
+  //         times: [...lastCycle.times, currentTime],
+  //         time: lastCycle.time,
+  //         buyPrice: lastCycle.buyPrice,
+  //         sellPrice: lastCycle.sellPrice,
+  //         profit: lastCycle.profit,
+  //         profitAmount: lastCycle.profitAmount
+  //       };
+  //       return [updatedCycle, ...prev.slice(1)];
+  //     }
 
-      return prev;
-    });
-  };
+  //     return prev;
+  //   });
+  // };
 
   // 볼린저 밴드 계산 함수
   const calculateBollingerBands = (prices: number[], period: number = 20, multiplier: number = 2) => {
@@ -464,7 +463,7 @@ export const CreateOrder = forwardRef<
   };
 
   // 매매 전략 상태 표시 추가
-  const [currentStrategy, setCurrentStrategy] = useState<string>('');
+  const [currentStrategy   ] = useState<string>('');
   const [lastSignal, setLastSignal] = useState<string>('');
 
   // 매매 조건 체크 부분 수정
