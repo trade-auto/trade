@@ -11,8 +11,6 @@ interface CsvDownloaderProps {
   csvLoading: boolean;
   csvProgress: number;
   allData: UpbitCandle[];
-  symbol: string;
-  chartType: string;
   setCsvDateRange: (range: { startDate: Date | null; endDate: Date | null }) => void;
   saveToCSV: () => void;
 }
@@ -22,8 +20,6 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
   csvLoading,
   csvProgress,
   allData,
-  symbol,
-  chartType,
   setCsvDateRange,
   saveToCSV
 }) => {

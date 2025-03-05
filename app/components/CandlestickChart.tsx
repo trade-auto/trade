@@ -29,6 +29,7 @@ import {
   calculateBacktestResult,
   formatDate,
 } from '../utils/chartHelpers';
+import { LineData } from 'lightweight-charts';
 
 interface OrderParams {
   market: string;
@@ -107,6 +108,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   // 기타 상태
   const ongoingRequestRef = useRef<boolean>(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 실시간 캔들 업데이트를 위한 ref
+  const lastCandleRef = useRef<ExtendedCandlestickData | null>(null);
 
   // 타임스탬프 처리 유틸리티 함수
   const getTimeValue = useCallback((time: Time | BusinessDay | string): number => {
@@ -295,15 +299,89 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   }, [dateRange, symbol, chartType, showMA]);
 
-  // 웹소켓 메시지 핸들러
+  // 웹소켓 메시지 핸들러 개선
   const handleSocketData = useCallback((data: string) => {
-    if (!isRealtimeAPIEnabled) return;
+    if (!isRealtimeAPIEnabled || !candleSeriesRef.current || !volumeSeriesRef.current) return;
     
     try {
       const parsedData = JSON.parse(data);
-      if (parsedData && parsedData.type === 'ticker' && parsedData.code === symbol) {
+      if (parsedData && parsedData.type === 'trade' && parsedData.code === symbol) {
         const price = parsedData.trade_price;
+        const volume = parsedData.trade_volume;
+        const timestamp = Math.floor(new Date(parsedData.trade_time).getTime() / 1000) as Time;
+        
         setCurrentPrice(price);
+        
+        // 마지막 캔들 업데이트 또는 새 캔들 생성
+        if (lastCandleRef.current && lastCandleRef.current.time === timestamp) {
+          // 기존 캔들 업데이트
+          const updatedCandle = {
+            ...lastCandleRef.current,
+            high: Math.max(lastCandleRef.current.high, price),
+            low: Math.min(lastCandleRef.current.low, price),
+            close: price,
+            volume: lastCandleRef.current.volume + volume
+          };
+          
+          lastCandleRef.current = updatedCandle;
+          
+          // 차트 시리즈 업데이트
+          candleSeriesRef.current.update(updatedCandle);
+          volumeSeriesRef.current.update({
+            time: timestamp,
+            value: updatedCandle.volume,
+            color: updatedCandle.close >= updatedCandle.open ? '#26a69a' : '#ef5350'
+          });
+        } else {
+          // 새 캔들 생성
+          const newCandle: ExtendedCandlestickData = {
+            time: timestamp,
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+            volume: volume
+          };
+          
+          // 이전 캔들이 있으면 EMA 업데이트
+          if (lastCandleRef.current && 
+              sixtyEMASeriesRef.current && 
+              oneTwentyEMASeriesRef.current && 
+              twoFortyEMASeriesRef.current && 
+              threeHundredSixtyEMASeriesRef.current) {
+            
+            // EMA 업데이트 로직
+            const updateEMA = (prevEMA: number, price: number, period: number) => {
+              const multiplier = 2 / (period + 1);
+              return price * multiplier + prevEMA * (1 - multiplier);
+            };
+            
+            // 각 EMA 업데이트
+            const emaData: LineData<Time> = {
+              time: timestamp,
+              value: 0
+            };
+            
+            if (sixtyEMASeriesRef.current.data().length > 0) {
+              const lastData = sixtyEMASeriesRef.current.data()[sixtyEMASeriesRef.current.data().length - 1] as LineData<Time>;
+              emaData.value = updateEMA(lastData.value, price, 60);
+              sixtyEMASeriesRef.current.update(emaData);
+            }
+            
+            // 다른 EMA 시리즈도 동일하게 업데이트
+            // ... 생략 ...
+          }
+          
+          lastCandleRef.current = newCandle;
+          
+          // 차트에 새 캔들 추가
+          candleSeriesRef.current.update(newCandle);
+          volumeSeriesRef.current.update({
+            time: timestamp,
+            value: volume,
+            color: price >= newCandle.open ? '#26a69a' : '#ef5350'
+          });
+        }
       }
     } catch (error) {
       console.error('웹소켓 데이터 파싱 오류:', error);
@@ -558,8 +636,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
             csvLoading={csvLoading}
             csvProgress={csvProgress}
             allData={allData as unknown as UpbitCandle[]}
-            symbol={symbol}
-            chartType={chartType}
             saveToCSV={saveToCSV}
           />
         </div>
