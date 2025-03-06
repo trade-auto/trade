@@ -190,10 +190,10 @@ export interface TradingStrategy {
 const bollingerStrategy: TradingStrategy = {
   name: 'BOLLINGER',
   timeframe: '1m',
-  description: '단기/장기 이동평균선 교차 전략',
+  description: '볼린저 밴드와 이동평균선 기반 전략',
   author: 'System',
-  version: '1.0.0',
-  tags: ['trend', 'moving-average'],
+  version: '2.0.0',
+  tags: ['trend', 'moving-average', 'bollinger'],
   
   indicators: {
     maPeriods: { short: 60, long: 240 }
@@ -207,52 +207,195 @@ const bollingerStrategy: TradingStrategy = {
   
   // 진입 조건 분석
   analyzeEntry(data, index) {
-    if (index < 240) return null; // 충분한 데이터 확보 (240MA를 계산하기 위해)
-    
+    if (index < 360) return null; // 충분한 데이터 확보
+
+    const store = useUpbitStore.getState();
+    const lastTradeType = store.tradeState.lastTradeType;
+    if (lastTradeType === 'bid') {
+      console.log('🚫 매수 제한: 마지막 거래가 매수');
+      return null;
+    }
+
     // MA 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
+
     // 이전 MA 계산
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
     const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    
-    // 60MA가 120MA와 240MA를 상향 돌파하는지 확인
-    const crossAbove120 = prevMa60 <= prevMa120 && ma60 > ma120;
-    const crossAbove240 = prevMa60 <= prevMa240 && ma60 > ma240;
-    
-    if (crossAbove120 && crossAbove240) {
+    const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
+
+    // 30초 전 MA 계산
+    const prevMa60_30s = data.slice(index - 60 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 60;
+    const prevMa120_30s = data.slice(index - 120 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 120;
+
+    // MA 기울기 계산
+    const ma60Slope = (ma60 - prevMa60) / prevMa60 * 100;
+    const ma120Slope = (ma120 - prevMa120) / prevMa120 * 100;
+    const ma240Slope = (ma240 - prevMa240) / prevMa240 * 100;
+    const ma360Slope = (ma360 - prevMa360) / prevMa360 * 100;
+
+    // 30초 전 MA 기울기 계산
+    const prevMa60Slope = (prevMa60_30s - prevMa60) / prevMa60 * 100;
+
+    // 이격도 계산
+    const deviation = ((ma60 / ma120) * 100) - 100;
+    const prevDeviation = ((prevMa60_30s / prevMa120_30s) * 100) - 100;
+
+    console.log('\n=== 매수 신호 분석 ===');
+    console.log('현재가:', data[index].close);
+    console.log('MA 값:', {
+      MA60: ma60.toFixed(2),
+      MA120: ma120.toFixed(2),
+      MA240: ma240.toFixed(2),
+      MA360: ma360.toFixed(2)
+    });
+    console.log('MA 기울기:', {
+      MA60: ma60Slope.toFixed(4) + '%',
+      MA120: ma120Slope.toFixed(4) + '%',
+      MA360: ma360Slope.toFixed(4) + '%'
+    });
+    console.log('이격도:', {
+      현재: deviation.toFixed(4) + '%',
+      이전: prevDeviation.toFixed(4) + '%'
+    });
+
+    // 360MA 횡보 상태 체크 (기울기 ±0.15%)
+    if (Math.abs(ma360Slope) <= 0.15) {
+      console.log('🚫 매수 제한: 360MA 횡보 상태');
+      return null;
+    }
+
+    // 매수 조건 체크
+    const isRapidSlopeChange = prevMa60Slope < -0.3 && ma60Slope > 0.3; // 급하강에서 급상승
+    const isBothMADownward = ma60Slope < 0 && ma120Slope < 0; // 두 MA 모두 하강 기울기
+    const strongBuyCross = ma60 > ma120 && prevMa60 <= prevMa120 && ma60Slope > 0.3; // 큰 기울기로 상방 관통
+    const gapNarrowing = deviation < prevDeviation; // 이격도 축소
+    const buyCrossOrAbove = ma60 > ma120; // 60MA가 120MA 위에 있음
+    const buySlope = ma60Slope > 0; // 60MA 상승 기울기
+    const isFullProperAlignment = ma60 > ma120 && ma120 > ma240; // 완전 정배열
+    const isReverseAlignment = ma60 < ma120 && ma120 < ma240; // 역배열
+
+    console.log('매수 조건:', {
+      급격한기울기변화: isRapidSlopeChange,
+      MA하락중: isBothMADownward,
+      강한상방돌파: strongBuyCross,
+      이격도축소: gapNarrowing,
+      MA60이상단: buyCrossOrAbove,
+      MA60상승: buySlope,
+      정배열: isFullProperAlignment,
+      역배열: isReverseAlignment
+    });
+
+    // 연속 거래 간격 체크
+    const lastTradeTime = new Date(store.tradeState.statusChangeTime);
+    const currentTime = new Date();
+    const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
+    if (timeDiff < 30) {
+      console.log('🚫 매수 제한: 최소 거래 간격 미충족');
+      return null;
+    }
+
+    // 매수 시그널 생성
+    if (!isBothMADownward && (
+      isRapidSlopeChange ||
+      (strongBuyCross && !isReverseAlignment) ||
+      (gapNarrowing && buyCrossOrAbove && buySlope && !isReverseAlignment) ||
+      (isFullProperAlignment && buyCrossOrAbove)
+    )) {
+      console.log('✅ 매수 신호 발생!');
       return 'long';
     }
-    
+
+    console.log('❌ 매수 조건 불충족');
     return null;
   },
   
   // 청산 조건 분석
   analyzeExit(data, index, position, entryPrice) {
-    if (index < 900 || position !== 'long') return false; // 충분한 데이터 확보 및 롱 포지션 확인
-    
-    const shortPeriod = 30;
-    const longPeriod = 60;
-    
-    const shortMA = data.slice(index - shortPeriod, index).reduce((a, b) => a + b.close, 0) / shortPeriod;
-    const longMA = data.slice(index - longPeriod, index).reduce((a, b) => a + b.close, 0) / longPeriod;
-    const prevShortMA = data.slice(index - shortPeriod - 1, index - 1).reduce((a, b) => a + b.close, 0) / shortPeriod;
-    const prevLongMA = data.slice(index - longPeriod - 1, index - 1).reduce((a, b) => a + b.close, 0) / longPeriod;
-    
-    // 900MA 계산 추가
-    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
-    const isAbove900MA = data[index].close > ma900;
+    if (index < 360 || position !== 'long') return false;
 
-    // 900MA 위에 있을 때는 매도하지 않음
-    if (isAbove900MA) {
+    const store = useUpbitStore.getState();
+    const lastTradeType = store.tradeState.lastTradeType;
+    if (lastTradeType !== 'bid') {
+      console.log('🚫 매도 제한: 마지막 거래가 매수가 아님');
       return false;
     }
+
+    // MA 계산
+    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
+
+    // 이전 MA 계산
+    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
+    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+
+    // MA 기울기 계산
+    const ma60Slope = (ma60 - prevMa60) / prevMa60 * 100;
+
+    // 이격도 계산
+    const deviation = ((ma60 / ma120) * 100) - 100;
+    const prevDeviation = ((prevMa60 / prevMa120) * 100) - 100;
+
+    console.log('\n=== 매도 신호 분석 ===');
+    console.log('현재가:', data[index].close);
+    console.log('진입가:', entryPrice);
+    console.log('수익률:', ((data[index].close / entryPrice - 1) * 100).toFixed(2) + '%');
+    console.log('MA 값:', {
+      MA60: ma60.toFixed(2),
+      MA120: ma120.toFixed(2),
+      MA240: ma240.toFixed(2),
+      MA360: ma360.toFixed(2)
+    });
+    console.log('MA60 기울기:', ma60Slope.toFixed(4) + '%');
+    console.log('이격도:', {
+      현재: deviation.toFixed(4) + '%',
+      이전: prevDeviation.toFixed(4) + '%'
+    });
+
+    // 매도 조건 체크
+    const gapNarrowing = deviation < prevDeviation; // 이격도 축소
+    const sellCrossOrBelow = ma60 < ma120; // 60MA가 120MA 아래에 있음
+    const sellSlope = ma60Slope < 0; // 60MA 하락 기울기
+    const isFullReverseAlignment = ma60 < ma120 && ma120 < ma240; // 완전 역배열
+
+    console.log('매도 조건:', {
+      이격도축소: gapNarrowing,
+      MA60이하단: sellCrossOrBelow,
+      MA60하락: sellSlope,
+      역배열: isFullReverseAlignment
+    });
+
+    // 360MA 위에 있는지 체크
+    if (data[index].close > ma360) {
+      console.log('🚫 매도 제한: 가격이 360MA 위에 있음');
+      return false;
+    }
+
+    // 연속 거래 간격 체크
+    const lastTradeTime = new Date(store.tradeState.statusChangeTime);
+    const currentTime = new Date();
+    const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
+    if (timeDiff < 30) {
+      console.log('🚫 매도 제한: 최소 거래 간격 미충족');
+      return false;
+    }
+
+    const shouldSell = (gapNarrowing && sellCrossOrBelow && sellSlope) || 
+                      (isFullReverseAlignment && sellCrossOrBelow);
     
-    // 단기 이동평균이 장기 이동평균을 하향 돌파하면 청산
-    return (prevShortMA >= prevLongMA && shortMA < longMA);
+    if (shouldSell) {
+      console.log('✅ 매도 신호 발생!');
+      return true;
+    }
+
+    console.log('❌ 매도 조건 불충족');
+    return false;
   },
   
   // 지표 계산 함수
