@@ -31,6 +31,8 @@ import {
 import { useUpbitStore } from '../store/useUpbitStore';
 import TradingStrategyHover from './TradingStrategyHover';
 import axios from 'axios';
+import { TradeSignal } from '../types/candlestick';
+import { CandlestickData as TVCandlestickData, UTCTimestamp, BusinessDay } from 'lightweight-charts';
 
 interface OrderParams {
   market: string;

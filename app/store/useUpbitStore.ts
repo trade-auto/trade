@@ -62,33 +62,14 @@ interface MAType {
   nineHundred: number;
 }
 
-// 매매 신호 타입 정의
-export type TradeSignal = {
-  time: number;
-  position: 'long' | 'short' | 'close';
-  price: number;
-  strategy: TradeStrategy;
-  metadata?: {
-    deviation?: number;
-    slope?: number;
-    ma360?: number;
-    ma120?: number;
-    isAbove360MA?: boolean;
-    rsi?: number;
-    macd?: number;
-  };
-};
+// 포지션 타입을 더 명확하게 정의
+export type PositionType = 'long' | 'short' | 'close';
 
-// 매매 전략 인터페이스
-export interface TradingStrategy {
-  name: TradeStrategy;
-  analyze: (data: CandlestickData<Time>[]) => TradeSignal[];
-  description: string;
-}
-
+// ExtendedMetadata 인터페이스에 필요한 필드 추가
 interface ExtendedMetadata {
   deviation?: number;
   slope?: number;
+  ma30?: number;
   ma60?: number;
   ma120?: number;
   ma240?: number;
@@ -102,28 +83,259 @@ interface ExtendedMetadata {
   ma900Slope?: number;
   upperBand?: number;
   lowerBand?: number;
+  isAbove360MA?: boolean;
 }
 
-const pairSignals = (signals: TradeSignal[]): TradeSignal[] => {
-  const pairedSignals: TradeSignal[] = [];
-  let lastPosition: 'long' | 'short' | 'close' = 'close';
-
-  signals.forEach(signal => {
-    if (signal.position === 'long' && lastPosition !== 'long') {
-      pairedSignals.push(signal);
-      lastPosition = 'long';
-    } else if (signal.position === 'short' && lastPosition !== 'short') {
-      pairedSignals.push(signal);
-      lastPosition = 'short';
-    }
-  });
-
-  return pairedSignals;
+export type TradeSignal = {
+  id: string;               // 고유 트레이드 ID
+  time: number;
+  position: PositionType;   // 포지션 타입
+  price: number;
+  amount?: number;          // 거래 수량 (선택사항)
+  strategy: TradeStrategy;
+  reason?: string;          // 신호 발생 이유
+  metadata?: ExtendedMetadata;
+  relatedTradeId?: string;  // 관련 거래 ID (페어링용)
 };
 
-// 볼린저 밴드 전략
+// 진행 중인 트레이드 상태 관리를 위한 인터페이스
+export interface Trade {
+  id: string;
+  entryTime: number;
+  entryPrice: number;
+  entryAmount?: number;
+  entryReason?: string;
+  entryMetadata?: ExtendedMetadata;
+  exitTime?: number;
+  exitPrice?: number;
+  exitAmount?: number;
+  exitReason?: string;
+  exitMetadata?: ExtendedMetadata;
+  strategy: TradeStrategy;
+  profit?: number;
+  profitPercentage?: number;
+  status: 'open' | 'closed';
+  type: 'long' | 'short';
+}
+
+// 진입/청산 규칙에 대한 인터페이스
+export interface EntryRules {
+  shouldLong: (data: CandlestickData<Time>[], index: number) => boolean;  // 롱 진입 조건
+  shouldShort?: (data: CandlestickData<Time>[], index: number) => boolean; // 숏 진입 조건 (선택사항)
+}
+
+// 청산 규칙에 대한 인터페이스
+export interface ExitRules {
+  shouldExitLong: (data: CandlestickData<Time>[], index: number, entryPrice: number) => boolean;  // 롱 청산 조건
+  shouldExitShort?: (data: CandlestickData<Time>[], index: number, entryPrice: number) => boolean; // 숏 청산 조건 (선택사항)
+}
+
+// 리스크 관리 설정
+export interface RiskManagement {
+  stopLossPercent?: number;      // 손절매 비율 (%)
+  takeProfitPercent?: number;    // 익절 비율 (%)
+  trailingStopPercent?: number;  // 트레일링 스탑 비율 (%)
+  maxDrawdownPercent?: number;   // 최대 손실 허용 비율 (%)
+  positionSizePercent?: number;  // 포지션 크기 비율 (%)
+  maxOpenTrades?: number;        // 최대 동시 거래 수
+}
+
+// 지표 설정
+export interface IndicatorSettings {
+  maPeriods?: { short: number; long: number; };  // MA 기간 설정
+  bollinger?: { period: number; stdDev: number; };  // 볼린저 밴드 설정
+  rsi?: { period: number; overbought: number; oversold: number; };  // RSI 설정
+  macd?: { fast: number; slow: number; signal: number; };  // MACD 설정
+  customIndicators?: Record<string, any>;  // 사용자 정의 지표
+}
+
+// 개선된 트레이딩 전략 인터페이스
+export interface TradingStrategy {
+  name: TradeStrategy;
+  timeframe?: string;                   // 타임프레임 설정: '1m', '5m', '15m', '1h', '4h', '1d' 등
+  description: string;                  // 전략 설명
+  author?: string;                      // 전략 작성자
+  version?: string;                     // 전략 버전
+  tags?: string[];                      // 전략 태그 (예: 'trend', 'momentum', 'mean-reversion')
+  
+  // 전략 설정
+  indicators?: IndicatorSettings;       // 지표 설정
+  riskManagement?: RiskManagement;      // 리스크 관리 설정
+  
+  // 진입/청산 규칙
+  entryRules?: EntryRules;              // 진입 규칙
+  exitRules?: ExitRules;                // 청산 규칙
+  
+  // 기존 분석 함수 (하위 호환성을 위해 유지)
+  analyze: (data: CandlestickData<Time>[]) => TradeSignal[];
+  
+  // 새로운 분석 함수 (개별 컴포넌트별로 분리)
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | 'short' | null;
+  analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'long' | 'short', entryPrice: number) => boolean;
+  
+  // 포지션 크기 계산
+  calculatePositionSize?: (data: CandlestickData<Time>[], index: number, availableBalance: number) => number;
+  
+  // 지표 계산 함수
+  calculateIndicators?: (data: CandlestickData<Time>[]) => Record<string, any[]>;
+  
+  // 백테스트 결과 분석 및 시각화 메서드
+  analyzeBacktestResults?: (trades: Trade[]) => Record<string, any>;
+  visualizeStrategy?: (data: CandlestickData<Time>[], trades: Trade[]) => Record<string, any[]>;
+}
+
+// 트레이드 처리 함수: 이제 position 타입이 호환됨
+const processTradeSignals = (signals: TradeSignal[]): TradeSignal[] => {
+  const trades: Trade[] = [];
+  const openTrades: Record<string, Trade> = {};
+  
+  // 시간순으로 정렬
+  const sortedSignals = [...signals].sort((a, b) => a.time - b.time);
+  
+  for (const signal of sortedSignals) {
+    if (signal.position === 'long') {
+      // 신규 트레이드 생성
+      const tradeId = signal.id || `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newTrade: Trade = {
+        id: tradeId,
+        entryTime: signal.time,
+        entryPrice: signal.price,
+        entryAmount: signal.amount,
+        entryReason: signal.reason,
+        entryMetadata: signal.metadata,
+        strategy: signal.strategy,
+        status: 'open',
+        type: 'long'
+      };
+      openTrades[tradeId] = newTrade;
+      trades.push(newTrade);
+    } else if (signal.position === 'short' || signal.position === 'close') {
+      // 관련 진입 트레이드 찾기
+      const relatedTradeId = signal.relatedTradeId;
+      let matchingTrade = relatedTradeId ? openTrades[relatedTradeId] : null;
+      
+      // 관련 ID가 없으면 같은 전략에 대한 가장 최근의 미종료 트레이드 찾기
+      if (!matchingTrade) {
+        const openTradesOfStrategy = Object.values(openTrades).filter(
+          t => t.status === 'open' && t.strategy === signal.strategy && t.type === 'long'
+        );
+        
+        if (openTradesOfStrategy.length > 0) {
+          // 가장 오래된 미종료 트레이드 가져오기
+          matchingTrade = openTradesOfStrategy.sort((a, b) => a.entryTime - b.entryTime)[0];
+        }
+      }
+      
+      // 매칭되는 트레이드가 있으면 종료 정보 업데이트
+      if (matchingTrade) {
+        matchingTrade.exitTime = signal.time;
+        matchingTrade.exitPrice = signal.price;
+        matchingTrade.exitAmount = signal.amount;
+        matchingTrade.exitReason = signal.reason;
+        matchingTrade.exitMetadata = signal.metadata;
+        matchingTrade.status = 'closed';
+        
+        // 수익 계산
+        if (matchingTrade.type === 'long') {
+          matchingTrade.profit = matchingTrade.exitPrice - matchingTrade.entryPrice;
+          matchingTrade.profitPercentage = (matchingTrade.exitPrice / matchingTrade.entryPrice - 1) * 100;
+        } else {
+          matchingTrade.profit = matchingTrade.entryPrice - matchingTrade.exitPrice;
+          matchingTrade.profitPercentage = (matchingTrade.entryPrice / matchingTrade.exitPrice - 1) * 100;
+        }
+        
+        // 종료된 트레이드는 openTrades에서 제거
+        delete openTrades[matchingTrade.id];
+      }
+    }
+  }
+  
+  // 백엔드에서는 Trade 객체를 사용하지만, 기존 인터페이스 호환성을 위해 TradeSignal을 반환
+  return signals;
+};
+
+// 볼린저 밴드 전략 업데이트
 const bollingerStrategy: TradingStrategy = {
   name: 'BOLLINGER',
+  timeframe: '1m',
+  description: '완화된 조건의 볼린저 밴드 전략',
+  author: 'System',
+  version: '1.0.0',
+  tags: ['trend', 'mean-reversion'],
+  
+  indicators: {
+    maPeriods: { short: 60, long: 120 },
+    bollinger: { period: 20, stdDev: 2 }
+  },
+  
+  riskManagement: {
+    stopLossPercent: 1.5,
+    takeProfitPercent: 3.0,
+    positionSizePercent: 30
+  },
+  
+  // 새로운 방식의 진입/청산 로직 (예시)
+  entryRules: {
+    shouldLong: (data, index) => {
+      if (index < 900) return false; // 충분한 데이터 확보
+      
+      const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
+      const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;
+      const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
+      const ma360 = data.slice(index - 360, index).reduce((sum, d) => sum + d.close, 0) / 360;
+      const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
+      
+      // 60MA가 120MA 상향 돌파
+      const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
+      const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
+      const upward60_120 = prevMa60 <= prevMa120 && ma60 > ma120;
+      
+      // 240MA가 360MA 상향 돌파 체크
+      let upward240_360 = false;
+      for (let j = index; j < Math.min(data.length, index + 10); j++) {
+        if (j < 361) continue;
+        const currentMa240_j = data.slice(j - 240, j).reduce((sum, d) => sum + d.close, 0) / 240;
+        const prevMa240_j = data.slice(j - 241, j - 1).reduce((sum, d) => sum + d.close, 0) / 240;
+        const currentMa360_j = data.slice(j - 360, j).reduce((sum, d) => sum + d.close, 0) / 360;
+        const prevMa360_j = data.slice(j - 361, j - 1).reduce((sum, d) => sum + d.close, 0) / 360;
+
+        if (prevMa240_j <= prevMa360_j && currentMa240_j > currentMa360_j) {
+          upward240_360 = true;
+          break;
+        }
+      }
+      
+      // 이격도 확인
+      const gap120_240 = Math.abs(ma120 - ma240) / ma240;
+      const prevGap120_240 = Math.abs(prevMa120 - data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240) / (data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240);
+      const isGapNarrowing = gap120_240 < prevGap120_240;
+      
+      // 매수 조건
+      return (upward60_120 && upward240_360 && isGapNarrowing && ma60 > ma900);
+    }
+  },
+  
+  exitRules: {
+    shouldExitLong: (data, index, entryPrice) => {
+      if (index < 900) return false; // 충분한 데이터 확보
+      
+      const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
+      const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;
+      const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
+      const ma360 = data.slice(index - 360, index).reduce((sum, d) => sum + d.close, 0) / 360;
+      const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
+      
+      // 60MA가 120MA 하향 돌파
+      const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
+      const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
+      const downward60_120 = prevMa60 >= prevMa120 && ma60 < ma120;
+      
+      // 매도 조건
+      return (downward60_120 && ma60 <= ma900 && ma240 <= ma360);
+    }
+  },
+
+  // 기존 분석 함수 (하위 호환성을 위해 유지)
   analyze: (data) => {
     const signals: TradeSignal[] = [];
     let currentPosition: 'long' | 'short' | null = null;
@@ -189,10 +401,12 @@ const bollingerStrategy: TradingStrategy = {
       if (currentPosition === null) {
         if (upward60_120 && upward60_240 && isGapNarrowing && !avoidBuyDueToGap) {
           signals.push({
+            id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             time: data[i].time as number,
             position: 'long',
             price: data[i].close,
-            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy
+            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy,
+            reason: '초기 매수 조건 충족'
           });
           currentPosition = 'long';
         }
@@ -202,10 +416,12 @@ const bollingerStrategy: TradingStrategy = {
       else if (currentPosition === 'short') {
         if (upward60_120 && upward240_360 && isGapNarrowing && !avoidBuyDueToGap) {
           signals.push({
+            id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             time: data[i].time as number,
             position: 'long',
             price: data[i].close,
-            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy
+            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy,
+            reason: '10초 이내 240MA가 상향 돌파'
           });
           currentPosition = 'long';
         }
@@ -218,6 +434,7 @@ const bollingerStrategy: TradingStrategy = {
       // 4. 60MA가 900MA보다 위에 있으면 매도하지 않으며,
       // 5. 240MA가 360MA보다 위에 있으면 매도 신호 무시.
       if (currentPosition === 'long') {
+        const ma900 = data.slice(i - 900, i).reduce((sum, d) => sum + d.close, 0) / 900;
         if (
           ma60 <= ma900 && 
           downward60_120 && 
@@ -226,28 +443,80 @@ const bollingerStrategy: TradingStrategy = {
           (ma240 <= ma360)
         ) {
           signals.push({
+            id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             time: data[i].time as number,
             position: 'short',
             price: data[i].close,
-            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy
+            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy,
+            reason: '60MA가 900MA보다 위에 있으며, 120/240 이격도가 10초 전보다 좁아지고, 240MA가 360MA보다 위에 있음'
           });
           currentPosition = 'short';
         }
       }
     }
-    return pairSignals(signals);
-  },
-  description: '완화된 조건의 볼린저 밴드 전략'
+    return processTradeSignals(signals);
+  }
 };
 
-// MA 크로스 전략
+// MA 크로스 전략 업데이트
 const maCrossStrategy: TradingStrategy = {
   name: 'MA_CROSS',
+  timeframe: '1m',
+  description: '단기/장기 이동평균선 교차 전략',
+  author: 'System',
+  version: '1.0.0',
+  tags: ['trend', 'moving-average'],
+  
+  indicators: {
+    maPeriods: { short: 30, long: 60 }
+  },
+  
+  riskManagement: {
+    stopLossPercent: 1.0,
+    takeProfitPercent: 2.0,
+    positionSizePercent: 50
+  },
+  
+  // 새로운 방식의 진입/청산 로직 (예시)
+  entryRules: {
+    shouldLong: (data, index) => {
+      if (index < 60) return false; // 충분한 데이터 확보
+      
+      const shortPeriod = 30;
+      const longPeriod = 60;
+      
+      const shortMA = data.slice(index - shortPeriod, index).reduce((a, b) => a + b.close, 0) / shortPeriod;
+      const longMA = data.slice(index - longPeriod, index).reduce((a, b) => a + b.close, 0) / longPeriod;
+      const prevShortMA = data.slice(index - shortPeriod - 1, index - 1).reduce((a, b) => a + b.close, 0) / shortPeriod;
+      const prevLongMA = data.slice(index - longPeriod - 1, index - 1).reduce((a, b) => a + b.close, 0) / longPeriod;
+      
+      return (prevShortMA <= prevLongMA && shortMA > longMA);
+    }
+  },
+  
+  exitRules: {
+    shouldExitLong: (data, index) => {
+      if (index < 60) return false; // 충분한 데이터 확보
+      
+      const shortPeriod = 30;
+      const longPeriod = 60;
+      
+      const shortMA = data.slice(index - shortPeriod, index).reduce((a, b) => a + b.close, 0) / shortPeriod;
+      const longMA = data.slice(index - longPeriod, index).reduce((a, b) => a + b.close, 0) / longPeriod;
+      const prevShortMA = data.slice(index - shortPeriod - 1, index - 1).reduce((a, b) => a + b.close, 0) / shortPeriod;
+      const prevLongMA = data.slice(index - longPeriod - 1, index - 1).reduce((a, b) => a + b.close, 0) / longPeriod;
+      
+      return (prevShortMA >= prevLongMA && shortMA < longMA);
+    }
+  },
+  
+  // 기존 분석 함수 (하위 호환성을 위해 유지)
   analyze: (data) => {
     const signals: TradeSignal[] = [];
     const shortPeriod = 30;
     const longPeriod = 60;
     let currentPosition: 'long' | 'short' | null = null;
+    let lastTradeId: string | null = null;
 
     for (let i = longPeriod; i < data.length; i++) {
       const shortMA = data.slice(i - shortPeriod, i).reduce((a, b) => a + b.close, 0) / shortPeriod;
@@ -256,26 +525,42 @@ const maCrossStrategy: TradingStrategy = {
       const prevLongMA = data.slice(i - longPeriod - 1, i - 1).reduce((a, b) => a + b.close, 0) / longPeriod;
 
       if (prevShortMA <= prevLongMA && shortMA > longMA && (currentPosition === null || currentPosition === 'short')) {
+        const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         signals.push({
+          id: tradeId,
           time: data[i].time as number,
           position: 'long',
           price: data[i].close,
-          strategy: 'MA_CROSS' as TradeStrategy
+          strategy: 'MA_CROSS',
+          reason: '단기 이동평균선이 장기 이동평균선을 상향 돌파',
+          metadata: {
+            ma30: shortMA,
+            ma60: longMA
+          }
         });
         currentPosition = 'long';
+        lastTradeId = tradeId;
       } else if (prevShortMA >= prevLongMA && shortMA < longMA && currentPosition === 'long') {
         signals.push({
+          id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           time: data[i].time as number,
           position: 'short',
           price: data[i].close,
-          strategy: 'MA_CROSS' as TradeStrategy
+          strategy: 'MA_CROSS',
+          reason: '단기 이동평균선이 장기 이동평균선을 하향 돌파',
+          relatedTradeId: lastTradeId || undefined,
+          metadata: {
+            ma30: shortMA,
+            ma60: longMA
+          }
         });
         currentPosition = 'short';
+        lastTradeId = null;
       }
     }
-    return pairSignals(signals);
-  },
-  description: '단기/장기 이동평균선 교차 전략'
+    
+    return signals;
+  }
 };
 
 // EMA 계산 유틸리티 함수
@@ -310,8 +595,8 @@ const maDeviationStrategy: TradingStrategy = {
     const signals: TradeSignal[] = [];
     let currentPosition: 'long' | 'short' | null = null;
     
-    // 충분한 데이터 확보를 위해 900MA 기준으로 시작
-    for (let i = 900; i < data.length; i++) {
+    // 충분한 데이터 확보를 위해 360MA 기준으로 시작
+    for (let i = 360; i < data.length; i++) {
       // 현재 및 이전 MAs 계산
       const ma60 = data.slice(i - 60, i).reduce((sum, d) => sum + d.close, 0) / 60;
       const prevMa60 = data.slice(i - 61, i - 1).reduce((sum, d) => sum + d.close, 0) / 60;
@@ -324,8 +609,6 @@ const maDeviationStrategy: TradingStrategy = {
 
       const ma360 = data.slice(i - 360, i).reduce((sum, d) => sum + d.close, 0) / 360;
       const prevMa360 = data.slice(i - 361, i - 1).reduce((sum, d) => sum + d.close, 0) / 360;
-
-      const ma900 = data.slice(i - 900, i).reduce((sum, d) => sum + d.close, 0) / 900;
 
       // 현재 120MA, 240MA의 이격도와 10초 전 이격도 비교
       const gapCurrent = Math.abs(ma240 - ma120) / ma120;
@@ -369,12 +652,14 @@ const maDeviationStrategy: TradingStrategy = {
       // 1. 초기 매수: 포지션이 없을 때, 60MA가 120MA와 240MA 모두 상향 돌파하고,
       //    120/240 이격도가 10초 전보다 좁아지며, 360/240 이격 조건이 충족되지 않으면 매수.
       if (currentPosition === null) {
-        if (upward60_120 && upward60_240 && isGapNarrowing && !avoidBuyDueToGap) {
+        if (upward60_120  && isGapNarrowing ){ //&& upward60_240){ //&& !avoidBuyDueToGap) {
           signals.push({
+            id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             time: data[i].time as number,
             position: 'long',
             price: data[i].close,
-            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy
+            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy,
+            reason: '초기 매수 조건 충족'
           });
           currentPosition = 'long';
         }
@@ -384,10 +669,12 @@ const maDeviationStrategy: TradingStrategy = {
       else if (currentPosition === 'short') {
         if (upward60_120 && upward240_360 && isGapNarrowing && !avoidBuyDueToGap) {
           signals.push({
+            id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             time: data[i].time as number,
             position: 'long',
             price: data[i].close,
-            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy
+            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy,
+            reason: '10초 이내 240MA가 상향 돌파'
           });
           currentPosition = 'long';
         }
@@ -400,6 +687,7 @@ const maDeviationStrategy: TradingStrategy = {
       // 4. 60MA가 900MA보다 위에 있으면 매도하지 않으며,
       // 5. 240MA가 360MA보다 위에 있으면 매도 신호 무시.
       if (currentPosition === 'long') {
+        const ma900 = data.slice(i - 900, i).reduce((sum, d) => sum + d.close, 0) / 900;
         if (
           ma60 <= ma900 && 
           downward60_120 && 
@@ -408,16 +696,18 @@ const maDeviationStrategy: TradingStrategy = {
           (ma240 <= ma360)
         ) {
           signals.push({
+            id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             time: data[i].time as number,
             position: 'short',
             price: data[i].close,
-            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy
+            strategy: 'MA_CROSS_DEVIATION' as TradeStrategy,
+            reason: '60MA가 900MA보다 위에 있으며, 120/240 이격도가 10초 전보다 좁아지고, 240MA가 360MA보다 위에 있음'
           });
           currentPosition = 'short';
         }
       }
     }
-    return pairSignals(signals);
+    return processTradeSignals(signals);
   },
   description: '120/240 이격 및 60MA/120MA, 240MA/360MA 크로스 조건 기반 전략 (추가 60/900, 초기 매수 조건 포함)'
 };
@@ -558,10 +848,12 @@ const slopeFilterStrategy: TradingStrategy = {
 
       if (isLongCondition && (currentPosition === null || currentPosition === 'short')) {
         signals.push({
+          id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           time: data[i].time as number,
           position: 'long',
           price: data[i].close,
           strategy: 'SLOPE_FILTER' as TradeStrategy,
+          reason: '이동평균선 정렬 및 교차 조건 충족',
           metadata: {
             deviation: Math.abs(data[i].close - ma60) / ma60,
             ma360,
@@ -574,10 +866,12 @@ const slopeFilterStrategy: TradingStrategy = {
         currentPosition = 'long';
       } else if (isShortCondition && currentPosition === 'long') {
         signals.push({
+          id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           time: data[i].time as number,
           position: 'short',
           price: data[i].close,
           strategy: 'SLOPE_FILTER' as TradeStrategy,
+          reason: '이동평균선 정렬 붕괴 또는 하향 돌파',
           metadata: {
             deviation: Math.abs(data[i].close - ma60) / ma60,
             ma360,
@@ -590,7 +884,7 @@ const slopeFilterStrategy: TradingStrategy = {
         currentPosition = 'short';
       }
     }
-    return signals;
+    return processTradeSignals(signals);
   },
   description: '통합 기술적 분석 전략 (MA/MACD/RSI/BB)'
 };
@@ -645,6 +939,11 @@ interface UpbitStore {
   strategies: Record<TradeStrategy, TradingStrategy>;
   getStrategy: (name: TradeStrategy) => TradingStrategy;
   analyzeStrategy: (data: CandlestickData<Time>[]) => TradeSignal[];
+  trades: Trade[];
+  addTrade: (trade: Trade) => void;
+  updateTrade: (tradeId: string, updates: Partial<Trade>) => void;
+  getOpenTrades: () => Trade[];
+  getClosedTrades: () => Trade[];
 }
 
 // 로컬 스토리지에서 MA 설정 불러오기
@@ -847,7 +1146,23 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
   analyzeStrategy: (data) => {
     const currentStrategy = get().tradeStrategy;
     return strategies[currentStrategy].analyze(data);
-  }
+  },
+
+  trades: [],
+
+  addTrade: (trade) => set((state) => ({
+    trades: [...state.trades, trade]
+  })),
+
+  updateTrade: (tradeId, updates) => set((state) => ({
+    trades: state.trades.map(trade =>
+      trade.id === tradeId ? { ...trade, ...updates } : trade
+    )
+  })),
+
+  getOpenTrades: () => get().trades.filter(trade => trade.status === 'open'),
+
+  getClosedTrades: () => get().trades.filter(trade => trade.status === 'closed')
 })); 
 
 const detectMAReversal = (prices: number[], shortPeriod: number = 3, midPeriod: number = 10, longPeriod: number = 20): 'buy' | 'sell' | 'hold' => {

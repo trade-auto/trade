@@ -3,6 +3,9 @@ import {
   SeriesMarker,
   LineData,
   BusinessDay,
+  UTCTimestamp,
+  SeriesMarkerPosition,
+  SeriesMarkerShape,
 } from 'lightweight-charts';
 import { 
   ExtendedCandlestickData, 
@@ -43,9 +46,9 @@ export const getInitialDateRange = (type: string): DateRange => {
 export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[] => {
   return signals.map(signal => ({
     time: signal.time as Time,
-    position: signal.position === 'long' ? 'belowBar' : 'aboveBar',
+    position: signal.position === 'long' ? ('belowBar' as SeriesMarkerPosition) : ('aboveBar' as SeriesMarkerPosition),
     color: signal.position === 'long' ? '#26a69a' : '#ef5350',
-    shape: signal.position === 'long' ? 'arrowUp' : 'arrowDown',
+    shape: signal.position === 'long' ? ('arrowUp' as SeriesMarkerShape) : ('arrowDown' as SeriesMarkerShape),
     text: `${signal.position} @ ${signal.price.toLocaleString()}`,
     size: 2
   }));
