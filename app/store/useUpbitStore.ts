@@ -228,22 +228,26 @@ const bollingerStrategy: TradingStrategy = {
     const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
     const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
 
+    // MA 기울기 계산
+    const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
+    const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
+    const ma360SlopeRelative = ((ma360 - prevMa360) / prevMa360) * 100;
+
+    // MA 기울기 계산 (절대값 - 각도)
+    const ma360Points = [];
+    for (let i = 0; i < 10; i++) {
+        const pointIndex = index - 9 + i;
+        const ma = data.slice(pointIndex - 360, pointIndex).reduce((a, b) => a + b.close, 0) / 360;
+        ma360Points.push({ x: i, y: ma });
+    }
+    const ma360SlopeAbsolute = Math.atan2(
+        ma360Points[ma360Points.length - 1].y - ma360Points[0].y,
+        ma360Points[ma360Points.length - 1].x - ma360Points[0].x
+    ) * (180 / Math.PI);
+
     // 30초 전 MA 계산
     const prevMa60_30s = data.slice(index - 60 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa120_30s = data.slice(index - 120 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 120;
-
-    // MA 기울기 계산
-    // 구간을 30봉으로 확대하여 더 큰 추세를 보도록 수정
-    const ma60Slope = ((ma60 - data.slice(index - 60 - 10, index - 10).reduce((a, b) => a + b.close, 0) / 60) / ma60) * 100;
-    const ma120Slope = ((ma120 - data.slice(index - 120 - 10, index - 10).reduce((a, b) => a + b.close, 0) / 120) / ma120) * 100;
-    const ma240Slope = ((ma240 - data.slice(index - 240 - 10, index - 10).reduce((a, b) => a + b.close, 0) / 240) / ma240) * 100;
-    
-    // 360MA는 30봉 구간으로 계산하여 더 큰 추세를 확인
-    const ma360_30_ago = data.slice(index - 360 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 360;
-    const ma360Slope = ((ma360 - ma360_30_ago) / ma360_30_ago) * 100;
-
-    // 30초 전 MA 기울기 계산 (10개 봉 구간)
-    const prevMa60Slope = ((prevMa60_30s - data.slice(index - 60 - 40, index - 40).reduce((a, b) => a + b.close, 0) / 60) / prevMa60_30s) * 100;
 
     // 이격도 계산
     const deviation = ((ma60 / ma120) * 100) - 100;
@@ -270,24 +274,30 @@ const bollingerStrategy: TradingStrategy = {
       MA240: ma240.toFixed(2),
       MA360: ma360.toFixed(2)
     });
-    console.log('MA 기울기 (30봉 기준):', {
+    console.log('MA 기울기:', {
       MA60: ma60Slope.toFixed(4) + '%',
       MA120: ma120Slope.toFixed(4) + '%',
-      MA360: ma360Slope.toFixed(4) + '%'
+      MA360: {
+        상대값: ma360SlopeRelative.toFixed(4) + '%',
+        절대각도: ma360SlopeAbsolute.toFixed(4) + '°'
+      }
     });
     console.log('이격도:', {
       현재: deviation.toFixed(4) + '%',
       이전: prevDeviation.toFixed(4) + '%'
     });
 
-    // 360MA 횡보 상태 체크 (기울기 ±0.005%로 완화)
-    if (Math.abs(ma360Slope) <= 0.2) {
-      console.log('🚫 매수 제한: 360MA 횡보 상태 (기울기:', ma360Slope.toFixed(4) + '%, 30봉 기준)');
+    // 360MA 횡보 상태 체크 (상대값과 절대값 모두 고려)
+    if (Math.abs(ma360SlopeRelative) <= 0.2 || Math.abs(ma360SlopeAbsolute) <= 0.5) {
+      console.log('🚫 매수 제한: 360MA 횡보 상태', {
+        상대기울기: ma360SlopeRelative.toFixed(4) + '%',
+        절대각도: ma360SlopeAbsolute.toFixed(4) + '°'
+      });
       return null;
     }
 
     // 매수 조건 체크 - 기준도 함께 조정
-    const isRapidSlopeChange = prevMa60Slope < -0.2 && ma60Slope > 0.2; // 급하강에서 급상승 기준 조정
+    const isRapidSlopeChange = ma60Slope < -0.2 && ma60Slope > 0.2; // 급하강에서 급상승 기준 조정
     const isBothMADownward = ma60Slope < -0.1 && ma120Slope < -0.1; // 하락 기준 조정
     const strongBuyCross = ma60 > ma120 && prevMa60 <= prevMa120 && ma60Slope > 0.2; // 상방 관통 기준 조정
     const gapNarrowing = deviation < prevDeviation; // 이격도 축소
