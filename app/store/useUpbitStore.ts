@@ -255,29 +255,36 @@ const bollingerStrategy: TradingStrategy = {
     const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
 
     const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
-    
-    // 900MA 추가
+    const ma360 = data.slice(index - 360, index).reduce((sum, d) => sum + d.close, 0) / 360;
+    const prevMa360 = data.slice(index - 361, index - 1).reduce((sum, d) => sum + d.close, 0) / 360;
     const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
     
     // 900MA 돌파 여부 확인
     const isAbove900MA = data[index].close > ma900;
     
-    // 하향 돌파 확인
-    const downward60_120 = (prevMa60 >= prevMa120 && ma60 < ma120); // 60MA가 120MA 하향돌파
+    // 첫 번째 매도 조건: 60MA가 360MA 하향돌파
+    const downward60_360 = (prevMa60 >= prevMa360 && ma60 < ma360);
     
-    // 추세 붕괴 확인
-    const trendBreak = ma60 < ma120 || ma120 < ma240; // 상승 추세 정렬 붕괴
+    // 두 번째 매도부터의 조건: 60MA가 120MA 하향돌파 또는 추세 붕괴
+    const downward60_120 = (prevMa60 >= prevMa120 && ma60 < ma120);
+    const trendBreak = ma60 < ma120 || ma120 < ma240;
     
-    // 손절매/익절 조건
-    const stopLossTriggered = (data[index].close / entryPrice - 1) <= -this.riskManagement?.stopLossPercent! / 100;
-    const takeProfitTriggered = (data[index].close / entryPrice - 1) >= this.riskManagement?.takeProfitPercent! / 100;
-    
-    // 매도 조건 (단순화) - 900MA 돌파 시 매도하지 않음
+    // 900MA 위에 있을 때는 매도하지 않음
     if (isAbove900MA) {
-      return false; // 900MA 돌파 시 매도하지 않음
+        return false;
     }
     
-    return downward60_120 || trendBreak || stopLossTriggered || takeProfitTriggered;
+    // 첫 번째 매도인 경우
+    if (isFirstTrade) {
+        if (downward60_360) {
+            isFirstTrade = false;
+            return true;
+        }
+        return false;
+    }
+    
+    // 두 번째 매도부터는 기존 조건 적용
+    return downward60_120 || trendBreak;
   },
   
   // 지표 계산 함수 - 단순화
@@ -584,28 +591,24 @@ const maCrossDeviationStrategy: TradingStrategy = {
     console.log('현재 포지션:', currentPosition);
     console.log('데이터 인덱스:', index);
     
-    // 1분봉 기준으로 수정
-    if (index < 240) { // 4시간(240분) 데이터 필요
+    if (index < 240) {
         console.log('데이터 수집 중...');
         return null;
     }
     
-    // 현재 및 이전 MAs 계산 (분봉 기준)
-    const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;    // 1시간
+    // 현재 및 이전 MAs 계산
+    const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
 
-    const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;  // 2시간
+    const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;
     const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
 
-    const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;  // 4시간
+    const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
     const prevMa240 = data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240;
 
-    // 900MA (15시간) 계산
-    const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
-    const currentPrice = data[index].close;
-    
-    // 현재 가격이 900MA 아래에 있는지 확인
-    const isBelowMA900 = currentPrice < ma900;
+    // 120MA와 240MA의 기울기 계산
+    const ma120Slope = (ma120 - prevMa120) / prevMa120 * 100;
+    const ma240Slope = (ma240 - prevMa240) / prevMa240 * 100;
 
     // 이동평균선 교차 확인
     const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120);
@@ -618,18 +621,28 @@ const maCrossDeviationStrategy: TradingStrategy = {
     
     // 정렬 확인
     const correctAlignment = ma60 > ma120 && ma120 > ma240;
+    // 900MA 계산 및 가격이 900MA 아래에 있는지 확인
+const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
+const isBelowMA900 = data[index].close < ma900;
+    // 120MA와 240MA의 기울기가 모두 양수인지 확인
+    const isMAsUpward = ma120Slope > 0 && ma240Slope > 0;
     
-    // 매수 조건 로깅
+    // 900MA의 기울기를 계산하고 매수 조건에 추가하겠습니다
+    const ma900Slope = (ma900 - data.slice(index - 901, index - 1).reduce((sum, d) => sum + d.close, 0) / 900) / ma900 * 100;
+    
     console.log('=== 매수 조건 분석 ===');
     console.log('60MA/120MA 상향돌파:', upward60_120);
     console.log('MA 정렬상태 (60>120>240):', correctAlignment);
     console.log('120MA/240MA 상향돌파:', upward120_240);
     console.log('이격도 축소:', isGapNarrowing);
     console.log('900MA 아래:', isBelowMA900);
+    console.log('120MA 기울기:', ma120Slope);
+    console.log('240MA 기울기:', ma240Slope);
+    console.log('900MA 상승중:', ma900Slope >= 0);
 
-    if ((upward60_120 && correctAlignment && isBelowMA900) || 
-        (upward120_240 && isGapNarrowing && isBelowMA900)) {
-        console.log('매수 시그널 발생 (900MA 아래), 실제 매수 실행 여부 확인');
+    if ((upward60_120 && correctAlignment && isBelowMA900   && ma900Slope >= 0) || 
+        (upward120_240 && isGapNarrowing && isBelowMA900   && ma900Slope >= 0)) {
+        console.log('매수 시그널 발생 (900MA 아래, MA 기울기 양수, 900MA 상승중), 실제 매수 실행 여부 확인');
         return 'long';
     }
     
@@ -643,29 +656,50 @@ const maCrossDeviationStrategy: TradingStrategy = {
     // 현재 및 이전 MAs 계산
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
-
-    const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
-
-    const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
+    const ma300 = data.slice(index - 300, index).reduce((sum, d) => sum + d.close, 0) / 300;
+    const prevMa300 = data.slice(index - 301, index - 1).reduce((sum, d) => sum + d.close, 0) / 300;
+    const ma360 = data.slice(index - 360, index).reduce((sum, d) => sum + d.close, 0) / 360;
+    const prevMa360 = data.slice(index - 361, index - 1).reduce((sum, d) => sum + d.close, 0) / 360;
     const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
+    const prevMa900 = data.slice(index - 901, index - 1).reduce((sum, d) => sum + d.close, 0) / 900;
+    
+    // 900MA의 기울기 계산 (퍼센트로 표현)
+    const ma900Slope = (ma900 - prevMa900) / prevMa900 * 100;
+    
+    // 900MA 기울기가 평행에 근접한지 확인 (-0.01% ~ 0.01% 범위)
+    const isMA900Flat = Math.abs(ma900Slope) < 0.01;
     
     // 900MA 돌파 여부 확인
     const isAbove900MA = data[index].close > ma900;
     
+    // 첫 번째 매도 조건: 60MA가 300MA 하향돌파
+    const downward60_300 = (prevMa60 >= prevMa300 && ma60 < ma300);
+    
+    // 두 번째 매도부터의 조건: 60MA가 360MA 하향돌파
+    const downward60_360 = (prevMa60 >= prevMa360 && ma60 < ma360);
+    
     // 900MA 위에 있을 때는 매도하지 않음
     if (isAbove900MA) {
-      return false;
+        return false;
     }
     
-    // 하향 돌파 확인
-    const downward60_120 = (prevMa60 >= prevMa120 && ma60 < ma120);
+    // 900MA가 평행에 근접할 때는 매도하지 않음
+    if (isMA900Flat) {
+        console.log('900MA가 평행에 근접하여 매도 신호 무시');
+        return false;
+    }
     
-    // 추세 붕괴 확인
-    const trendBreak = ma60 < ma120 || ma120 < ma240;
+    // 첫 번째 매도인 경우
+    if (isFirstTrade) {
+        if (downward60_300) {
+            isFirstTrade = false;
+            return true;
+        }
+        return false;
+    }
     
-    // 매도 조건: 60MA가 120MA 하향돌파 또는 이동평균선 정렬 깨짐
-    return downward60_120 || trendBreak;
+    // 두 번째 매도부터는 360MA 하향돌파 조건 적용
+    return downward60_360;
   },
   
   // 지표 계산 함수 - 단순화
@@ -1547,3 +1581,4 @@ const handleBacktestChartReady = ({ importedData, backtestCandleSeries, volumeSe
         volumeSeries.setData(volumeData);
     }
 };
+ 
