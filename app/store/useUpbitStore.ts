@@ -249,8 +249,8 @@ const bollingerStrategy: TradingStrategy = {
     const deviation = ((ma60 / ma120) * 100) - 100;
     const prevDeviation = ((prevMa60_30s / prevMa120_30s) * 100) - 100;
 
-    // 현재 시간 가져오기
-    const currentTime = new Date(data[index].time as number);
+    // 현재 시간 가져오기 (초 단위를 밀리초로 변환)
+    const currentTime = new Date((data[index].time as number) * 1000);
     const formattedTime = currentTime.toLocaleString('ko-KR', { 
       year: 'numeric',
       month: '2-digit',
@@ -280,7 +280,7 @@ const bollingerStrategy: TradingStrategy = {
       이전: prevDeviation.toFixed(4) + '%'
     });
 
-    // 360MA 횡보 상태 체크 (기울기 ±0.2%로 크게 완화)
+    // 360MA 횡보 상태 체크 (기울기 ±0.005%로 완화)
     if (Math.abs(ma360Slope) <= 0.2) {
       console.log('🚫 매수 제한: 360MA 횡보 상태 (기울기:', ma360Slope.toFixed(4) + '%, 30봉 기준)');
       return null;
@@ -336,9 +336,38 @@ const bollingerStrategy: TradingStrategy = {
 
     const store = useUpbitStore.getState();
     const lastTradeType = store.tradeState.lastTradeType;
+    const statusChangeTime = store.tradeState.statusChangeTime;
+
+    // 현재 시간 가져오기 (초 단위를 밀리초로 변환)
+    const currentTime = new Date((data[index].time as number) * 1000);
+    const formattedTime = currentTime.toLocaleString('ko-KR', { 
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
+    console.log('\n=== 매도 신호 분석 ===');
+    console.log('분석 시간:', formattedTime);
+    console.log('마지막 거래 유형:', lastTradeType);
+    console.log('마지막 거래 시간:', new Date(statusChangeTime).toLocaleString('ko-KR'));
+
+    // lastTradeType이 null이고 position이 'long'인 경우에는 매수 상태로 간주
+    if (lastTradeType === null && position === 'long') {
+        console.log('포지션이 롱인데 마지막 거래가 null입니다. 매수 상태로 간주합니다.');
+        store.updateTradeState({
+            lastTradeType: 'bid',
+            statusChangeTime: currentTime.toISOString()
+        });
+        return false;
+    }
+
     if (lastTradeType !== 'bid') {
-      console.log('🚫 매도 제한: 마지막 거래가 매수가 아님');
-      return false;
+        console.log('🚫 매도 제한: 마지막 거래가 매수가 아님 (현재:', lastTradeType, ')');
+        return false;
     }
 
     // MA 계산
@@ -358,7 +387,6 @@ const bollingerStrategy: TradingStrategy = {
     const deviation = ((ma60 / ma120) * 100) - 100;
     const prevDeviation = ((prevMa60 / prevMa120) * 100) - 100;
 
-    console.log('\n=== 매도 신호 분석 ===');
     console.log('현재가:', data[index].close);
     console.log('진입가:', entryPrice);
     console.log('수익률:', ((data[index].close / entryPrice - 1) * 100).toFixed(2) + '%');
@@ -395,10 +423,9 @@ const bollingerStrategy: TradingStrategy = {
     
     // 연속 거래 간격 체크
     const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    const currentTime = new Date();
     const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
     if (timeDiff < 30) {
-      console.log('🚫 매도 제한: 최소 거래 간격 미충족');
+      console.log('🚫 매도 제한: 최소 거래 간격 미충족 (현재 간격:', timeDiff.toFixed(1), '초)');
       return false;
     }
 
@@ -406,7 +433,7 @@ const bollingerStrategy: TradingStrategy = {
                       (isFullReverseAlignment && sellCrossOrBelow);
     
     if (shouldSell) {
-      console.log('✅ 매도 신호 발생!');
+      console.log('✅ 매도 신호 발생!', formattedTime);
       return true;
     }
 
@@ -1255,6 +1282,8 @@ interface UpbitStore {
   updateTrade: (tradeId: string, updates: Partial<Trade>) => void;
   getOpenTrades: () => Trade[];
   getClosedTrades: () => Trade[];
+  initializeTrades: () => void;
+  resetTradeState: () => void;
 }
 
 // 로컬 스토리지에서 MA 설정 불러오기
@@ -1357,18 +1386,32 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
 
   tradeState: {
     lastTradeType: null,
-    statusChangeTime: '',
+    statusChangeTime: new Date().toISOString(), // 초기 시간 설정
     currentPrice: 0,
     actionStartTime: null,
     isTrading: false,
-    theoreticalPosition: 'wait',
+    theoreticalPosition: 'wait' as const,
     missedFirstCycle: false
   },
 
-  updateTradeState: (update) => 
-    set((state) => ({
-      tradeState: { ...state.tradeState, ...update }
-    })),
+  updateTradeState: (update) => set((state) => {
+    const newState = { ...state.tradeState, ...update };
+    
+    // 거래 상태 변경 시 로그 추가
+    console.log('거래 상태 업데이트:', {
+      이전상태: state.tradeState,
+      새상태: newState
+    });
+    
+    // localStorage에 거래 상태 저장
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tradeState', JSON.stringify(newState));
+    }
+    
+    return {
+      tradeState: newState
+    };
+  }),
 
   createOrder: async (params) => {
     try {
@@ -1461,9 +1504,22 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
 
   trades: [],
 
-  addTrade: (trade) => set((state) => ({
-    trades: [...state.trades, trade]
-  })),
+  addTrade: (trade) => set((state) => {
+    const newTrades = [...state.trades, trade];
+    
+    // localStorage에 거래 기록 저장
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('trades', JSON.stringify(newTrades));
+    }
+    
+    console.log('새로운 거래 추가:', {
+      거래ID: trade.id,
+      시간: new Date(trade.entryTime).toLocaleString('ko-KR'),
+      유형: trade.type
+    });
+    
+    return { trades: newTrades };
+  }),
 
   updateTrade: (tradeId, updates) => set((state) => ({
     trades: state.trades.map(trade =>
@@ -1473,7 +1529,42 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
 
   getOpenTrades: () => get().trades.filter(trade => trade.status === 'open'),
 
-  getClosedTrades: () => get().trades.filter(trade => trade.status === 'closed')
+  getClosedTrades: () => get().trades.filter(trade => trade.status === 'closed'),
+
+  // 거래 기록 초기화 함수 추가
+  initializeTrades: () => {
+    if (typeof window !== 'undefined') {
+      const savedTrades = localStorage.getItem('trades');
+      const savedTradeState = localStorage.getItem('tradeState');
+      
+      if (savedTrades) {
+        set({ trades: JSON.parse(savedTrades) });
+      }
+      
+      if (savedTradeState) {
+        set({ tradeState: JSON.parse(savedTradeState) });
+      }
+    }
+  },
+
+  // 거래 상태 리셋 함수 추가
+  resetTradeState: () => {
+    const initialState: TradeState = {
+      lastTradeType: null,
+      statusChangeTime: new Date().toISOString(),
+      currentPrice: 0,
+      actionStartTime: null,
+      isTrading: false,
+      theoreticalPosition: 'wait' as const,
+      missedFirstCycle: false
+    };
+    
+    set({ tradeState: initialState });
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tradeState', JSON.stringify(initialState));
+    }
+  }
 })); 
 
 const detectMAReversal = (prices: number[], shortPeriod: number = 3, midPeriod: number = 10, longPeriod: number = 20): 'buy' | 'sell' | 'hold' => {
@@ -1671,16 +1762,27 @@ const handleBacktestChartReady = ({ importedData, backtestCandleSeries, volumeSe
     if (importedData.length > 0) {
         const processedData = preprocessChartData(importedData as ExtendedCandlestickData[]);
         
-        // 캔들스틱 데이터 설정
-        backtestCandleSeries.setData(processedData);
+        // 차트 데이터 설정 전에 기존 데이터 클리어
+        backtestCandleSeries.setData([]);
+        volumeSeries.setData([]);
         
-        // 볼륨 데이터 설정
-        const volumeData = (processedData as ExtendedCandlestickData[]).map(d => ({
-            time: d.time,
-            value: d.volume || 0,
-            color: (d.close || 0) >= (d.open || 0) ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
-        }));
-        volumeSeries.setData(volumeData);
+        // 약간의 지연 후 새 데이터 설정
+        setTimeout(() => {
+            // 캔들스틱 데이터 설정
+            backtestCandleSeries.setData(processedData);
+            
+            // 볼륨 데이터 설정
+            const volumeData = (processedData as ExtendedCandlestickData[]).map(d => ({
+                time: d.time,
+                value: d.volume || 0,
+                color: (d.close || 0) >= (d.open || 0) ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
+            }));
+            volumeSeries.setData(volumeData);
+            
+            // 거래 기록 다시 로드
+            const store = useUpbitStore.getState();
+            store.initializeTrades();
+        }, 100);
     }
 };
  
