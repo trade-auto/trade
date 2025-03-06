@@ -84,7 +84,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   
   // CSV 상태
   const [csvDateRange, setCsvDateRange] = useState<DateRange>({
-    startDate: new Date(new Date().setDate(new Date().getDate() - 7)),
+    startDate: new Date(new Date().setHours(new Date().getHours() - 4)),
     endDate: new Date(),
   });
   const [csvLoading, setCsvLoading] = useState(false);
@@ -116,6 +116,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
 
   // 새로운 상태 추가
   const [csvBacktestResult, setCsvBacktestResult] = useState<BacktestResult | null>(null);
+
+  // 진행률 상태 추가
+  const [importProgress, setImportProgress] = useState(0);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -399,8 +402,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       setCsvLoading(true);
       setCsvProgress(0);
       
-      const csvFromTime = csvDateRange.startDate.getTime();
       const csvToTime = (csvDateRange.endDate || new Date()).getTime();
+      const csvFromTime = new Date(csvToTime - 24 * 60 * 60 * 1000).getTime();
       
       // 초봉 데이터를 저장할 배열
       const allCandleData: UpbitCandle[] = [];
@@ -544,12 +547,15 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       try {
         const text = e.target?.result as string;
         const rows = text.split('\n');
+        const totalRows = rows.length;
         
         // CSV 데이터 파싱
         const parsedData: ExtendedCandlestickData[] = rows.slice(1)
           .filter(row => row.trim())
-          .map(row => {
+          .map((row, index) => {
             const columns = row.split(',');
+            // 진행률 업데이트
+            setImportProgress(Math.round((index / totalRows) * 100));
             return {
               time: parseInt(columns[0]) / 1000 as Time,
               open: parseFloat(columns[2]),
@@ -760,25 +766,32 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
             saveToCSV={saveToCSV}
           />
         </div>
+
+        {/* CSV 임포트 진행률 표시 */}
+        <div>
+          <div className="text-white">CSV 임포트 진행률: {importProgress}%</div>
+        </div>
+
         {isDataImported && (    
-            <div>
-           <div className="relative w-full mt-4">
-            <div className="text-white text-lg font-bold mb-2">백테스트 차트</div>
-            <ChartContainer
-              isFullscreen={isFullscreen}
-              chartHeight={chartHeight}
-              toggleFullscreen={toggleFullscreen}
-              symbol={symbol}
-              markers={backtestMarkers}
-              chartType={chartType}
-              onChartReady={handleBacktestChartReady}
-            />
-          </div>
-           <div>
-           <BacktestResults backtestResult={csvBacktestResult} />
-         </div>
+          <div>
+            <div className="relative w-full mt-4">
+              <div className="text-white text-lg font-bold mb-2">백테스트 차트</div>
+              <ChartContainer
+                isFullscreen={isFullscreen}
+                chartHeight={chartHeight}
+                toggleFullscreen={toggleFullscreen}
+                symbol={symbol}
+                markers={backtestMarkers}
+                chartType={chartType}
+                onChartReady={handleBacktestChartReady}
+              />
             </div>
+            <div>
+              <BacktestResults backtestResult={csvBacktestResult} />
+            </div>
+          </div>
         )}
+        
         {/* CSV 임포트 버튼 */}
         <div className="mb-4">
           <input

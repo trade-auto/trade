@@ -108,41 +108,18 @@ interface ExtendedMetadata {
 const bollingerStrategy: TradingStrategy = {
   name: 'BOLLINGER',
   analyze: (data) => {
-    const signals: TradeSignal[] = [];
-    const period = 20;
-    const stdDev = 2;
-    let currentPosition: 'long' | 'short' | null = null;
-
-    for (let i = period; i < data.length; i++) {
-      const slice = data.slice(i - period, i);
-      const prices = slice.map(d => d.close);
-      const sma = prices.reduce((a, b) => a + b) / period;
-      const variance = prices.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
-      const std = Math.sqrt(variance);
-      const upper = sma + (stdDev * std);
-      const lower = sma - (stdDev * std);
-
-      if (data[i].close > upper && currentPosition === 'long') {
-        signals.push({
-          time: data[i].time as number,
-          position: 'short',
-          price: data[i].close,
-          strategy: 'BOLLINGER'
-        });
-        currentPosition = 'short';
-      } else if (data[i].close < lower && (currentPosition === null || currentPosition === 'short')) {
-        signals.push({
-          time: data[i].time as number,
-          position: 'long',
-          price: data[i].close,
-          strategy: 'BOLLINGER'
-        });
-        currentPosition = 'long';
-      }
-    }
-    return signals;
+    return data.map((d) => {
+      const priceData = data.map(c => c.close);
+      const currentPrice = d.close;
+      return {
+        time: d.time as number,
+        position: getTradeSignal(priceData, currentPrice),
+        price: currentPrice,
+        strategy: 'BOLLINGER'
+      };
+    });
   },
-  description: '볼린저 밴드 상/하단 돌파 전략'
+  description: '새로운 거래 시그널 함수 기반 전략'
 };
 
 // MA 크로스 전략
@@ -569,60 +546,67 @@ interface UpbitStore {
 
 // 로컬 스토리지에서 MA 설정 불러오기
 const loadMASettings = () => {
-  try {
-    const savedShowMA = localStorage.getItem('showMA');
-    const savedMAPeriods = localStorage.getItem('maPeriods');
-    
-    return {
-      showMA: savedShowMA ? JSON.parse(savedShowMA) : {
-        thirty: true,
-        forty: true,
-        sixty: true,
-        oneTwenty: true,
-        twoForty: true,
-        threeHundredSixty: true,
-        threeHundred: true,
-        nineHundred: true,
-      },
-      maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : {
-        thirty: 30,
-        forty: 40,
-        sixty: 60,
-        oneTwenty: 120,
-        twoForty: 240,
-        threeHundredSixty: 360,
-        threeHundred: 300,
-        nineHundred: 900,
-      }
-    };
-  } catch (error) {
-    console.error('MA 설정 로드 오류:', error);
-    return {
-      showMA: {
-        thirty: true,
-        forty: true,
-        sixty: true,
-        oneTwenty: true,
-        twoForty: true,
-        threeHundredSixty: true,
-        threeHundred: true,
-        nineHundred: true,
-      },
-      maPeriods: {
-        thirty: 30,
-        forty: 40,
-        sixty: 60,
-        oneTwenty: 120,
-        twoForty: 240,
-        threeHundredSixty: 360,
-        threeHundred: 300,
-        nineHundred: 900,
-      }
-    };
+  if (typeof window !== 'undefined') {
+    try {
+      const savedShowMA = localStorage.getItem('showMA');
+      const savedMAPeriods = localStorage.getItem('maPeriods');
+      
+      return {
+        showMA: savedShowMA ? JSON.parse(savedShowMA) : {
+          thirty: true,
+          forty: true,
+          sixty: true,
+          oneTwenty: true,
+          twoForty: true,
+          threeHundredSixty: true,
+          threeHundred: true,
+          nineHundred: true,
+        },
+        maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : {
+          thirty: 30,
+          forty: 40,
+          sixty: 60,
+          oneTwenty: 120,
+          twoForty: 240,
+          threeHundredSixty: 360,
+          threeHundred: 300,
+          nineHundred: 900,
+        }
+      };
+    } catch (error) {
+      console.error('MA 설정 로드 오류:', error);
+    }
   }
+  // 서버 사이드에서는 기본값을 반환하거나 다른 처리를 할 수 있습니다.
+  return {
+    showMA: {
+      thirty: true,
+      forty: true,
+      sixty: true,
+      oneTwenty: true,
+      twoForty: true,
+      threeHundredSixty: true,
+      threeHundred: true,
+      nineHundred: true,
+    },
+    maPeriods: {
+      thirty: 30,
+      forty: 40,
+      sixty: 60,
+      oneTwenty: 120,
+      twoForty: 240,
+      threeHundredSixty: 360,
+      threeHundred: 300,
+      nineHundred: 900,
+    }
+  };
 };
 
 const savedSettings = loadMASettings();
+
+const isClient = typeof window !== 'undefined';
+
+const tradeStrategy = isClient ? (localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER' : 'BOLLINGER';
 
 export const useUpbitStore = create<UpbitStore>()((set, get) => ({
   prices: {},
@@ -701,8 +685,10 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
       [type]: value,
     };
     
-    // 로컬 스토리지에 저장
-    localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
+    if (isClient) {
+      // 로컬 스토리지에 저장
+      localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
+    }
     
     return { maPeriods: newMAPeriods };
   }),
@@ -715,14 +701,16 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
       [type]: !state.showMA[type],
     };
     
-    // 로컬 스토리지에 저장
-    localStorage.setItem('showMA', JSON.stringify(newShowMA));
+    if (isClient) {
+      // 로컬 스토리지에 저장
+      localStorage.setItem('showMA', JSON.stringify(newShowMA));
+    }
     
     return { showMA: newShowMA };
   }),
 
   // 로컬 스토리지에서 마지막 전략 불러오기 또는 기본값 설정
-  tradeStrategy: (localStorage.getItem('lastTradeStrategy') as TradeStrategy) || 'BOLLINGER',
+  tradeStrategy,
   
   updateTradeStrategy: (strategy) => {
     localStorage.setItem('lastTradeStrategy', strategy);
@@ -758,3 +746,139 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
     return strategies[currentStrategy].analyze(data);
   }
 })); 
+
+const detectMAReversal = (prices: number[], shortPeriod: number = 3, midPeriod: number = 10, longPeriod: number = 20): 'buy' | 'sell' | 'hold' => {
+  if (prices.length < longPeriod + 2) return 'hold'; // 충분한 데이터가 없으면 홀드
+  
+  const shortMA = calculateMA(prices, shortPeriod);
+  const midMA = calculateMA(prices, midPeriod);
+  const longMA = calculateMA(prices, longPeriod);
+  
+  // 이전 캔들에서 단기 < 중기였다가 현재 캔들에서 단기 > 중기가 되면 매수 신호
+  const prevShortMA = shortMA[shortMA.length - 2];
+  const prevMidMA = midMA[midMA.length - 2];
+  const currentShortMA = shortMA[shortMA.length - 1];
+  const currentMidMA = midMA[midMA.length - 1];
+  const currentLongMA = longMA[longMA.length - 1];
+  
+  // 추세 방향 확인 (장기 이동평균 기준)
+  const isUptrend = currentShortMA > currentLongMA && currentMidMA > currentLongMA;
+  const isDowntrend = currentShortMA < currentLongMA && currentMidMA < currentLongMA;
+  
+  if (prevShortMA < prevMidMA && currentShortMA > currentMidMA && isUptrend) {
+    return 'buy'; // 상승 돌파 + 상승 추세
+  } else if (prevShortMA > prevMidMA && currentShortMA < currentMidMA && isDowntrend) {
+    return 'sell'; // 하락 돌파 + 하락 추세
+  }
+  
+  return 'hold';
+};
+
+// 거래 시그널 함수 수정
+let currentPosition: 'long' | 'short' | 'close' = 'close';
+
+const getTradeSignal = (priceData: number[], currentPrice: number): "long" | "short" | "close" => {
+  const ma60 = calculateMA(priceData, 60);
+  const ma120 = calculateMA(priceData, 120);
+  const ma300 = calculateMA(priceData, 300);
+  const ma360 = calculateMA(priceData, 360);
+  const ma900 = calculateMA(priceData, 900);
+  if (ma60.length === 0 || ma120.length === 0 || ma300.length === 0 || ma360.length === 0 || ma900.length === 0) return "close";
+
+  const ma120_latest = ma120[ma120.length - 1];
+  const ma360_latest = ma360[ma360.length - 1];
+
+  const angle60 = getAngle(ma60);
+  const angle300 = getAngle(ma300);
+  const angle900 = getAngle(ma900);
+  const prevPrice = priceData[priceData.length - 2];
+  const prev_ma120 = ma120[ma120.length - 2];
+
+  const buy120Cross = prev_ma120 !== undefined && prevPrice < prev_ma120 && currentPrice >= ma120_latest;
+  const sell120Cross = prev_ma120 !== undefined && prevPrice > prev_ma120 && currentPrice <= ma120_latest;
+
+  const buyAngleDuration = updateConditionDuration("60MA_angle_above_45", angle60);
+  const sellAngleDuration = updateConditionDuration("60MA_angle_below_minus45", angle60);
+
+  if (!ma360_latest) return "close";
+
+  const is300MASloping = angle300 > 0;
+  const is900MASloping = angle900 > 0;
+  
+  const rsi = calculateRSI(priceData);
+  const macd = calculateMACD(priceData);
+  const bollingerSignal = isBollingerBandSignal(priceData);
+  const maReversalSignal = detectMAReversal(priceData);
+  
+  if (currentPrice < ma360_latest) {
+    const slopeCondition = (angle60 >= 20 && buyAngleDuration >= 10) || buy120Cross;
+    const rsiCondition = rsi < 50;
+    const macdCondition = macd.histogram > -1;
+    const bollingerCondition = bollingerSignal === 'buy';
+    const maReversalCondition = maReversalSignal === 'buy';
+    const additionalIndicatorsCount = [
+      rsiCondition, 
+      macdCondition, 
+      bollingerCondition, 
+      maReversalCondition
+    ].filter(Boolean).length;
+    if (slopeCondition && is300MASloping && additionalIndicatorsCount >= 2 && currentPosition !== 'long') {
+      currentPosition = 'long';
+      return "long";
+    }
+    return "close";
+  } else {
+    const slopeCondition = (angle60 <= -45 && sellAngleDuration >= 30) || sell120Cross;
+    const rsiCondition = rsi > 70;
+    const macdCondition = macd.histogram < 0 && macd.macd < 0;
+    const bollingerCondition = bollingerSignal === 'sell';
+    const maReversalCondition = maReversalSignal === 'sell';
+    const additionalIndicatorsCount = [
+      rsiCondition, 
+      macdCondition, 
+      bollingerCondition, 
+      maReversalCondition
+    ].filter(Boolean).length;
+    if (slopeCondition && additionalIndicatorsCount >= 2 && currentPosition !== 'short') {
+      currentPosition = 'short';
+      return "short";
+    }
+    return "close";
+  }
+}; 
+
+// 이동평균 계산 함수
+function calculateMA(prices: number[], period: number): number[] {
+  const ma: number[] = [];
+  for (let i = period - 1; i < prices.length; i++) {
+    const sum = prices.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+    ma.push(sum / period);
+  }
+  return ma;
+}
+
+// 각도 계산 함수
+function getAngle(ma: number[]): number {
+  if (ma.length < 2) return 0;
+  const delta = ma[ma.length - 1] - ma[ma.length - 2];
+  return Math.atan(delta) * (180 / Math.PI); // 라디안을 각도로 변환
+}
+
+// 조건 지속 시간 업데이트 함수
+function updateConditionDuration(conditionName: string, angle: number): number {
+  // 이 함수는 조건이 유지된 시간을 계산하여 반환합니다.
+  // 실제 구현은 조건에 따라 다를 수 있습니다.
+  return 30; // 예시로 30초를 반환
+}
+
+// MACD 계산 함수
+function calculateMACD(prices: number[]): { macd: number; signal: number; histogram: number } {
+  // MACD 계산 로직을 여기에 구현합니다.
+  return { macd: 0, signal: 0, histogram: 0 }; // 예시 반환값
+}
+
+// 볼린저 밴드 시그널 확인 함수
+function isBollingerBandSignal(prices: number[]): 'buy' | 'sell' | 'hold' {
+  // 볼린저 밴드 시그널 계산 로직을 여기에 구현합니다.
+  return 'hold'; // 예시 반환값
+} 
