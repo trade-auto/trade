@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { format } from 'date-fns';
 import { DateRange } from '../types/candlestick';
 import { CandlestickData, Time } from 'lightweight-charts';
+import { useCallback } from 'react';
 
 interface PriceData {
   currentPrice: number;
@@ -583,28 +584,28 @@ const maCrossDeviationStrategy: TradingStrategy = {
     console.log('현재 포지션:', currentPosition);
     console.log('데이터 인덱스:', index);
     
-    if (index < 1000) {
-        const startIndex = Math.max(0, index - 900);
-        const endIndex = index;
-        const dataSlice = data.slice(startIndex, endIndex);
-        
-        if (dataSlice.length >= 900) {
-            const result = this.analyzeEntry?.(dataSlice, dataSlice.length - 1);
-            return result || null; // undefined를 null로 변환
-        }
-        console.log('데이터 부족으로 매수 불가');
+    // 1분봉 기준으로 수정
+    if (index < 240) { // 4시간(240분) 데이터 필요
+        console.log('데이터 수집 중...');
         return null;
     }
     
-    // 현재 및 이전 MAs 계산
-    const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
+    // 현재 및 이전 MAs 계산 (분봉 기준)
+    const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;    // 1시간
     const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
 
-    const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;
+    const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;  // 2시간
     const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
 
-    const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
+    const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;  // 4시간
     const prevMa240 = data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240;
+
+    // 900MA (15시간) 계산
+    const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
+    const currentPrice = data[index].close;
+    
+    // 현재 가격이 900MA 아래에 있는지 확인
+    const isBelowMA900 = currentPrice < ma900;
 
     // 이동평균선 교차 확인
     const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120);
@@ -624,27 +625,12 @@ const maCrossDeviationStrategy: TradingStrategy = {
     console.log('MA 정렬상태 (60>120>240):', correctAlignment);
     console.log('120MA/240MA 상향돌파:', upward120_240);
     console.log('이격도 축소:', isGapNarrowing);
-    console.log('조건1 (60MA 돌파 + 정렬):', upward60_120 && correctAlignment);
-    console.log('조건2 (120MA 돌파 + 이격도):', upward120_240 && isGapNarrowing);
-    console.log('최종 매수 시그널:', (upward60_120 && correctAlignment) || (upward120_240 && isGapNarrowing));
-    console.log('현재 MA 값들:', { ma60, ma120, ma240 });
-    console.log('이전 MA 값들:', { prevMa60, prevMa120, prevMa240 });
-    console.log('이격도:', { current: gap120_240, previous: prevGap120_240 });
-    console.log('==================');
+    console.log('900MA 아래:', isBelowMA900);
 
-    if ((upward60_120 && correctAlignment) || (upward120_240 && isGapNarrowing)) {
-        console.log('매수 시그널 발생, 실제 매수 실행 여부 확인');
+    if ((upward60_120 && correctAlignment && isBelowMA900) || 
+        (upward120_240 && isGapNarrowing && isBelowMA900)) {
+        console.log('매수 시그널 발생 (900MA 아래), 실제 매수 실행 여부 확인');
         return 'long';
-    }else {
-      // 두 번째 매수부터의 조건
-      const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
-      const ma900Slope = calculateMASlope(data, 900);
-      const isMA60BelowMA900 = ma60 < ma900;
-      const is900MAUpward = ma900Slope > 0;
-      
-      if (isMA60BelowMA900 && is900MAUpward) {
-        return 'long';
-      }
     }
     
     return null;
@@ -1517,3 +1503,47 @@ function calculateMASlope(data: CandlestickData<Time>[], period: number): number
 
 // 첫 매수 여부를 추적하기 위한 변수 추가
 let isFirstTrade = true;
+
+const getTimeValue = (time: Time): number => {
+    if (typeof time === 'number') return time;
+    if (typeof time === 'string') return new Date(time).getTime();
+    if ('time' in time) return time.time as number;
+    // BusinessDay 타입 처리
+    const { year, month, day } = time;
+    return new Date(year, month - 1, day).getTime();
+};
+
+const preprocessChartData = (data: CandlestickData<Time>[]) => {
+    const sortedData = [...data].sort((a, b) => getTimeValue(a.time) - getTimeValue(b.time));
+    
+    return sortedData.filter((item, index) => 
+        index === 0 || getTimeValue(item.time) > getTimeValue(sortedData[index - 1].time)
+    );
+};
+
+interface CandlestickChartProps {
+    importedData: CandlestickData<Time>[];
+    backtestCandleSeries: any;
+    volumeSeries: any;
+}
+
+interface ExtendedCandlestickData extends CandlestickData<Time> {
+    volume?: number;
+}
+
+const handleBacktestChartReady = ({ importedData, backtestCandleSeries, volumeSeries }: CandlestickChartProps) => {
+    if (importedData.length > 0) {
+        const processedData = preprocessChartData(importedData as ExtendedCandlestickData[]);
+        
+        // 캔들스틱 데이터 설정
+        backtestCandleSeries.setData(processedData);
+        
+        // 볼륨 데이터 설정
+        const volumeData = (processedData as ExtendedCandlestickData[]).map(d => ({
+            time: d.time,
+            value: d.volume || 0,
+            color: (d.close || 0) >= (d.open || 0) ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
+        }));
+        volumeSeries.setData(volumeData);
+    }
+};
