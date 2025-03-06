@@ -215,13 +215,13 @@ const bollingerStrategy: TradingStrategy = {
       console.log('🚫 매수 제한: 마지막 거래가 매수');
       return null;
     }
-
+    
     // MA 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
     const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
-
+    
     // 이전 MA 계산
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
@@ -325,7 +325,7 @@ const bollingerStrategy: TradingStrategy = {
       console.log('✅ 매수 신호 발생!', formattedTime);
       return 'long';
     }
-
+    
     console.log('❌ 매수 조건 불충족');
     return null;
   },
@@ -392,7 +392,7 @@ const bollingerStrategy: TradingStrategy = {
       console.log('🚫 매도 제한: 가격이 360MA 위에 있음');
       return false;
     }
-
+    
     // 연속 거래 간격 체크
     const lastTradeTime = new Date(store.tradeState.statusChangeTime);
     const currentTime = new Date();
