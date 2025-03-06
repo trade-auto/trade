@@ -233,19 +233,36 @@ const bollingerStrategy: TradingStrategy = {
     const prevMa120_30s = data.slice(index - 120 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 120;
 
     // MA 기울기 계산
-    const ma60Slope = (ma60 - prevMa60) / prevMa60 * 100;
-    const ma120Slope = (ma120 - prevMa120) / prevMa120 * 100;
-    const ma240Slope = (ma240 - prevMa240) / prevMa240 * 100;
-    const ma360Slope = (ma360 - prevMa360) / prevMa360 * 100;
+    // 구간을 30봉으로 확대하여 더 큰 추세를 보도록 수정
+    const ma60Slope = ((ma60 - data.slice(index - 60 - 10, index - 10).reduce((a, b) => a + b.close, 0) / 60) / ma60) * 100;
+    const ma120Slope = ((ma120 - data.slice(index - 120 - 10, index - 10).reduce((a, b) => a + b.close, 0) / 120) / ma120) * 100;
+    const ma240Slope = ((ma240 - data.slice(index - 240 - 10, index - 10).reduce((a, b) => a + b.close, 0) / 240) / ma240) * 100;
+    
+    // 360MA는 30봉 구간으로 계산하여 더 큰 추세를 확인
+    const ma360_30_ago = data.slice(index - 360 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 360;
+    const ma360Slope = ((ma360 - ma360_30_ago) / ma360_30_ago) * 100;
 
-    // 30초 전 MA 기울기 계산
-    const prevMa60Slope = (prevMa60_30s - prevMa60) / prevMa60 * 100;
+    // 30초 전 MA 기울기 계산 (10개 봉 구간)
+    const prevMa60Slope = ((prevMa60_30s - data.slice(index - 60 - 40, index - 40).reduce((a, b) => a + b.close, 0) / 60) / prevMa60_30s) * 100;
 
     // 이격도 계산
     const deviation = ((ma60 / ma120) * 100) - 100;
     const prevDeviation = ((prevMa60_30s / prevMa120_30s) * 100) - 100;
 
+    // 현재 시간 가져오기
+    const currentTime = new Date(data[index].time as number);
+    const formattedTime = currentTime.toLocaleString('ko-KR', { 
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
     console.log('\n=== 매수 신호 분석 ===');
+    console.log('분석 시간:', formattedTime);
     console.log('현재가:', data[index].close);
     console.log('MA 값:', {
       MA60: ma60.toFixed(2),
@@ -253,7 +270,7 @@ const bollingerStrategy: TradingStrategy = {
       MA240: ma240.toFixed(2),
       MA360: ma360.toFixed(2)
     });
-    console.log('MA 기울기:', {
+    console.log('MA 기울기 (30봉 기준):', {
       MA60: ma60Slope.toFixed(4) + '%',
       MA120: ma120Slope.toFixed(4) + '%',
       MA360: ma360Slope.toFixed(4) + '%'
@@ -263,16 +280,16 @@ const bollingerStrategy: TradingStrategy = {
       이전: prevDeviation.toFixed(4) + '%'
     });
 
-    // 360MA 횡보 상태 체크 (기울기 ±0.15%)
-    if (Math.abs(ma360Slope) <= 0.15) {
-      console.log('🚫 매수 제한: 360MA 횡보 상태');
+    // 360MA 횡보 상태 체크 (기울기 ±0.2%로 크게 완화)
+    if (Math.abs(ma360Slope) <= 0.2) {
+      console.log('🚫 매수 제한: 360MA 횡보 상태 (기울기:', ma360Slope.toFixed(4) + '%, 30봉 기준)');
       return null;
     }
 
-    // 매수 조건 체크
-    const isRapidSlopeChange = prevMa60Slope < -0.3 && ma60Slope > 0.3; // 급하강에서 급상승
-    const isBothMADownward = ma60Slope < 0 && ma120Slope < 0; // 두 MA 모두 하강 기울기
-    const strongBuyCross = ma60 > ma120 && prevMa60 <= prevMa120 && ma60Slope > 0.3; // 큰 기울기로 상방 관통
+    // 매수 조건 체크 - 기준도 함께 조정
+    const isRapidSlopeChange = prevMa60Slope < -0.2 && ma60Slope > 0.2; // 급하강에서 급상승 기준 조정
+    const isBothMADownward = ma60Slope < -0.1 && ma120Slope < -0.1; // 하락 기준 조정
+    const strongBuyCross = ma60 > ma120 && prevMa60 <= prevMa120 && ma60Slope > 0.2; // 상방 관통 기준 조정
     const gapNarrowing = deviation < prevDeviation; // 이격도 축소
     const buyCrossOrAbove = ma60 > ma120; // 60MA가 120MA 위에 있음
     const buySlope = ma60Slope > 0; // 60MA 상승 기울기
@@ -292,7 +309,6 @@ const bollingerStrategy: TradingStrategy = {
 
     // 연속 거래 간격 체크
     const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    const currentTime = new Date();
     const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
     if (timeDiff < 30) {
       console.log('🚫 매수 제한: 최소 거래 간격 미충족');
@@ -306,7 +322,7 @@ const bollingerStrategy: TradingStrategy = {
       (gapNarrowing && buyCrossOrAbove && buySlope && !isReverseAlignment) ||
       (isFullProperAlignment && buyCrossOrAbove)
     )) {
-      console.log('✅ 매수 신호 발생!');
+      console.log('✅ 매수 신호 발생!', formattedTime);
       return 'long';
     }
 
