@@ -578,7 +578,23 @@ const maCrossDeviationStrategy: TradingStrategy = {
   
   // 진입 조건 분석 - 단순화
   analyzeEntry(data, index) {
-    if (index < 900) return null; // 충분한 데이터 확보
+    console.log('=== 디버깅 정보 ===');
+    console.log('데이터 길이:', data.length);
+    console.log('현재 포지션:', currentPosition);
+    console.log('데이터 인덱스:', index);
+    
+    if (index < 1000) {
+        const startIndex = Math.max(0, index - 900);
+        const endIndex = index;
+        const dataSlice = data.slice(startIndex, endIndex);
+        
+        if (dataSlice.length >= 900) {
+            const result = this.analyzeEntry?.(dataSlice, dataSlice.length - 1);
+            return result || null; // undefined를 null로 변환
+        }
+        console.log('데이터 부족으로 매수 불가');
+        return null;
+    }
     
     // 현재 및 이전 MAs 계산
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
@@ -590,8 +606,6 @@ const maCrossDeviationStrategy: TradingStrategy = {
     const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
     const prevMa240 = data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240;
 
-    const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
-    
     // 이동평균선 교차 확인
     const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120);
     const upward120_240 = (prevMa120 <= prevMa240 && ma120 > ma240);
@@ -604,14 +618,26 @@ const maCrossDeviationStrategy: TradingStrategy = {
     // 정렬 확인
     const correctAlignment = ma60 > ma120 && ma120 > ma240;
     
-    if (isFirstTrade) {
-      // 첫 번째 매수 조건
-      if ((upward60_120 && correctAlignment) || (upward120_240 && isGapNarrowing)) {
-        isFirstTrade = false; // 첫 매수 완료 표시
+    // 매수 조건 로깅
+    console.log('=== 매수 조건 분석 ===');
+    console.log('60MA/120MA 상향돌파:', upward60_120);
+    console.log('MA 정렬상태 (60>120>240):', correctAlignment);
+    console.log('120MA/240MA 상향돌파:', upward120_240);
+    console.log('이격도 축소:', isGapNarrowing);
+    console.log('조건1 (60MA 돌파 + 정렬):', upward60_120 && correctAlignment);
+    console.log('조건2 (120MA 돌파 + 이격도):', upward120_240 && isGapNarrowing);
+    console.log('최종 매수 시그널:', (upward60_120 && correctAlignment) || (upward120_240 && isGapNarrowing));
+    console.log('현재 MA 값들:', { ma60, ma120, ma240 });
+    console.log('이전 MA 값들:', { prevMa60, prevMa120, prevMa240 });
+    console.log('이격도:', { current: gap120_240, previous: prevGap120_240 });
+    console.log('==================');
+
+    if ((upward60_120 && correctAlignment) || (upward120_240 && isGapNarrowing)) {
+        console.log('매수 시그널 발생, 실제 매수 실행 여부 확인');
         return 'long';
-      }
-    } else {
+    }else {
       // 두 번째 매수부터의 조건
+      const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
       const ma900Slope = calculateMASlope(data, 900);
       const isMA60BelowMA900 = ma60 < ma900;
       const is900MAUpward = ma900Slope > 0;
