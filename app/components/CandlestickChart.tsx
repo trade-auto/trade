@@ -685,6 +685,29 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   }, [tradeStrategy, importedData]);
 
+  const loadMASettings = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedShowMA = localStorage.getItem('showMA');
+        const savedMAPeriods = localStorage.getItem('maPeriods');
+
+        return {
+          showMA: savedShowMA ? JSON.parse(savedShowMA) : null,
+          maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : null,
+        };
+      } catch (error) {
+        console.error('MA 설정 로드 오류:', error);
+        return null;
+      }
+    } else {
+      // 서버 사이드에서는 기본값을 반환하거나 다른 처리를 할 수 있습니다.
+      return {
+        showMA: null,
+        maPeriods: null,
+      };
+    }
+  };
+
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
       <TradingStrategyHover 

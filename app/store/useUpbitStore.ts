@@ -713,7 +713,9 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
   tradeStrategy,
   
   updateTradeStrategy: (strategy) => {
-    localStorage.setItem('lastTradeStrategy', strategy);
+    if (isClient) {
+      localStorage.setItem('lastTradeStrategy', strategy);
+    }
     set({ tradeStrategy: strategy });
     // 차트 데이터를 초기화하거나 새로고침하는 로직 추가
     const data = get().analyzeStrategy([]); // 빈 데이터로 초기화
