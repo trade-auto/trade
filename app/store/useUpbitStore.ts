@@ -293,7 +293,7 @@ const bollingerStrategy: TradingStrategy = {
     const takeProfitTriggered = (data[index].close / entryPrice - 1) >= 0.2;
     
     // 매도 조건 (기술적 조건 또는 손절/익절)
-    return (downward60_120 && downward240_360 && isGapNarrowing && ma60 <= ma900 && ma240 <= ma360) || 
+    return (ma60 <= ma900 && downward60_120 && downward240_360 && isGapNarrowing && (ma240 <= ma360)) || 
            stopLossTriggered || 
            takeProfitTriggered;
   },
@@ -566,9 +566,9 @@ function createTempCandleData(time: Time, close: number): CandlestickData<Time> 
 const maCrossDeviationStrategy: TradingStrategy = {
   name: 'MA_CROSS_DEVIATION',
   timeframe: '1m',
-  description: '120/240 이격 및 60MA/120MA, 240MA/360MA 크로스 조건 기반 전략',
+  description: '단순화된 이격도 및 60/120/240 이동평균선 교차 전략',
   author: 'System',
-  version: '1.0.0',
+  version: '2.0.0',
   tags: ['trend', 'moving-average', 'deviation'],
   
   indicators: {
@@ -581,11 +581,11 @@ const maCrossDeviationStrategy: TradingStrategy = {
     positionSizePercent: 40
   },
   
-  // 진입 분석 함수
+  // 진입 조건 분석 - 단순화
   analyzeEntry(data, index) {
-    if (index < 900) return null; // 충분한 데이터 확보
+    if (index < 240) return null; // 충분한 데이터 확보
     
-    // 현재 및 이전 MAs 계산
+    // 현재 및 이전 MAs 계산 (60, 120, 240만 사용)
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
 
@@ -594,61 +594,35 @@ const maCrossDeviationStrategy: TradingStrategy = {
 
     const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
     const prevMa240 = data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240;
-
-    const ma360 = data.slice(index - 360, index).reduce((sum, d) => sum + d.close, 0) / 360;
-    const prevMa360 = data.slice(index - 361, index - 1).reduce((sum, d) => sum + d.close, 0) / 360;
     
-    const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
-
-    // 현재 120MA, 240MA의 이격도와 10초 전 이격도 비교
-    const gapCurrent = Math.abs(ma240 - ma120) / ma120;
-    let gapPrev = Infinity;
-    if (index - 10 >= 240 && index - 10 >= 120) {
-      const ma120_10 = data.slice(index - 10 - 120, index - 10).reduce((sum, d) => sum + d.close, 0) / 120;
-      const ma240_10 = data.slice(index - 10 - 240, index - 10).reduce((sum, d) => sum + d.close, 0) / 240;
-      gapPrev = Math.abs(ma240_10 - ma120_10) / ma120_10;
-    }
-    const isGapNarrowing = gapCurrent < gapPrev;
-
-    // 60MA와 120MA 크로스
-    const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120);
+    // 이동평균선 교차 확인
+    const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120); // 60MA가 120MA 상향돌파
+    const upward120_240 = (prevMa120 <= prevMa240 && ma120 > ma240); // 120MA가 240MA 상향돌파
     
-    // 60MA와 240MA 크로스 (초기 매수용)
-    const upward60_240 = (prevMa60 <= prevMa240 && ma60 > ma240);
-
-    // 240MA가 360MA 상향 돌파 체크
-    let upward240_360 = false;
-    for (let j = index; j < Math.min(data.length, index + 10); j++) {
-      if (j < 361) continue;
-      const currentMa240_j = data.slice(j - 240, j).reduce((sum, d) => sum + d.close, 0) / 240;
-      const prevMa240_j = data.slice(j - 241, j - 1).reduce((sum, d) => sum + d.close, 0) / 240;
-      const currentMa360_j = data.slice(j - 360, j).reduce((sum, d) => sum + d.close, 0) / 360;
-      const prevMa360_j = data.slice(j - 361, j - 1).reduce((sum, d) => sum + d.close, 0) / 360;
-
-      if (prevMa240_j <= prevMa360_j && currentMa240_j > currentMa360_j) {
-        upward240_360 = true;
-        break;
-      }
-    }
-
-    // 매수 시 추가 조건: 360MA와 240MA 간 이격이 0.08% 이하이면 매수하지 않음
-    const gap360_240 = Math.abs(ma360 - ma240) / ma240;
-    const avoidBuyDueToGap = gap360_240 <= 0.0008;
+    // 이격도 확인 (120과 240 사이 이격도)
+    const gap120_240 = Math.abs(ma120 - ma240) / ma240;
+    const prevGap120_240 = Math.abs(prevMa120 - prevMa240) / prevMa240;
+    const isGapNarrowing = gap120_240 < prevGap120_240;
     
-    // 매수 조건 (초기 매수 또는 숏->롱 전환)
-    if ((upward60_120 && upward60_240 && isGapNarrowing && !avoidBuyDueToGap) || 
-        (upward60_120 && upward240_360 && isGapNarrowing && !avoidBuyDueToGap)) {
+    // 정렬 및 추세 강도 확인
+    const correctAlignment = ma60 > ma120 && ma120 > ma240; // 상승 추세 정렬
+    
+    // 매수 조건 (단순화)
+    // 1. 60MA가 120MA 상향돌파 또는
+    // 2. 120MA가 240MA 상향돌파 + 이격도 축소
+    if ((upward60_120 && correctAlignment) || 
+        (upward120_240 && isGapNarrowing)) {
       return 'long';
     }
     
     return null;
   },
   
-  // 청산 분석 함수
+  // 청산 조건 분석 - 단순화
   analyzeExit(data, index, position, entryPrice) {
-    if (index < 900 || position !== 'long') return false;
+    if (index < 240 || position !== 'long') return false; // 충분한 데이터 확보
     
-    // 현재 및 이전 MAs 계산
+    // 현재 및 이전 MAs 계산 (60, 120, 240만 사용)
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
 
@@ -656,71 +630,39 @@ const maCrossDeviationStrategy: TradingStrategy = {
     const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
 
     const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
-    const ma360 = data.slice(index - 360, index).reduce((sum, d) => sum + d.close, 0) / 360;
-    const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
     
-    // 이격도 계산
-    const gapCurrent = Math.abs(ma240 - ma120) / ma120;
-    let gapPrev = Infinity;
-    if (index - 10 >= 240 && index - 10 >= 120) {
-      const ma120_10 = data.slice(index - 10 - 120, index - 10).reduce((sum, d) => sum + d.close, 0) / 120;
-      const ma240_10 = data.slice(index - 10 - 240, index - 10).reduce((sum, d) => sum + d.close, 0) / 240;
-      gapPrev = Math.abs(ma240_10 - ma120_10) / ma120_10;
-    }
-    const isGapNarrowing = gapCurrent < gapPrev;
+    // 하향 돌파 확인
+    const downward60_120 = (prevMa60 >= prevMa120 && ma60 < ma120); // 60MA가 120MA 하향돌파
     
-    // 60MA와 120MA 크로스 (하향 돌파)
-    const downward60_120 = (prevMa60 >= prevMa120 && ma60 < ma120);
-    
-    // 240MA가 360MA 하향 돌파 체크
-    let downward240_360 = false;
-    for (let j = index; j < Math.min(data.length, index + 10); j++) {
-      if (j < 361) continue;
-      const currentMa240_j = data.slice(j - 240, j).reduce((sum, d) => sum + d.close, 0) / 240;
-      const prevMa240_j = data.slice(j - 241, j - 1).reduce((sum, d) => sum + d.close, 0) / 240;
-      const currentMa360_j = data.slice(j - 360, j).reduce((sum, d) => sum + d.close, 0) / 360;
-      const prevMa360_j = data.slice(j - 361, j - 1).reduce((sum, d) => sum + d.close, 0) / 360;
-
-      if (prevMa240_j >= prevMa360_j && currentMa240_j < currentMa360_j) {
-        downward240_360 = true;
-        break;
-      }
-    }
+    // 추세 붕괴 확인
+    const trendBreak = ma60 < ma120 || ma120 < ma240; // 상승 추세 정렬 붕괴
     
     // 손절매/익절 조건
     const stopLossTriggered = (data[index].close / entryPrice - 1) <= -this.riskManagement?.stopLossPercent! / 100;
     const takeProfitTriggered = (data[index].close / entryPrice - 1) >= this.riskManagement?.takeProfitPercent! / 100;
     
-    // 매도 조건: 기술적 조건 또는 손절/익절
-    return (ma60 <= ma900 && downward60_120 && downward240_360 && isGapNarrowing && (ma240 <= ma360)) || 
-           stopLossTriggered || 
-           takeProfitTriggered;
+    // 매도 조건 (단순화)
+    return downward60_120 || trendBreak || stopLossTriggered || takeProfitTriggered;
   },
   
-  // 지표 계산 함수
+  // 지표 계산 함수 - 단순화
   calculateIndicators(data, index) {
-    if (index < 900) {
+    if (index < 240) {
       return {} as ExtendedMetadata;
     }
     
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((sum, d) => sum + d.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
-    const ma360 = data.slice(index - 360, index).reduce((sum, d) => sum + d.close, 0) / 360;
-    const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
     
     // 이격도 계산
     const deviation120_240 = Math.abs(ma120 - ma240) / ma240;
-    const deviation240_360 = Math.abs(ma240 - ma360) / ma360;
     
     const metadata: ExtendedMetadata = {
       ma60,
       ma120,
       ma240,
-      ma360,
-      ma900,
-      deviation: deviation120_240,
-      isAbove360MA: data[index].close > ma360
+      deviation: deviation120_240
     };
     
     return metadata;
@@ -733,14 +675,14 @@ const maCrossDeviationStrategy: TradingStrategy = {
     let lastTradeId: string | null = null;
     
     // 충분한 데이터가 있는지 확인
-    if (data.length < 900) {
+    if (data.length < 240) {
       return signals;
     }
     
     const self = this; // this 컨텍스트 저장
     
-    // 충분한 데이터 확보를 위해 900MA 기준으로 시작
-    for (let i = 900; i < data.length; i++) {
+    // 각 봉마다 분석 (240MA 기준으로 시작)
+    for (let i = 240; i < data.length; i++) {
       // 현재 포지션이 없거나 숏인 경우, 진입 조건 확인
       if (currentPosition === null || currentPosition === 'short') {
         const entrySignal = self.analyzeEntry?.(data, i);
@@ -777,7 +719,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
               position: 'short',
               price: data[i].close,
               strategy: 'MA_CROSS_DEVIATION',
-              reason: '이동평균선 하향 돌파 또는 이격도 조건 충족',
+              reason: '이동평균선 하향 돌파 또는 추세 붕괴',
               relatedTradeId: lastTradeId || undefined,
               metadata: self.calculateIndicators?.(data, i)
             });
