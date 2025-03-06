@@ -578,9 +578,9 @@ const maCrossDeviationStrategy: TradingStrategy = {
   
   // 진입 조건 분석 - 단순화
   analyzeEntry(data, index) {
-    if (index < 240) return null; // 충분한 데이터 확보
+    if (index < 900) return null; // 충분한 데이터 확보 (900MA 계산을 위해 900으로 변경)
     
-    // 현재 및 이전 MAs 계산 (60, 120, 240만 사용)
+    // 현재 및 이전 MAs 계산
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
 
@@ -589,24 +589,35 @@ const maCrossDeviationStrategy: TradingStrategy = {
 
     const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
     const prevMa240 = data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240;
+
+    const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
+    const prevMa900 = data.slice(index - 901, index - 1).reduce((sum, d) => sum + d.close, 0) / 900;
+    
+    // 900MA 기울기 계산
+    const ma900Slope = calculateMASlope(data, 900);
+    const is900MAUpward = ma900Slope > 0;
+    
+    // MA60이 MA900 아래에 있는지 확인
+    const isMA60BelowMA900 = ma60 < ma900;
     
     // 이동평균선 교차 확인
-    const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120); // 60MA가 120MA 상향돌파
-    const upward120_240 = (prevMa120 <= prevMa240 && ma120 > ma240); // 120MA가 240MA 상향돌파
+    const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120);
+    const upward120_240 = (prevMa120 <= prevMa240 && ma120 > ma240);
     
-    // 이격도 확인 (120과 240 사이 이격도)
+    // 이격도 확인
     const gap120_240 = Math.abs(ma120 - ma240) / ma240;
     const prevGap120_240 = Math.abs(prevMa120 - prevMa240) / prevMa240;
     const isGapNarrowing = gap120_240 < prevGap120_240;
     
-    // 정렬 및 추세 강도 확인
-    const correctAlignment = ma60 > ma120 && ma120 > ma240; // 상승 추세 정렬
+    // 정렬 확인
+    const correctAlignment = ma60 > ma120 && ma120 > ma240;
     
-    // 매수 조건 (단순화)
-    // 1. 60MA가 120MA 상향돌파 또는
-    // 2. 120MA가 240MA 상향돌파 + 이격도 축소
-    if ((upward60_120 && correctAlignment) || 
-        (upward120_240 && isGapNarrowing)) {
+    // 첫 매수 조건: MA60이 MA900 아래이고 900MA가 상향기울기일 때
+    const firstEntryCondition = isMA60BelowMA900 && is900MAUpward;
+    
+    // 매수 조건
+    if (firstEntryCondition && ((upward60_120 && correctAlignment) || 
+        (upward120_240 && isGapNarrowing))) {
       return 'long';
     }
     
@@ -1474,4 +1485,11 @@ function calculateStandardDeviation(prices: number[]): number {
   const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
   const variance = prices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / prices.length;
   return Math.sqrt(variance);
+} 
+
+// MA 기울기 계산 함수
+function calculateMASlope(data: CandlestickData<Time>[], period: number): number {
+  const ma = data.slice(-period-10, -1).map(d => d.close).reduce((a, b) => a + b, 0) / period;
+  const currentMA = data.slice(-period).map(d => d.close).reduce((a, b) => a + b, 0) / period;
+  return currentMA - ma;
 } 
