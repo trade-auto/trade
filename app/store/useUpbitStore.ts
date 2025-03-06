@@ -578,7 +578,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
   
   // 진입 조건 분석 - 단순화
   analyzeEntry(data, index) {
-    if (index < 900) return null; // 충분한 데이터 확보 (900MA 계산을 위해 900으로 변경)
+    if (index < 900) return null; // 충분한 데이터 확보
     
     // 현재 및 이전 MAs 계산
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
@@ -591,14 +591,6 @@ const maCrossDeviationStrategy: TradingStrategy = {
     const prevMa240 = data.slice(index - 241, index - 1).reduce((sum, d) => sum + d.close, 0) / 240;
 
     const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
-    const prevMa900 = data.slice(index - 901, index - 1).reduce((sum, d) => sum + d.close, 0) / 900;
-    
-    // 900MA 기울기 계산
-    const ma900Slope = calculateMASlope(data, 900);
-    const is900MAUpward = ma900Slope > 0;
-    
-    // MA60이 MA900 아래에 있는지 확인
-    const isMA60BelowMA900 = ma60 < ma900;
     
     // 이동평균선 교차 확인
     const upward60_120 = (prevMa60 <= prevMa120 && ma60 > ma120);
@@ -612,13 +604,21 @@ const maCrossDeviationStrategy: TradingStrategy = {
     // 정렬 확인
     const correctAlignment = ma60 > ma120 && ma120 > ma240;
     
-    // 첫 매수 조건: MA60이 MA900 아래이고 900MA가 상향기울기일 때
-    const firstEntryCondition = isMA60BelowMA900 && is900MAUpward;
-    
-    // 매수 조건
-    if (firstEntryCondition && ((upward60_120 && correctAlignment) || 
-        (upward120_240 && isGapNarrowing))) {
-      return 'long';
+    if (isFirstTrade) {
+      // 첫 번째 매수 조건
+      if ((upward60_120 && correctAlignment) || (upward120_240 && isGapNarrowing)) {
+        isFirstTrade = false; // 첫 매수 완료 표시
+        return 'long';
+      }
+    } else {
+      // 두 번째 매수부터의 조건
+      const ma900Slope = calculateMASlope(data, 900);
+      const isMA60BelowMA900 = ma60 < ma900;
+      const is900MAUpward = ma900Slope > 0;
+      
+      if (isMA60BelowMA900 && is900MAUpward) {
+        return 'long';
+      }
     }
     
     return null;
@@ -626,9 +626,9 @@ const maCrossDeviationStrategy: TradingStrategy = {
   
   // 청산 조건 분석 - 단순화
   analyzeExit(data, index, position, entryPrice) {
-    if (index < 900 || position !== 'long') return false; // 충분한 데이터 확보 (900MA를 위해 900으로 변경)
+    if (index < 900 || position !== 'long') return false;
     
-    // 현재 및 이전 MAs 계산 (60, 120, 240만 사용)
+    // 현재 및 이전 MAs 계산
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((sum, d) => sum + d.close, 0) / 60;
 
@@ -636,29 +636,24 @@ const maCrossDeviationStrategy: TradingStrategy = {
     const prevMa120 = data.slice(index - 121, index - 1).reduce((sum, d) => sum + d.close, 0) / 120;
 
     const ma240 = data.slice(index - 240, index).reduce((sum, d) => sum + d.close, 0) / 240;
-    
-    // 900MA 추가
     const ma900 = data.slice(index - 900, index).reduce((sum, d) => sum + d.close, 0) / 900;
     
     // 900MA 돌파 여부 확인
     const isAbove900MA = data[index].close > ma900;
     
-    // 하향 돌파 확인
-    const downward60_120 = (prevMa60 >= prevMa120 && ma60 < ma120); // 60MA가 120MA 하향돌파
-    
-    // 추세 붕괴 확인
-    const trendBreak = ma60 < ma120 || ma120 < ma240; // 상승 추세 정렬 붕괴
-    
-    // 손절매/익절 조건
-    const stopLossTriggered = (data[index].close / entryPrice - 1) <= -this.riskManagement?.stopLossPercent! / 100;
-    const takeProfitTriggered = (data[index].close / entryPrice - 1) >= this.riskManagement?.takeProfitPercent! / 100;
-    
-    // 매도 조건 (단순화) - 900MA 돌파 시 매도하지 않음
+    // 900MA 위에 있을 때는 매도하지 않음
     if (isAbove900MA) {
-      return false; // 900MA 돌파 시 매도하지 않음
+      return false;
     }
     
-    return downward60_120 || trendBreak || stopLossTriggered || takeProfitTriggered;
+    // 하향 돌파 확인
+    const downward60_120 = (prevMa60 >= prevMa120 && ma60 < ma120);
+    
+    // 추세 붕괴 확인
+    const trendBreak = ma60 < ma120 || ma120 < ma240;
+    
+    // 매도 조건: 60MA가 120MA 하향돌파 또는 이동평균선 정렬 깨짐
+    return downward60_120 || trendBreak;
   },
   
   // 지표 계산 함수 - 단순화
@@ -1493,3 +1488,6 @@ function calculateMASlope(data: CandlestickData<Time>[], period: number): number
   const currentMA = data.slice(-period).map(d => d.close).reduce((a, b) => a + b, 0) / period;
   return currentMA - ma;
 } 
+
+// 첫 매수 여부를 추적하기 위한 변수 추가
+let isFirstTrade = true;
