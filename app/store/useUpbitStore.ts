@@ -247,19 +247,29 @@ const bollingerStrategy: TradingStrategy = {
     // MA120/240 상향 지속 기간 체크 (10봉 기준)
     let ma120UpCount = 0;
     let ma240UpCount = 0;
+    let ma60UpCount = 0; // MA60 상향 지속 카운트 추가
+    let ma900UpCount = 0; // MA900 상향 지속 카운트 추가
+
     for (let i = 0; i < 10; i++) {
       const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
       const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
       const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
       const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
-      
+      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
+      const prevMa60Check = data.slice(index - i - 61, index - i - 1).reduce((a, b) => a + b.close, 0) / 60;
+      const currentMa900 = data.slice(index - i - 900, index - i).reduce((a, b) => a + b.close, 0) / 900;
+      const prevMa900Check = data.slice(index - i - 901, index - i - 1).reduce((a, b) => a + b.close, 0) / 900;
+
       if (currentMa120 > prevMa120Check) ma120UpCount++;
       if (currentMa240 > prevMa240Check) ma240UpCount++;
+      if (currentMa60 > prevMa60Check) ma60UpCount++; // MA60 상향 지속 체크
+      if (currentMa900 > prevMa900Check) ma900UpCount++; // MA900 상향 지속 체크
     }
 
     // MA 기울기 상향 조건 (10봉 연속 상향인 경우)
     const isMA120240Upward = ma120UpCount >= 10 && ma240UpCount >= 10;
-    const isMA900Upward = ma900Slope > 0;
+    const isMA60Upward = ma60UpCount >= 10; // MA60 상향 지속 조건
+    const isMA900Upward = ma900UpCount >= 10; // MA900 상향 지속 조건
 
     // 60MA가 120MA와 240MA보다 위에 있는지 확인
     const isAbove120 = ma60 > ma120;
