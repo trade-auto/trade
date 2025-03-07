@@ -297,72 +297,56 @@ const bollingerStrategy: TradingStrategy = {
     const isAbove120 = ma60 > ma120;
     const isAbove240 = ma60 > ma240;
 
-    console.log('\n=== 매수 신호 분석 ===');
+    // 현재 가격
+    const currentPrice = data[index].close;
+
+    console.log('\n=== 볼린저 매수 신호 상세 분석 ===');
+    console.log('현재 시간:', new Date().toLocaleString('ko-KR'));
+    console.log('현재 가격:', currentPrice.toLocaleString('ko-KR') + '원');
     console.log('현재 거래 상태:', {
       '마지막 거래 유형': lastTradeType,
-      '매수 가능 여부': lastTradeType === 'ask' || lastTradeType === null
+      '매수 가능 여부': lastTradeType === 'ask' || lastTradeType === null ? '✅' : '❌'
     });
-    console.log('MA 기울기:', {
-      MA60: ma60Slope.toFixed(4) + '%',
-      MA120: ma120Slope.toFixed(4) + '%',
-      MA240: ma240Slope.toFixed(4) + '%',
-      MA900: ma900Slope.toFixed(4) + '%'
+    
+    console.log('\n이동평균선 값:');
+    console.log({
+      'MA60': ma60.toLocaleString('ko-KR'),
+      'MA120': ma120.toLocaleString('ko-KR'),
+      'MA240': ma240.toLocaleString('ko-KR'),
+      'MA900': ma900.toLocaleString('ko-KR')
     });
-    console.log('매수 조건:', {
-      '체크 시간': new Date().toLocaleString('ko-KR', {
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      'MA120 상향 지속 봉수': ma120UpCount + '봉',
-      'MA240 상향 지속 봉수': ma240UpCount + '봉',
-      'MA120/240 상향(10봉)': isMA120240Upward,
-      'MA900 상향': isMA900Upward,
-      'MA60이 MA120 위': isAbove120,
-      'MA60이 MA240 위': isAbove240
+    
+    console.log('\nMA 기울기:', {
+      'MA60 기울기': ma60Slope.toFixed(4) + '%',
+      'MA120 기울기': ma120Slope.toFixed(4) + '%',
+      'MA240 기울기': ma240Slope.toFixed(4) + '%',
+      'MA900 기울기': ma900Slope.toFixed(4) + '%'
+    });
+    
+    console.log('\n매수 조건 상세:');
+    console.log({
+      '1. MA240 상향 지속 봉수': ma240UpCount + '봉 (필요: 5봉 이상)',
+      '2. MA60이 MA120 위': isAbove120 ? '✅' : '❌',
+      '3. MA60이 MA240 위': isAbove240 ? '✅' : '❌',
+      '4. MA900 상향(10봉)': isMA900Upward ? '✅' : '❌'
+    });
+    
+    console.log('\n매수 조건 충족 여부:');
+    console.log({
+      '조건 1 (MA240 상향 5봉 이상)': ma240UpCount >= 5 ? '✅' : '❌',
+      '조건 2 (MA60 > MA120)': isAbove120 ? '✅' : '❌',
+      '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
+      '조건 4 (MA900 상향 10봉)': isMA900Upward ? '✅' : '❌',
+      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
 
     // 매수 시그널 생성
     if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) {
-      console.log('\n=== 매수 조건 충족 여부 ===');
-      console.log({
-        '체크 시간': new Date().toLocaleString('ko-KR', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        }),
-        'MA120/240 상향(10봉)': isMA120240Upward ? '✅' : '❌',
-        'MA60이 MA120 위': isAbove120 ? '✅' : '❌',
-        'MA60이 MA240 위': isAbove240 ? '✅' : '❌',
-        'MA900 상향': isMA900Upward ? '✅' : '❌',
-        '최종 판정': '✅ 매수 신호 발생!'
-      });
+      console.log('\n=== ✅ 매수 조건 충족! ===');
       return 'long';
     }
     
-    console.log('\n=== 매수 조건 충족 여부 ===');
-    console.log({
-      '체크 시간': new Date().toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      'MA120/240 상향(10봉)': isMA120240Upward ? '✅' : '❌',
-      'MA60이 MA120 위': isAbove120 ? '✅' : '❌',
-      'MA60이 MA240 위': isAbove240 ? '✅' : '❌',
-      'MA900 상향': isMA900Upward ? '✅' : '❌',
-      '최종 판정': '❌ 매수 조건 불충족'
-    });
+    console.log('\n=== ❌ 매수 조건 불충족 ===');
     return null;
   },
   
