@@ -324,7 +324,7 @@ const bollingerStrategy: TradingStrategy = {
     });
     
     console.log('\n매수 조건 상세:');
-    console.log({
+      console.log({
       '1. MA240 상향 지속 봉수': ma240UpCount + '봉 (필요: 5봉 이상)',
       '2. MA60이 MA120 위': isAbove120 ? '✅' : '❌',
       '3. MA60이 MA240 위': isAbove240 ? '✅' : '❌',
@@ -749,11 +749,11 @@ let ma900UpCount = 0;
           
           if (shouldExit) {
             const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            signals.push({
+          signals.push({
               id: exitTradeId,
-              time: data[i].time as number,
-              position: 'close',
-              price: data[i].close,
+            time: data[i].time as number,
+            position: 'close',
+            price: data[i].close,
               strategy: 'BOLLINGER',
               reason: '매도 조건 충족',
               metadata: {
@@ -772,12 +772,12 @@ let ma900UpCount = 0;
             });
             
             // 매도 신호 생성 시 tradeState 업데이트
-            store.updateTradeState({
-              lastTradeType: 'ask',
-              statusChangeTime: new Date().toISOString(),
-              isTrading: false
-            });
-            
+          store.updateTradeState({
+            lastTradeType: 'ask',
+            statusChangeTime: new Date().toISOString(),
+            isTrading: false
+          });
+          
             console.log('✅ 매도 신호 생성:', {
               시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
               가격: data[i].close.toLocaleString('ko-KR') + '원',
@@ -2020,8 +2020,8 @@ const getTradeSignal = (priceData: number[], currentPrice: number): "long" | "sh
       maReversalCondition
     ].filter(Boolean).length;
     if (slopeCondition && additionalIndicatorsCount >= 1 && currentPosition !== 'short') {
-      currentPosition = 'short';
-      return "short";
+      currentPosition = 'close';
+      return "close";
     }
     return "close";
   }

@@ -250,13 +250,35 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
 
   // 마커 업데이트 - 최적화
   useEffect(() => {
-    if (!markerPluginRef.current) return;
-    console.log('tradeStrategy 마커 업데이트', tradeStrategy);
+    if (!markerPluginRef.current) {
+      console.warn('마커 플러그인이 초기화되지 않았습니다.');
+      return;
+    }
+    
+    console.log('마커 업데이트 시작:', {
+      '마커 수': markers.length,
+      '전략': tradeStrategy,
+      '마커 샘플': markers.length > 0 ? markers.slice(0, 2) : '없음'
+    });
+    
     try {
-
       markerPluginRef.current.setMarkers(markers);
+      console.log('마커 업데이트 성공');
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
+      
+      // 오류 발생 시 재시도
+      setTimeout(() => {
+        try {
+          if (markerPluginRef.current) {
+            console.log('마커 업데이트 재시도...');
+            markerPluginRef.current.setMarkers(markers);
+            console.log('마커 업데이트 재시도 성공');
+          }
+        } catch (retryError) {
+          console.error('마커 업데이트 재시도 실패:', retryError);
+        }
+      }, 500);
     }
   }, [markers, tradeStrategy]);
 

@@ -139,6 +139,17 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     updateCount: 0
   });
 
+  // 백테스트 차트 초기화를 위한 상태
+  const [isBacktestChartReady, setBacktestChartReady] = useState(false);
+  
+  // 백테스트 차트 데이터 전처리 함수
+  const preprocessChartData = (data: TVCandlestickData<Time>[]): ExtendedCandlestickData[] => {
+    return data.map(item => ({
+      ...item,
+      volume: (item as ExtendedCandlestickData).volume || 0
+    }));
+  };
+
   // 초봉 차트에서 실시간 API 업데이트로 전환하는 함수
   const switchToRealtimeAfterUpdate = useCallback(() => {
     console.log('자동 업데이트 완료. 실시간 API 모드로 전환합니다.');
@@ -760,37 +771,101 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
+    console.log('CSV 파일 임포트 시작:', file.name);
+    setImportProgress(0);
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        console.log('CSV 파일 읽기 완료');
         const text = e.target?.result as string;
+        if (!text || text.trim() === '') {
+          throw new Error('파일이 비어 있습니다.');
+        }
+
         const rows = text.split('\n');
+        console.log(`CSV 행 수: ${rows.length}`);
         const totalRows = rows.length;
         
+        if (totalRows <= 1) {
+          throw new Error('CSV 파일에 데이터가 없습니다.');
+        }
+        
+        // 헤더 확인
+        const header = rows[0];
+        console.log('CSV 헤더:', header);
+        
         // CSV 데이터 파싱
-        const parsedData: ExtendedCandlestickData[] = rows.slice(1)
-          .filter(row => row.trim())
-          .map((row, index) => {
+        const parsedData: ExtendedCandlestickData[] = [];
+        
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i].trim();
+          if (!row) continue;
+          
+          // 진행률 업데이트
+          setImportProgress(Math.round((i / totalRows) * 100));
+          
+          try {
             const columns = row.split(',');
-            // 진행률 업데이트
-            setImportProgress(Math.round((index / totalRows) * 100));
-            return {
-              time: parseInt(columns[0]) / 1000 as Time,
+            if (columns.length < 7) {
+              console.warn(`잘못된 CSV 행 형식 (건너뜀): ${row}`);
+              continue;
+            }
+            
+            const timestamp = parseInt(columns[0]);
+            if (isNaN(timestamp)) {
+              console.warn(`잘못된 타임스탬프 (건너뜀): ${columns[0]}`);
+              continue;
+            }
+            
+            const candleData = {
+              time: timestamp / 1000 as Time,
               open: parseFloat(columns[2]),
               high: parseFloat(columns[3]),
               low: parseFloat(columns[4]),
               close: parseFloat(columns[5]),
               volume: parseFloat(columns[6])
             };
-          })
-          .sort((a, b) => (a.time as number) - (b.time as number));
-
-        setImportedData(parsedData);
+            
+            // NaN 값 확인
+            if (
+              isNaN(candleData.open) || 
+              isNaN(candleData.high) || 
+              isNaN(candleData.low) || 
+              isNaN(candleData.close) || 
+              isNaN(candleData.volume)
+            ) {
+              console.warn(`NaN 값이 포함된 행 (건너뜀): ${row}`);
+              continue;
+            }
+            
+            parsedData.push(candleData);
+          } catch (rowError) {
+            console.error('CSV 행 파싱 오류:', row, rowError);
+            // 개별 행 오류는 건너뛰고 계속 진행
+          }
+        }
+        
+        console.log(`파싱된 캔들 데이터 수: ${parsedData.length}`);
+        
+        if (parsedData.length === 0) {
+          throw new Error('유효한 캔들 데이터가 없습니다.');
+        }
+        
+        // 시간순으로 정렬
+        const sortedData = parsedData.sort((a, b) => (a.time as number) - (b.time as number));
+        console.log('데이터 정렬 완료');
+        
+        setImportedData(sortedData);
         setIsDataImported(true);
+        console.log('임포트된 데이터 설정 완료');
         
         // 현재 선택된 전략에 대해서만 신호 분석
         const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
-        const signals = selectedStrategy.analyze(parsedData);
+        console.log(`선택된 전략으로 신호 분석 시작: ${tradeStrategy}`);
+        const signals = selectedStrategy.analyze(sortedData);
+        console.log(`분석된 신호 수: ${signals.length}`);
+        
         const strategyMarkers = signals.map(signal => ({
           time: signal.time as Time,
           position: signal.position === 'long' ? ('belowBar' as SeriesMarkerPosition) : ('aboveBar' as SeriesMarkerPosition),
@@ -799,18 +874,32 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           text: `${signal.position} @ ${signal.price.toLocaleString()}`,
           size: 2
         }));
-
+        
+        console.log(`생성된 마커 수: ${strategyMarkers.length}`);
         setBacktestMarkers(strategyMarkers);
 
-        // CSV 데이터에 대한 백테스트 결과 계산
-        const csvResult = calculateBacktestResult(parsedData, signals, 'test');
+        // 백테스트 결과 계산
+        console.log('백테스트 결과 계산 시작');
+        const csvResult = calculateBacktestResult(sortedData, signals, 'test');
         setCsvBacktestResult(csvResult);
+        console.log('백테스트 결과 계산 완료:', csvResult);
+        
+        setImportProgress(100);
+        console.log('CSV 임포트 완료');
 
       } catch (error) {
         console.error('CSV 파일 파싱 오류:', error);
-        alert('CSV 파일 처리 중 오류가 발생했습니다.');
+        alert(`CSV 파일 처리 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+        setImportProgress(0);
       }
     };
+    
+    reader.onerror = (error) => {
+      console.error('CSV 파일 읽기 오류:', error);
+      alert('CSV 파일을 읽는 중 오류가 발생했습니다.');
+      setImportProgress(0);
+    };
+    
     reader.readAsText(file);
   }, [tradeStrategy]);
 
@@ -831,77 +920,67 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     threeHundredEMASeries: ISeriesApi<"Line">,
     nineHundredEMASeries: ISeriesApi<"Line">
   ) => {
-    // 백테스트 차트용 레퍼런스 생성
+    console.log('백테스트 차트 초기화 시작');
+    setBacktestChartReady(true);
     const backtestChartApi = chartApi;
-    const backtestCandleSeries = candleSeries;
-    const backtestVolumeSeries = volumeSeries;
-    const backtestSixtyEMASeries = sixtyEMASeries;
-    const backtestOneTwentyEMASeries = oneTwentyEMASeries;
-    const backtestTwoFortyEMASeries = twoFortyEMASeries;
-    const backtestThreeHundredSixtyEMASeries = threeHundredSixtyEMASeries;
-    const backtestThreeHundredEMASeries = threeHundredEMASeries;
-    const backtestNineHundredEMASeries = nineHundredEMASeries;
     
-    // 볼륨 시리즈 설정
-    backtestChartApi.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-      borderVisible: false,
-    });
-
-    // 임포트된 데이터가 있으면 차트에 표시
-    if (importedData.length > 0) {
-      // 캔들스틱 데이터 설정
-      backtestCandleSeries.setData(importedData);
+    try {
+      // 기존 데이터 초기화
+      candleSeries.setData([]);
+      volumeSeries.setData([]);
       
-      // 볼륨 데이터 설정
-      const volumeData = importedData.map(d => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? '#26a69a' : '#ef5350',
-      }));
-      backtestVolumeSeries.setData(volumeData);
-      
-      // EMA 데이터 설정
-      const ema60Data = calculateEMA(importedData, 60);
-      const ema120Data = calculateEMA(importedData, 120);
-      const ema240Data = calculateEMA(importedData, 240);
-      const ema360Data = calculateEMA(importedData, 360);
-      const ema300Data = calculateEMA(importedData, 300);
-      const ema900Data = calculateEMA(importedData, 900);
-
-      backtestSixtyEMASeries.setData(ema60Data);
-      backtestOneTwentyEMASeries.setData(ema120Data);
-      backtestTwoFortyEMASeries.setData(ema240Data);
-      backtestThreeHundredSixtyEMASeries.setData(ema360Data);
-      backtestThreeHundredEMASeries.setData(ema300Data);
-      backtestNineHundredEMASeries.setData(ema900Data);
-
-      // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
-      const signals = useUpbitStore.getState().analyzeStrategy(importedData);
-      const newMarkers = createTradeMarkers(signals);
-      setBacktestMarkers(newMarkers);
-
-      // 차트 피팅
-      backtestChartApi.timeScale().fitContent();
+      if (importedData.length > 0) {
+        console.log(`백테스트 차트에 ${importedData.length}개 데이터 설정 중`);
+        const processedData = preprocessChartData(importedData);
+        
+        // 캔들 데이터 설정
+        candleSeries.setData(processedData);
+        
+        // 볼륨 데이터 설정 (있는 경우)
+        const volumeData = processedData
+          .filter(item => item.volume !== undefined)
+          .map(item => ({
+            time: item.time,
+            value: item.volume as number,
+            color: (item.close >= item.open) ? '#26a69a' : '#ef5350'
+          }));
+        
+        if (volumeData.length > 0) {
+          volumeSeries.setData(volumeData);
+        }
+        
+        // 전략에 따른 신호 분석 및 마커 생성
+        const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+        console.log(`백테스트 차트에 적용할 전략: ${tradeStrategy}`);
+        const signals = selectedStrategy.analyze(importedData);
+        console.log(`분석된 백테스트 신호 수: ${signals.length}`);
+        
+        // 마커 생성
+        const strategyMarkers = signals.map(signal => ({
+          time: signal.time as Time,
+          position: signal.position === 'long' ? ('belowBar' as SeriesMarkerPosition) : ('aboveBar' as SeriesMarkerPosition),
+          color: signal.position === 'long' ? '#26a69a' : '#ef5350',
+          shape: signal.position === 'long' ? ('arrowUp' as SeriesMarkerShape) : ('arrowDown' as SeriesMarkerShape),
+          text: `${signal.position} @ ${signal.price.toLocaleString()}`,
+          size: 2
+        }));
+        
+        console.log(`생성된 백테스트 마커 수: ${strategyMarkers.length}`);
+        setTimeout(() => {
+          setBacktestMarkers(strategyMarkers);
+          console.log('백테스트 마커 설정 완료');
+        }, 100);
+        
+        // 백테스트 결과 계산
+        console.log('백테스트 결과 계산 시작');
+        const csvResult = calculateBacktestResult(importedData, signals, 'test');
+        setCsvBacktestResult(csvResult);
+        console.log('백테스트 결과 계산 완료:', csvResult);
+      }
+    } catch (error) {
+      console.error('백테스트 차트 초기화 오류:', error);
     }
-  }, [importedData]);
-
-  // 전략 변경 시 백테스트 차트 업데이트
-  useEffect(() => {
-    if (importedData.length > 0) {
-      const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
-      const signals = selectedStrategy.analyze(importedData);
-      const strategyMarkers = createTradeMarkers(signals);
-      setBacktestMarkers(strategyMarkers);
-
-      // CSV 데이터에 대한 백테스트 결과 계산
-      const csvResult = calculateBacktestResult(importedData, signals, 'test');
-      setCsvBacktestResult(csvResult);
-    }
-  }, [tradeStrategy, importedData]);
+  }, [importedData, tradeStrategy]);
 
   const loadMASettings = () => {
     if (typeof window !== 'undefined') {
