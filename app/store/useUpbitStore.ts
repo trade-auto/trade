@@ -65,6 +65,7 @@ interface MAType {
   twoForty: number;
   threeHundred: number;
   nineHundred: number;
+  twelveHundred: number;
 }
 
 // 포지션 타입을 더 명확하게 정의
@@ -1536,7 +1537,7 @@ interface UpbitStore {
     maxOrderPrice: number;
   };
   maPeriods: MAType;
-  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred', value: number) => void;
+  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred' | 'twelveHundred', value: number) => void;
   showMA: {
     thirty: boolean;
     forty: boolean;
@@ -1546,8 +1547,9 @@ interface UpbitStore {
     threeHundredSixty: boolean;
     threeHundred: boolean;
     nineHundred: boolean;
+    twelveHundred: boolean;
   };
-  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred') => void;
+  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred' | 'twelveHundred') => void;
   tradeStrategy: TradeStrategy;
   updateTradeStrategy: (strategy: TradeStrategy) => void;
   dateRange: DateRange;
@@ -1581,6 +1583,7 @@ const loadMASettings = () => {
           threeHundredSixty: true,
           threeHundred: true,
           nineHundred: true,
+          twelveHundred: true,
         },
         maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : {
           thirty: 30,
@@ -1591,6 +1594,7 @@ const loadMASettings = () => {
           threeHundredSixty: 360,
           threeHundred: 300,
           nineHundred: 900,
+          twelveHundred: 1200,
         }
       };
     } catch (error) {
@@ -1608,6 +1612,7 @@ const loadMASettings = () => {
       threeHundredSixty: true,
       threeHundred: true,
       nineHundred: true,
+      twelveHundred: true,
     },
     maPeriods: {
       thirty: 30,
@@ -1618,6 +1623,7 @@ const loadMASettings = () => {
       threeHundredSixty: 360,
       threeHundred: 300,
       nineHundred: 900,
+      twelveHundred: 1200,
     }
   };
 };

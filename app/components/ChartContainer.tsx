@@ -36,7 +36,8 @@ interface ChartContainerProps {
     twoFortyEMASeries: ISeriesApi<"Line">,
     threeHundredSixtyEMASeries: ISeriesApi<"Line">,
     threeHundredEMASeries: ISeriesApi<"Line">,
-    nineHundredEMASeries: ISeriesApi<"Line">
+    nineHundredEMASeries: ISeriesApi<"Line">,
+    twelveHundredEMASeries: ISeriesApi<"Line">
   ) => void;
 }
 
@@ -56,6 +57,7 @@ const MA_COLORS = {
   threeHundredSixty: '#008000',
   threeHundred: '#00FFFF',
   nineHundred: '#FF00FF',
+  twelveHundred: '#FF0000'  // 빨간색으로 변경
 } as const;
 
 // 차트 기본 옵션 설정
@@ -113,7 +115,7 @@ const getChartOptions = (width: number, height: number, chartType: string) => ({
   },
 });
 
-type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'threeHundredEMA' | 'nineHundredEMA';
+type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'threeHundredEMA' | 'nineHundredEMA' | 'twelveHundredEMA';
 
 interface SeriesRefs {
   candle: CandlestickSeriesWithMarkers | null;
@@ -124,6 +126,7 @@ interface SeriesRefs {
   threeHundredSixtyEMA: ISeriesApi<"Line"> | null;
   threeHundredEMA: ISeriesApi<"Line"> | null;
   nineHundredEMA: ISeriesApi<"Line"> | null;
+  twelveHundredEMA: ISeriesApi<"Line"> | null;
 }
 
 const ChartContainer: React.FC<ChartContainerProps> = memo(({
@@ -150,6 +153,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     threeHundredSixtyEMA: null,
     threeHundredEMA: null,
     nineHundredEMA: null,
+    twelveHundredEMA: null,
   });
   const { tradeStrategy } = useUpbitStore();
 
@@ -169,9 +173,23 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     const clientWidth = container.current.clientWidth;
     
     // 차트 생성
-    const chart = createChart(container.current, getChartOptions(clientWidth, chartHeight, chartType));
+    const chart = createChart(container.current, {
+      ...getChartOptions(clientWidth, chartHeight, chartType),
+      rightPriceScale: {
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.2,
+        },
+        borderVisible: false,
+        mode: 1,  // 자동 스케일링 모드
+        alignLabels: true,
+      },
+      overlayPriceScales: {
+        borderVisible: false,
+      },
+    });
     chartRef.current = chart;
-    
+
     // 실시간 차트 설정
     if (chartType.startsWith('seconds/')) {
       chart.applyOptions({
@@ -180,7 +198,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
           secondsVisible: true,
           tickMarkFormatter: (time: number) => {
             const date = new Date(time * 1000);
-            // 초 단위 차트는 시/분/초 표시
             const hours = date.getHours().toString().padStart(2, '0');
             const minutes = date.getMinutes().toString().padStart(2, '0');
             const seconds = date.getSeconds().toString().padStart(2, '0');
@@ -190,22 +207,39 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       });
     }
 
-    // 시리즈 생성
+    // 캔들스틱 시리즈 생성
     seriesRefs.current.candle = chart.addSeries(CandlestickSeries, {
       upColor: CHART_COLORS.upColor,
       downColor: CHART_COLORS.downColor,
       borderVisible: false,
       wickUpColor: CHART_COLORS.upColor,
       wickDownColor: CHART_COLORS.downColor,
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
     });
 
     // 마커 플러그인 초기화
     markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
 
+    // 볼륨 시리즈 생성
     seriesRefs.current.volume = chart.addSeries(HistogramSeries, {
       color: CHART_COLORS.upColor,
-      priceFormat: { type: 'volume' },
+      priceFormat: {
+        type: 'volume',
+      },
       priceScaleId: 'volume',
+    });
+
+    // 볼륨 스케일 설정
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+      borderVisible: false,
     });
 
     // MA 시리즈 생성
@@ -214,7 +248,15 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = chart.addSeries(LineSeries, {
         color,
         lineWidth: 2,
-        visible: true,
+        visible: false,
+        lastValueVisible: true,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+        priceFormat: {
+          type: 'price',
+          precision: 2,
+          minMove: 0.01,
+        }
       });
     });
 
@@ -228,7 +270,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       seriesRefs.current.twoFortyEMA!,
       seriesRefs.current.threeHundredSixtyEMA!,
       seriesRefs.current.threeHundredEMA!,
-      seriesRefs.current.nineHundredEMA!
+      seriesRefs.current.nineHundredEMA!,
+      seriesRefs.current.twelveHundredEMA!
     );
 
     // 초기 리사이즈 이벤트 리스너 설정

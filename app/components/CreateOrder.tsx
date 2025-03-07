@@ -581,7 +581,7 @@ export const CreateOrder = forwardRef<
       setLastSignal(signal);
       console.log(signal);
     }
-  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred, market, mode]);
+  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred,maPeriods.twelveHundred,  market, mode]);
 
   // 이동평균 계산 함수 추가
   const calculateMA = (prices: number[], period: number) => {

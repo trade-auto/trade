@@ -82,12 +82,13 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   // 설정 상태
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
   const [showMA, setShowMA] = useState<MASettings>({
-    sixty: true,
-    oneTwenty: true,
-    twoForty: true,
-    threeHundredSixty: true,
-    threeHundred: true,
-    nineHundred: true,
+    sixty: false,
+    oneTwenty: false,
+    twoForty: false,
+    threeHundredSixty: false,
+    threeHundred: false,
+    nineHundred: false,
+    twelveHundred: false
   });
   
   // CSV 상태
@@ -108,6 +109,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const threeHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const nineHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const twelveHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   
   // 기타 상태
   const ongoingRequestRef = useRef<boolean>(false);
@@ -243,13 +245,14 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         setProgress(70);
         
         // EMA 계산 및 설정 - 병렬 처리
-        const [ema60Data, ema120Data, ema240Data, ema360Data, ema300Data, ema900Data] = await Promise.all([
+        const [ema60Data, ema120Data, ema240Data, ema360Data, ema300Data, ema900Data, ema1200Data] = await Promise.all([
           Promise.resolve(calculateEMA(allProcessedData, 60)),
           Promise.resolve(calculateEMA(allProcessedData, 120)),
           Promise.resolve(calculateEMA(allProcessedData, 240)),
           Promise.resolve(calculateEMA(allProcessedData, 360)),
           Promise.resolve(calculateEMA(allProcessedData, 300)),
-          Promise.resolve(calculateEMA(allProcessedData, 900))
+          Promise.resolve(calculateEMA(allProcessedData, 900)),
+          Promise.resolve(calculateEMA(allProcessedData, 1200))
         ]);
         
         if (
@@ -258,7 +261,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           twoFortyEMASeriesRef.current && 
           threeHundredSixtyEMASeriesRef.current &&
           threeHundredEMASeriesRef.current &&
-          nineHundredEMASeriesRef.current
+          nineHundredEMASeriesRef.current &&
+          twelveHundredEMASeriesRef.current
         ) {
           // EMA 데이터 설정
           sixtyEMASeriesRef.current.setData(ema60Data);
@@ -267,6 +271,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
           threeHundredEMASeriesRef.current.setData(ema300Data);
           nineHundredEMASeriesRef.current.setData(ema900Data);
+          twelveHundredEMASeriesRef.current.setData(ema1200Data);
           
           // 시리즈 가시성 설정
           sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
@@ -275,6 +280,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
           threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
           nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+          twelveHundredEMASeriesRef.current.applyOptions({ visible: showMA.twelveHundred });
         }
         
         setProgress(85);
@@ -396,7 +402,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           twoFortyEMASeriesRef.current && 
           threeHundredSixtyEMASeriesRef.current &&
           threeHundredEMASeriesRef.current &&
-          nineHundredEMASeriesRef.current
+          nineHundredEMASeriesRef.current &&
+          twelveHundredEMASeriesRef.current
         ) {
           console.log(`[${currentTime}] MA 업데이트 시작`);
           
@@ -407,6 +414,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           const ema360Data = calculateEMA(currentData, 360);
           const ema300Data = calculateEMA(currentData, 300);
           const ema900Data = calculateEMA(currentData, 900);
+          const ema1200Data = calculateEMA(currentData, 1200);
 
           // 마지막 EMA 값만 업데이트
           if (ema60Data.length > 0) sixtyEMASeriesRef.current.update(ema60Data[ema60Data.length - 1]);
@@ -415,6 +423,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           if (ema360Data.length > 0) threeHundredSixtyEMASeriesRef.current.update(ema360Data[ema360Data.length - 1]);
           if (ema300Data.length > 0) threeHundredEMASeriesRef.current.update(ema300Data[ema300Data.length - 1]);
           if (ema900Data.length > 0) nineHundredEMASeriesRef.current.update(ema900Data[ema900Data.length - 1]);
+          if (ema1200Data.length > 0) twelveHundredEMASeriesRef.current.update(ema1200Data[ema1200Data.length - 1]);
           
           console.log(`[${currentTime}] MA 업데이트 완료`);
         }
@@ -545,7 +554,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     twoFortyEMASeries: ISeriesApi<"Line">,
     threeHundredSixtyEMASeries: ISeriesApi<"Line">,
     threeHundredEMASeries: ISeriesApi<"Line">,
-    nineHundredEMASeries: ISeriesApi<"Line">
+    nineHundredEMASeries: ISeriesApi<"Line">,
+    twelveHundredEMASeries: ISeriesApi<"Line">
   ) => {
     chartApiRef.current = chartApi;
     candleSeriesRef.current = candleSeries;
@@ -556,6 +566,16 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     threeHundredSixtyEMASeriesRef.current = threeHundredSixtyEMASeries;
     threeHundredEMASeriesRef.current = threeHundredEMASeries;
     nineHundredEMASeriesRef.current = nineHundredEMASeries;
+    twelveHundredEMASeriesRef.current = twelveHundredEMASeries;
+
+    // MA 시리즈 가시성 초기화
+    sixtyEMASeries.applyOptions({ visible: showMA.sixty });
+    oneTwentyEMASeries.applyOptions({ visible: showMA.oneTwenty });
+    twoFortyEMASeries.applyOptions({ visible: showMA.twoForty });
+    threeHundredSixtyEMASeries.applyOptions({ visible: showMA.threeHundredSixty });
+    threeHundredEMASeries.applyOptions({ visible: showMA.threeHundred });
+    nineHundredEMASeries.applyOptions({ visible: showMA.nineHundred });
+    twelveHundredEMASeries.applyOptions({ visible: showMA.twelveHundred });
     
     // 볼륨 시리즈 설정
     chartApi.priceScale('volume').applyOptions({
@@ -568,7 +588,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     
     // 차트 준비 후 데이터 로드
     loadData();
-  }, [loadData]);
+  }, [loadData, showMA]);
 
   // 전체화면 토글
   const toggleFullscreen = useCallback(() => {
@@ -595,12 +615,18 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       sixtyEMASeriesRef.current && 
       oneTwentyEMASeriesRef.current && 
       twoFortyEMASeriesRef.current && 
-      threeHundredSixtyEMASeriesRef.current
+      threeHundredSixtyEMASeriesRef.current &&
+      threeHundredEMASeriesRef.current &&
+      nineHundredEMASeriesRef.current &&
+      twelveHundredEMASeriesRef.current
     ) {
       sixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.sixty });
       oneTwentyEMASeriesRef.current.applyOptions({ visible: newShowMA.oneTwenty });
       twoFortyEMASeriesRef.current.applyOptions({ visible: newShowMA.twoForty });
       threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.threeHundredSixty });
+      threeHundredEMASeriesRef.current.applyOptions({ visible: newShowMA.threeHundred });
+      nineHundredEMASeriesRef.current.applyOptions({ visible: newShowMA.nineHundred });
+      twelveHundredEMASeriesRef.current.applyOptions({ visible: newShowMA.twelveHundred });
     }
   }, []);
 
@@ -829,7 +855,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     twoFortyEMASeries: ISeriesApi<"Line">,
     threeHundredSixtyEMASeries: ISeriesApi<"Line">,
     threeHundredEMASeries: ISeriesApi<"Line">,
-    nineHundredEMASeries: ISeriesApi<"Line">
+    nineHundredEMASeries: ISeriesApi<"Line">,
+    twelveHundredEMASeries: ISeriesApi<"Line">
   ) => {
     // 백테스트 차트용 레퍼런스 생성
     const backtestChartApi = chartApi;
@@ -841,6 +868,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     const backtestThreeHundredSixtyEMASeries = threeHundredSixtyEMASeries;
     const backtestThreeHundredEMASeries = threeHundredEMASeries;
     const backtestNineHundredEMASeries = nineHundredEMASeries;
+    const backtestTwelveHundredEMASeries = twelveHundredEMASeries;
     
     // 볼륨 시리즈 설정
     backtestChartApi.priceScale('volume').applyOptions({
@@ -871,6 +899,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       const ema360Data = calculateEMA(importedData, 360);
       const ema300Data = calculateEMA(importedData, 300);
       const ema900Data = calculateEMA(importedData, 900);
+      const ema1200Data = calculateEMA(importedData, 1200);
 
       backtestSixtyEMASeries.setData(ema60Data);
       backtestOneTwentyEMASeries.setData(ema120Data);
@@ -878,6 +907,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       backtestThreeHundredSixtyEMASeries.setData(ema360Data);
       backtestThreeHundredEMASeries.setData(ema300Data);
       backtestNineHundredEMASeries.setData(ema900Data);
+      backtestTwelveHundredEMASeries.setData(ema1200Data);
 
       // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
       const signals = useUpbitStore.getState().analyzeStrategy(importedData);

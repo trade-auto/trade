@@ -119,6 +119,7 @@ export interface MASettings {
   threeHundredSixty: boolean;
   threeHundred: boolean;
   nineHundred: boolean;
+  twelveHundred: boolean;
 }
 
 export interface TradeSignal {
