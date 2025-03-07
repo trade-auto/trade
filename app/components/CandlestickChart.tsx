@@ -128,6 +128,24 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   // 진행률 상태 추가
   const [importProgress, setImportProgress] = useState(0);
 
+  // 실시간 업데이트 상태 추가
+  const [realtimeUpdateStatus, setRealtimeUpdateStatus] = useState<{
+    isUpdating: boolean;
+    lastUpdateTime: string | null;
+    updateCount: number;
+  }>({
+    isUpdating: false,
+    lastUpdateTime: null,
+    updateCount: 0
+  });
+
+  // 초봉 차트에서 실시간 API 업데이트로 전환하는 함수
+  const switchToRealtimeAfterUpdate = useCallback(() => {
+    console.log('자동 업데이트 완료. 실시간 API 모드로 전환합니다.');
+    setIsAutoUpdate(false);
+    setIsRealtimeAPIEnabled(true);
+  }, []);
+
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
     if (ongoingRequestRef.current) return;
@@ -286,9 +304,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       setAllData(allProcessedData);
       
       // 전체 데이터 로드 후 실시간 API로 전환 (자동 업데이트 모드일 경우)
-      if (isAutoUpdate && chartType.startsWith('seconds/')) {
-        console.log('전체 데이터 로드 완료. 실시간 API 모드로 전환합니다.');
-        setIsRealtimeAPIEnabled(true);
+      if (isAutoUpdate && chartType === 'seconds/60') {
+        // 자동 업데이트에서 실시간 업데이트로 전환
+        switchToRealtimeAfterUpdate();
       }
       
     } catch (error) {
@@ -297,13 +315,18 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       setProgress(100);
       ongoingRequestRef.current = false;
     }
-  }, [dateRange, symbol, chartType, showMA, isAutoUpdate]);
+  }, [dateRange, symbol, chartType, showMA, isAutoUpdate, switchToRealtimeAfterUpdate]);
 
   // 실시간 API 업데이트 함수
   const updateRealtimeData = useCallback(async () => {
     if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/') || ongoingRequestRef.current) return;
 
     try {
+      setRealtimeUpdateStatus(prev => ({
+        ...prev,
+        isUpdating: true
+      }));
+
       const endpoint = getChartEndpoint(chartType);
       // 1개의 최신 캔들만 가져옴
       const response = await fetch(
@@ -328,6 +351,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         close: newCandle.trade_price,
         volume: newCandle.candle_acc_trade_volume,
       };
+
+      const currentTime = new Date().toLocaleTimeString('ko-KR');
       
       // 차트 업데이트
       if (candleSeriesRef.current && volumeSeriesRef.current) {
@@ -336,12 +361,16 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         
         // 새 캔들의 시간이 마지막 캔들의 시간과 같으면 업데이트, 다르면 추가
         const lastCandle = currentData[currentData.length - 1];
+        const isNewCandle = !lastCandle || lastCandle.time !== processedCandle.time;
+        
         if (lastCandle && lastCandle.time === processedCandle.time) {
           // 기존 캔들 업데이트
           currentData[currentData.length - 1] = processedCandle;
+          console.log(`[${currentTime}] 캔들 업데이트:`, processedCandle.close);
         } else {
           // 새 캔들 추가
           currentData.push(processedCandle);
+          console.log(`[${currentTime}] 새 캔들 추가:`, processedCandle.close);
         }
         
         // 데이터 제한 (너무 많은 데이터가 쌓이지 않도록)
@@ -360,14 +389,62 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         };
         volumeSeriesRef.current.update(volumeData);
         
+        // MA 데이터 업데이트
+        if (
+          sixtyEMASeriesRef.current && 
+          oneTwentyEMASeriesRef.current && 
+          twoFortyEMASeriesRef.current && 
+          threeHundredSixtyEMASeriesRef.current &&
+          threeHundredEMASeriesRef.current &&
+          nineHundredEMASeriesRef.current
+        ) {
+          console.log(`[${currentTime}] MA 업데이트 시작`);
+          
+          // EMA 계산
+          const ema60Data = calculateEMA(currentData, 60);
+          const ema120Data = calculateEMA(currentData, 120);
+          const ema240Data = calculateEMA(currentData, 240);
+          const ema360Data = calculateEMA(currentData, 360);
+          const ema300Data = calculateEMA(currentData, 300);
+          const ema900Data = calculateEMA(currentData, 900);
+
+          // 마지막 EMA 값만 업데이트
+          if (ema60Data.length > 0) sixtyEMASeriesRef.current.update(ema60Data[ema60Data.length - 1]);
+          if (ema120Data.length > 0) oneTwentyEMASeriesRef.current.update(ema120Data[ema120Data.length - 1]);
+          if (ema240Data.length > 0) twoFortyEMASeriesRef.current.update(ema240Data[ema240Data.length - 1]);
+          if (ema360Data.length > 0) threeHundredSixtyEMASeriesRef.current.update(ema360Data[ema360Data.length - 1]);
+          if (ema300Data.length > 0) threeHundredEMASeriesRef.current.update(ema300Data[ema300Data.length - 1]);
+          if (ema900Data.length > 0) nineHundredEMASeriesRef.current.update(ema900Data[ema900Data.length - 1]);
+          
+          console.log(`[${currentTime}] MA 업데이트 완료`);
+        }
+        
         // 현재 가격 설정
         setChartPrice(processedCandle.close);
         
         // 데이터 업데이트
         setAllData(currentData);
+
+        // 매매 신호 분석 및 마커 생성
+        const signals = useUpbitStore.getState().analyzeStrategy(currentData);
+        const newMarkers = createTradeMarkers(signals);
+        setMarkers(newMarkers);
+
+        // 업데이트 상태 갱신
+        setRealtimeUpdateStatus(prev => ({
+          isUpdating: false,
+          lastUpdateTime: currentTime,
+          updateCount: prev.updateCount + 1
+        }));
+
+        console.log(`[${currentTime}] 실시간 업데이트 완료 (${isNewCandle ? '새 캔들' : '캔들 업데이트'})`);
       }
     } catch (error) {
       console.error('실시간 데이터 업데이트 오류:', error);
+      setRealtimeUpdateStatus(prev => ({
+        ...prev,
+        isUpdating: false
+      }));
     }
   }, [isRealtimeAPIEnabled, chartType, symbol, allData]);
 
@@ -433,18 +510,30 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
 
   // 자동 업데이트 토글 핸들러
   const handleAutoUpdateToggle = useCallback(() => {
-    setIsAutoUpdate(prev => !prev);
-    
-    // 자동 업데이트를 끄면 실시간 API도 끔
-    if (isAutoUpdate) {
+    // 자동 업데이트 켜기: 실시간 API는 끄기
+    if (!isAutoUpdate) {
+      setIsAutoUpdate(true);
+      setIsRealtimeAPIEnabled(false);
+    } 
+    // 자동 업데이트 끄기: 실시간 API도 끄기
+    else {
+      setIsAutoUpdate(false);
       setIsRealtimeAPIEnabled(false);
     }
   }, [isAutoUpdate]);
 
   // 실시간 API 토글 핸들러
   const handleRealtimeAPIToggle = useCallback(() => {
-    setIsRealtimeAPIEnabled(prev => !prev);
-  }, []);
+    // 실시간 API 켜기: 자동 업데이트는 끄기
+    if (!isRealtimeAPIEnabled) {
+      setIsRealtimeAPIEnabled(true);
+      setIsAutoUpdate(false);
+    } 
+    // 실시간 API 끄기
+    else {
+      setIsRealtimeAPIEnabled(false);
+    }
+  }, [isRealtimeAPIEnabled]);
 
   // 차트 초기화 콜백
   const handleChartReady = useCallback((
@@ -869,7 +958,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         {chartType === 'seconds/60' && (
           <div className="flex flex-wrap gap-2 mb-2">
             <div className="p-2 bg-gray-700 rounded-lg flex items-center justify-between w-full">
-              <div className="text-white font-bold">차트 업데이트 설정 (타입: {chartType})</div>
+              <div className="text-white font-bold">업데이트 모드</div>
               <div className="flex gap-2">
                 <button
                   onClick={handleAutoUpdateToggle}
@@ -877,9 +966,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
                     isAutoUpdate 
                       ? 'bg-green-600 hover:bg-green-700' 
                       : 'bg-gray-600 hover:bg-gray-700'
-                  } text-white`}
+                  } text-white flex items-center`}
                 >
-                  {isAutoUpdate ? '✓ 자동 업데이트' : '자동 업데이트'}
+                  {isAutoUpdate 
+                    ? <><span className="mr-1">✓</span> 자동 업데이트 중...</> 
+                    : '자동 업데이트'
+                  }
                 </button>
                 
                 <button
@@ -888,12 +980,36 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
                     isRealtimeAPIEnabled 
                       ? 'bg-blue-600 hover:bg-blue-700' 
                       : 'bg-gray-600 hover:bg-gray-700'
-                  } text-white`}
+                  } text-white flex items-center`}
                 >
-                  {isRealtimeAPIEnabled ? '✓ 실시간API업데이트' : '실시간API업데이트'}
+                  {isRealtimeAPIEnabled 
+                    ? <><span className="mr-1">✓</span> 실시간 업데이트 중...</> 
+                    : '실시간 업데이트'
+                  }
                 </button>
               </div>
             </div>
+            {isRealtimeAPIEnabled && (
+              <div className="w-full flex justify-between items-center text-sm px-2">
+                <div className="text-gray-400">
+                  {realtimeUpdateStatus.isUpdating ? (
+                    <span className="text-blue-400">업데이트 중...</span>
+                  ) : (
+                    <span className="text-green-400">
+                      마지막 업데이트: {realtimeUpdateStatus.lastUpdateTime || '없음'}
+                    </span>
+                  )}
+                </div>
+                <div className="text-gray-400">
+                  총 업데이트 횟수: {realtimeUpdateStatus.updateCount}
+                </div>
+              </div>
+            )}
+            {isAutoUpdate && (
+              <div className="text-xs text-gray-400 px-2 w-full text-right">
+                자동 업데이트 완료 후 자동으로 실시간 업데이트로 전환됩니다
+              </div>
+            )}
           </div>
         )}
         
