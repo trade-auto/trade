@@ -346,6 +346,13 @@ const bollingerStrategy: TradingStrategy = {
       return 'long';
     }
     
+    // 완화된 매수 조건 추가 (MA900 상향 조건 제외)
+    if (ma240UpCount >= 3 && isAbove120 && isAbove240) {
+      console.log('\n=== ✅ 완화된 매수 조건 충족! ===');
+      console.log('완화된 조건: MA900 상향 조건 제외, MA240 상향 3봉 이상');
+      return 'long';
+    }
+    
     console.log('\n=== ❌ 매수 조건 불충족 ===');
     return null;
   },
@@ -605,7 +612,19 @@ let ma900UpCount = 0;
     const signals: TradeSignal[] = [];
     const store = useUpbitStore.getState();
     const { lastTradeType } = store.tradeState;
+    
+    // 마지막 거래 유형에 따라 현재 포지션 설정
+    // 'bid'(매수)인 경우 'long', 'ask'(매도)인 경우 null로 설정
     let currentPosition = lastTradeType === 'bid' ? 'long' : null;
+    
+    console.log('\n=== 전략 분석 시작 ===');
+    console.log('초기 포지션 설정:', {
+      '마지막 거래 유형': lastTradeType === 'bid' ? '매수' : 
+                        lastTradeType === 'ask' ? '매도' : '없음',
+      '현재 포지션': currentPosition === 'long' ? '롱' : '없음',
+      '매수 신호 검사 가능 여부': currentPosition === null ? '✅' : '❌'
+    });
+    
     let lastTradeId: string | null = null;
     
     if (data.length < 360) {
@@ -793,17 +812,17 @@ let ma900UpCount = 0;
             
             // 매도 신호 생성 후 즉시 포지션과 거래 ID 초기화
             currentPosition = null;
-              // store 상태 업데이트
-  store.updateTradeState({
-    lastTradeType: 'ask',
-    statusChangeTime: new Date().toISOString(),
-    isTrading: false
-  });
-  
-  console.log('✅ 매도 후 상태 초기화 완료:', {
-    '현재 포지션': currentPosition,
-    '다음 매수 준비': '완료'
-  });
+            // store 상태 업데이트
+            store.updateTradeState({
+              lastTradeType: 'ask',
+              statusChangeTime: new Date().toISOString(),
+              isTrading: false
+            });
+            
+            console.log('✅ 매도 후 상태 초기화 완료:', {
+              '현재 포지션': currentPosition,
+              '다음 매수 준비': '완료'
+            });
             lastTradeId = null;
             continue; // 현재 캔들에서 매도 신호를 생성한 후 다음 캔들로 이동
           }
@@ -942,7 +961,7 @@ const maCrossStrategy: TradingStrategy = {
     const signals: TradeSignal[] = [];
     const shortPeriod = 30;
     const longPeriod = 60;
-    let currentPosition: 'long' | 'short' | null = null;
+    let currentPosition: 'long' | null = null; // 'short' 제거하고 'long' 또는 null만 사용
     let lastTradeId: string | null = null;
     
     if (data.length < longPeriod) {
@@ -952,8 +971,8 @@ const maCrossStrategy: TradingStrategy = {
     const self = this; // this 컨텍스트 저장
 
     for (let i = longPeriod; i < data.length; i++) {
-      // 현재 포지션이 없거나 숏인 경우, 진입 조건 확인
-      if (currentPosition === null || currentPosition === 'short') {
+      // 현재 포지션이 없는 경우에만 매수 신호 확인
+      if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'long') {
@@ -969,6 +988,12 @@ const maCrossStrategy: TradingStrategy = {
           });
           currentPosition = 'long';
           lastTradeId = tradeId;
+          console.log('✅ 매수 신호 생성:', {
+            시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+            가격: data[i].close.toLocaleString('ko-KR') + '원',
+            '현재 포지션': currentPosition,
+            '거래 ID': tradeId
+          });
         }
       } else if (currentPosition === 'long') {
         // 마지막 롱 진입 신호의 인덱스 찾기
@@ -980,8 +1005,9 @@ const maCrossStrategy: TradingStrategy = {
           const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
           
           if (shouldExit) {
+            const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             signals.push({
-              id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              id: exitTradeId,
               time: data[i].time as number,
               position: 'close',
               price: data[i].close,
@@ -990,8 +1016,18 @@ const maCrossStrategy: TradingStrategy = {
               relatedTradeId: lastTradeId || undefined,
               metadata: self.calculateIndicators?.(data, i)
             });
-            currentPosition = 'short';
+            currentPosition = null; // 'short'에서 null로 변경
             lastTradeId = null;
+            console.log('✅ 매도 신호 생성:', {
+              시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+              가격: data[i].close.toLocaleString('ko-KR') + '원',
+              '이전 포지션': 'long',
+              '매수가': entryPrice.toLocaleString('ko-KR') + '원',
+              '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
+              '거래 ID': exitTradeId,
+              '관련 매수 ID': lastTradeId,
+              '다음 매수 준비': '완료'
+            });
           }
         }
       }
@@ -1145,7 +1181,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
   // 기존 분석 함수
   analyze(data) {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'long' | 'short' | null = null;
+    let currentPosition: 'long' | null = null;
     let lastTradeId: string | null = null;
     
     // 충분한 데이터가 있는지 확인
@@ -1157,8 +1193,8 @@ const maCrossDeviationStrategy: TradingStrategy = {
     
     // 각 봉마다 분석 (240MA 기준으로 시작)
     for (let i = 240; i < data.length; i++) {
-      // 현재 포지션이 없거나 숏인 경우, 진입 조건 확인
-      if (currentPosition === null || currentPosition === 'short') {
+      // 현재 포지션이 없는 경우에만 매수 신호 확인
+      if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'long') {
@@ -1174,6 +1210,12 @@ const maCrossDeviationStrategy: TradingStrategy = {
           });
           currentPosition = 'long';
           lastTradeId = tradeId;
+          console.log('✅ 매수 신호 생성 (MA_CROSS_DEVIATION):', {
+            시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+            가격: data[i].close.toLocaleString('ko-KR') + '원',
+            '현재 포지션': currentPosition,
+            '거래 ID': tradeId
+          });
         }
       } 
       // 현재 롱 포지션인 경우, 청산 조건 확인
@@ -1187,8 +1229,9 @@ const maCrossDeviationStrategy: TradingStrategy = {
           const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
           
           if (shouldExit) {
+            const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             signals.push({
-              id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              id: exitTradeId,
               time: data[i].time as number,
               position: 'close',
               price: data[i].close,
@@ -1197,8 +1240,18 @@ const maCrossDeviationStrategy: TradingStrategy = {
               relatedTradeId: lastTradeId || undefined,
               metadata: self.calculateIndicators?.(data, i)
             });
-            currentPosition = 'short';
+            currentPosition = null; // 'short'에서 null로 변경
             lastTradeId = null;
+            console.log('✅ 매도 신호 생성 (MA_CROSS_DEVIATION):', {
+              시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+              가격: data[i].close.toLocaleString('ko-KR') + '원',
+              '이전 포지션': 'long',
+              '매수가': entryPrice.toLocaleString('ko-KR') + '원',
+              '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
+              '거래 ID': exitTradeId,
+              '관련 매수 ID': lastTradeId,
+              '다음 매수 준비': '완료'
+            });
           }
         }
       }
