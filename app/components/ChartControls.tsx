@@ -2,20 +2,35 @@ import React from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { DateRange } from '../types/candlestick';
+import { useUpbitStore } from '../store/useUpbitStore';
 
 interface ChartControlsProps {
   dateRange: DateRange;
   progress: number;
   handleDateRangeChange: (date: Date) => void;
   handleEndDateChange: (date: Date) => void;
+  handleResetTradeState?: () => void;
 }
 
 const ChartControls: React.FC<ChartControlsProps> = ({
   dateRange,
   progress,
   handleDateRangeChange,
-  handleEndDateChange
+  handleEndDateChange,
+  handleResetTradeState
 }) => {
+  const { resetTradeState } = useUpbitStore();
+  
+  const onResetTradeState = () => {
+    if (handleResetTradeState) {
+      handleResetTradeState();
+    } else {
+      resetTradeState();
+      console.log('거래 상태가 초기화되었습니다.');
+      alert('거래 상태가 초기화되었습니다.');
+    }
+  };
+
   return (
     <div className="mb-4 space-y-4">
       {/* 날짜 범위 설정 */}
@@ -67,6 +82,19 @@ const ChartControls: React.FC<ChartControlsProps> = ({
           </div>
         </div>
       )}
+      
+      {/* 거래 상태 초기화 버튼 */}
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <button
+          onClick={onResetTradeState}
+          className="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded text-sm flex items-center justify-center"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          거래 상태 초기화
+        </button>
+      </div>
     </div>
   );
 };

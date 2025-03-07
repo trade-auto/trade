@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { format } from 'date-fns';
 import { DateRange } from '../types/candlestick';
-import { CandlestickData, Time } from 'lightweight-charts';
+import { CandlestickData } from 'lightweight-charts';
+import type { Time } from 'lightweight-charts';
 import { useCallback } from 'react';
 
 interface PriceData {
@@ -210,244 +211,171 @@ const bollingerStrategy: TradingStrategy = {
     if (index < 360) return null; // 충분한 데이터 확보
 
     const store = useUpbitStore.getState();
-    const lastTradeType = store.tradeState.lastTradeType;
+    const { lastTradeType, statusChangeTime } = store.tradeState;
+    const analysisTime = new Date();
+    const lastTradeTimestamp = new Date(statusChangeTime);
+
+    // 마지막 거래 정보 상세 로깅
+    console.log('거래 상태 분석:', {
+      마지막거래: lastTradeType === 'bid' ? '매수' : lastTradeType === 'ask' ? '매도' : '없음',
+      마지막거래시간: lastTradeTimestamp.toLocaleString('ko-KR'),
+      현재시간: analysisTime.toLocaleString('ko-KR'),
+      경과시간: Math.floor((analysisTime.getTime() - lastTradeTimestamp.getTime()) / 1000) + '초'
+    });
+
+    // 매수 제한 조건 체크
     if (lastTradeType === 'bid') {
-      console.log('🚫 매수 제한: 마지막 거래가 매수');
+      console.log('🚫 매수 제한: 이전 거래가 매수');
       return null;
     }
-    
+
     // MA 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     
     // 이전 MA 계산
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
-
+    
     // MA 기울기 계산
     const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
     const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
-    const ma360SlopeRelative = ((ma360 - prevMa360) / prevMa360) * 100;
+    
+    // 볼린저 밴드 계산
+    const period = 20;
+    const stdDev = 2;
+    const prices = data.slice(index - period, index).map(d => d.close);
+    const sma = prices.reduce((a, b) => a + b, 0) / period;
+    const deviation = Math.sqrt(prices.map(p => Math.pow(p - sma, 2)).reduce((a, b) => a + b, 0) / period);
+    const upperBand = sma + (stdDev * deviation);
+    const lowerBand = sma - (stdDev * deviation);
 
-    // MA 기울기 계산 (절대값 - 각도)
-    const ma360Points = [];
-    for (let i = 0; i < 10; i++) {
-        const pointIndex = index - 9 + i;
-        const ma = data.slice(pointIndex - 360, pointIndex).reduce((a, b) => a + b.close, 0) / 360;
-        ma360Points.push({ x: i, y: ma });
-    }
-    const ma360SlopeAbsolute = Math.atan2(
-        ma360Points[ma360Points.length - 1].y - ma360Points[0].y,
-        ma360Points[ma360Points.length - 1].x - ma360Points[0].x
-    ) * (180 / Math.PI);
+    // 볼린저 밴드 매수 조건: 가격이 하단 밴드 아래에 있거나 근접
+    const currentPrice = data[index].close;
+    const isBelowLowerBand = currentPrice <= lowerBand * 1.01; // 하단 밴드에 1% 근접 또는 아래
+    const isRising = data[index].close > data[index - 1].close; // 현재 가격이 상승 중
+    
+    // RSI 계산 (과매도 확인)
+    const rsiPeriod = 14;
+    const rsiPrices = data.slice(index - rsiPeriod - 1, index).map(d => d.close);
+    const rsi = calculateRSI(rsiPrices);
+    const isOversold = rsi < 30; // RSI 30 이하는 과매도
 
-    // 30초 전 MA 계산
-    const prevMa60_30s = data.slice(index - 60 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120_30s = data.slice(index - 120 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 120;
+    // 매수 조건
+    const buyCondition = (isBelowLowerBand && isRising) || (isOversold && isRising);
 
-    // 이격도 계산
-    const deviation = ((ma60 / ma120) * 100) - 100;
-    const prevDeviation = ((prevMa60_30s / prevMa120_30s) * 100) - 100;
-
-    // 현재 시간 가져오기 (초 단위를 밀리초로 변환)
-    const currentTime = new Date((data[index].time as number) * 1000);
-    const formattedTime = currentTime.toLocaleString('ko-KR', { 
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
+    console.log('매수 신호 분석:', {
+      현재가격: currentPrice,
+      하단밴드: lowerBand,
+      하단밴드근접: isBelowLowerBand,
+      가격상승중: isRising,
+      RSI: rsi,
+      과매도상태: isOversold,
+      매수신호발생: buyCondition
     });
 
-    console.log('\n=== 매수 신호 분석 ===');
-    console.log('분석 시간:', formattedTime);
-    console.log('현재가:', data[index].close);
-    console.log('MA 값:', {
-      MA60: ma60.toFixed(2),
-      MA120: ma120.toFixed(2),
-      MA240: ma240.toFixed(2),
-      MA360: ma360.toFixed(2)
-    });
-    console.log('MA 기울기:', {
-      MA60: ma60Slope.toFixed(4) + '%',
-      MA120: ma120Slope.toFixed(4) + '%',
-      MA360: {
-        상대값: ma360SlopeRelative.toFixed(4) + '%',
-        절대각도: ma360SlopeAbsolute.toFixed(4) + '°'
-      }
-    });
-    console.log('이격도:', {
-      현재: deviation.toFixed(4) + '%',
-      이전: prevDeviation.toFixed(4) + '%'
-    });
-
-    // 360MA 횡보 상태 체크 (상대값과 절대값 모두 고려)
-    if (Math.abs(ma360SlopeRelative) <= 0.2 || Math.abs(ma360SlopeAbsolute) <= 0.5) {
-      console.log('🚫 매수 제한: 360MA 횡보 상태', {
-        상대기울기: ma360SlopeRelative.toFixed(4) + '%',
-        절대각도: ma360SlopeAbsolute.toFixed(4) + '°'
+    // 매수 조건이 충족되면 신호 생성
+    if (buyCondition) {
+      const currentTime = new Date((data[index].time as number) * 1000);
+      
+      console.log('✅ 매수 신호 생성:', {
+        시간: currentTime.toLocaleString('ko-KR'),
+        가격: currentPrice
       });
-      return null;
-    }
 
-    // 매수 조건 체크 - 기준도 함께 조정
-    const isRapidSlopeChange = ma60Slope < -0.2 && ma60Slope > 0.2; // 급하강에서 급상승 기준 조정
-    const isBothMADownward = ma60Slope < -0.1 && ma120Slope < -0.1; // 하락 기준 조정
-    const strongBuyCross = ma60 > ma120 && prevMa60 <= prevMa120 && ma60Slope > 0.2; // 상방 관통 기준 조정
-    const gapNarrowing = deviation < prevDeviation; // 이격도 축소
-    const buyCrossOrAbove = ma60 > ma120; // 60MA가 120MA 위에 있음
-    const buySlope = ma60Slope > 0; // 60MA 상승 기울기
-    const isFullProperAlignment = ma60 > ma120 && ma120 > ma240; // 완전 정배열
-    const isReverseAlignment = ma60 < ma120 && ma120 < ma240; // 역배열
+      // 거래 상태 업데이트
+      store.updateTradeState({
+        lastTradeType: 'bid',
+        statusChangeTime: currentTime.toISOString(),
+        currentPrice: currentPrice
+      });
 
-    console.log('매수 조건:', {
-      급격한기울기변화: isRapidSlopeChange,
-      MA하락중: isBothMADownward,
-      강한상방돌파: strongBuyCross,
-      이격도축소: gapNarrowing,
-      MA60이상단: buyCrossOrAbove,
-      MA60상승: buySlope,
-      정배열: isFullProperAlignment,
-      역배열: isReverseAlignment
-    });
+      // 거래 기록 생성
+      const trade = {
+        id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        entryTime: currentTime.getTime(),
+        entryPrice: currentPrice,
+        strategy: 'BOLLINGER' as const,
+        status: 'open' as const,
+        type: 'long' as const,
+        entryReason: `볼린저 밴드 매수 신호 (${isBelowLowerBand ? '하단밴드 근접' : ''}${isOversold ? ', 과매도' : ''})`,
+        entryMetadata: {
+          ma60: ma60,
+          ma120: ma120,
+          rsi: rsi,
+          lowerBand: lowerBand,
+          upperBand: upperBand
+        }
+      };
 
-    // 연속 거래 간격 체크
-    const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
-    if (timeDiff < 30) {
-      console.log('🚫 매수 제한: 최소 거래 간격 미충족');
-      return null;
-    }
-
-    // 매수 시그널 생성
-    if (!isBothMADownward && (
-      isRapidSlopeChange ||
-      (strongBuyCross && !isReverseAlignment) ||
-      (gapNarrowing && buyCrossOrAbove && buySlope && !isReverseAlignment) ||
-      (isFullProperAlignment && buyCrossOrAbove)
-    )) {
-      console.log('✅ 매수 신호 발생!', formattedTime);
+      // 거래 기록 추가
+      store.addTrade(trade);
+      
+      console.log('거래 기록 추가됨:', trade);
+      
       return 'long';
     }
-    
-    console.log('❌ 매수 조건 불충족');
+
     return null;
   },
   
   // 청산 조건 분석
   analyzeExit(data, index, position, entryPrice) {
-    if (index < 360 || position !== 'long') return false;
+    if (index < 20) return false;
 
     const store = useUpbitStore.getState();
-    const lastTradeType = store.tradeState.lastTradeType;
-    const statusChangeTime = store.tradeState.statusChangeTime;
-
-    // 현재 시간 가져오기 (초 단위를 밀리초로 변환)
+    const currentPrice = data[index].close;
+    const entryTime = store.tradeState.statusChangeTime;
+    // 먼저 currentTime 변수 선언
     const currentTime = new Date((data[index].time as number) * 1000);
-    const formattedTime = currentTime.toLocaleString('ko-KR', { 
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-
-    console.log('\n=== 매도 신호 분석 ===');
-    console.log('분석 시간:', formattedTime);
-    console.log('마지막 거래 유형:', lastTradeType);
-    console.log('마지막 거래 시간:', new Date(statusChangeTime).toLocaleString('ko-KR'));
-
-    // lastTradeType이 null이고 position이 'long'인 경우에는 매수 상태로 간주
-    if (lastTradeType === null && position === 'long') {
-        console.log('포지션이 롱인데 마지막 거래가 null입니다. 매수 상태로 간주합니다.');
-        store.updateTradeState({
-            lastTradeType: 'bid',
-            statusChangeTime: currentTime.toISOString()
-        });
-        return false;
-    }
-
-    if (lastTradeType !== 'bid') {
-        console.log('🚫 매도 제한: 마지막 거래가 매수가 아님 (현재:', lastTradeType, ')');
-        return false;
-    }
-
-    // MA 계산
-    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
-    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
-
-    // 이전 MA 계산
-    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-
-    // MA 기울기 계산
-    const ma60Slope = (ma60 - prevMa60) / prevMa60 * 100;
-
-    // 이격도 계산
-    const deviation = ((ma60 / ma120) * 100) - 100;
-    const prevDeviation = ((prevMa60 / prevMa120) * 100) - 100;
-
-    console.log('현재가:', data[index].close);
-    console.log('진입가:', entryPrice);
-    console.log('수익률:', ((data[index].close / entryPrice - 1) * 100).toFixed(2) + '%');
-    console.log('MA 값:', {
-      MA60: ma60.toFixed(2),
-      MA120: ma120.toFixed(2),
-      MA240: ma240.toFixed(2),
-      MA360: ma360.toFixed(2)
-    });
-    console.log('MA60 기울기:', ma60Slope.toFixed(4) + '%');
-    console.log('이격도:', {
-      현재: deviation.toFixed(4) + '%',
-      이전: prevDeviation.toFixed(4) + '%'
-    });
-
-    // 매도 조건 체크
-    const gapNarrowing = deviation < prevDeviation; // 이격도 축소
-    const sellCrossOrBelow = ma60 < ma120; // 60MA가 120MA 아래에 있음
-    const sellSlope = ma60Slope < 0; // 60MA 하락 기울기
-    const isFullReverseAlignment = ma60 < ma120 && ma120 < ma240; // 완전 역배열
-
-    console.log('매도 조건:', {
-      이격도축소: gapNarrowing,
-      MA60이하단: sellCrossOrBelow,
-      MA60하락: sellSlope,
-      역배열: isFullReverseAlignment
-    });
-
-    // 360MA 위에 있는지 체크
-    if (data[index].close > ma360) {
-      console.log('🚫 매도 제한: 가격이 360MA 위에 있음');
-      return false;
-    }
     
-    // 연속 거래 간격 체크
-    const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
-    if (timeDiff < 30) {
-      console.log('🚫 매도 제한: 최소 거래 간격 미충족 (현재 간격:', timeDiff.toFixed(1), '초)');
-      return false;
-    }
-
-    const shouldSell = (gapNarrowing && sellCrossOrBelow && sellSlope) || 
-                      (isFullReverseAlignment && sellCrossOrBelow);
+    // 볼린저 밴드 계산
+    const period = 20;
+    const stdDev = 2;
+    const prices = data.slice(index - period, index).map(d => d.close);
+    const sma = prices.reduce((a, b) => a + b, 0) / period;
+    const deviation = Math.sqrt(prices.map(p => Math.pow(p - sma, 2)).reduce((a, b) => a + b, 0) / period);
+    const upperBand = sma + (stdDev * deviation);
     
-    if (shouldSell) {
-      console.log('✅ 매도 신호 발생!', formattedTime);
+    // 청산 조건: 가격이 상단 밴드에 도달하거나 이익이 2% 이상 또는 손실이 1% 이상
+    const profit = ((currentPrice - entryPrice) / entryPrice) * 100;
+    const isAboveUpperBand = currentPrice >= upperBand * 0.99; // 상단 밴드에 1% 근접 또는 위
+    const isFalling = data[index].close < data[index - 1].close; // 현재 가격이 하락 중
+    const isHighProfit = profit >= 2.0; // 2% 이상 이익
+    const isStopLoss = profit <= -1.0; // 1% 이상 손실
+    
+    // 청산 조건 충족 여부
+    const exitCondition = (isAboveUpperBand && isFalling) || isHighProfit || isStopLoss;
+    
+    if (exitCondition) {
+      console.log('✅ 청산 신호 생성:', {
+        시간: currentTime.toLocaleString('ko-KR'),
+        진입가: entryPrice,
+        현재가: currentPrice,
+        이익률: profit.toFixed(2) + '%',
+        상단밴드도달: isAboveUpperBand,
+        가격하락중: isFalling,
+        고수익: isHighProfit,
+        손절: isStopLoss
+      });
+      
+      // 거래 상태 업데이트
+      store.updateTradeState({
+        lastTradeType: 'ask',
+        statusChangeTime: currentTime.toISOString(),
+        currentPrice: currentPrice
+      });
+      
+      // 오픈된 거래 찾기
+      const openTrades = store.getOpenTrades();
+      if (openTrades.length > 0) {
+        // 코드 내용...
+      }
+      
       return true;
     }
 
-    console.log('❌ 매도 조건 불충족');
     return false;
   },
   
@@ -1394,34 +1322,55 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
     }
   })),
 
-  tradeState: {
-    lastTradeType: null,
-    statusChangeTime: new Date().toISOString(), // 초기 시간 설정
-    currentPrice: 0,
-    actionStartTime: null,
-    isTrading: false,
-    theoreticalPosition: 'wait' as const,
-    missedFirstCycle: false
-  },
-
-  updateTradeState: (update) => set((state) => {
-    const newState = { ...state.tradeState, ...update };
-    
-    // 거래 상태 변경 시 로그 추가
-    console.log('거래 상태 업데이트:', {
-      이전상태: state.tradeState,
-      새상태: newState
-    });
-    
-    // localStorage에 거래 상태 저장
+  tradeState: (() => {
+    // 초기 상태를 localStorage에서 불러오기
     if (typeof window !== 'undefined') {
-      localStorage.setItem('tradeState', JSON.stringify(newState));
+      const savedState = localStorage.getItem('tradeState');
+      if (savedState) {
+        try {
+          const parsed = JSON.parse(savedState);
+          return parsed;
+        } catch (e) {
+          console.error('Failed to parse saved trade state:', e);
+        }
+      }
     }
-    
+    // 기본 상태
     return {
-      tradeState: newState
+      lastTradeType: null,
+      statusChangeTime: new Date().toISOString(),
+      currentPrice: 0,
+      actionStartTime: null,
+      isTrading: false,
+      theoreticalPosition: 'wait' as const,
+      missedFirstCycle: false
     };
-  }),
+  })(),
+
+  updateTradeState: (update) => {
+    set((state) => {
+      const newState = { ...state.tradeState, ...update };
+      
+      // 상태 변경 시간 업데이트 (lastTradeType이 변경될 때만)
+      if (update.lastTradeType !== undefined && update.lastTradeType !== state.tradeState.lastTradeType) {
+        newState.statusChangeTime = new Date().toISOString();
+      }
+      
+      // 디버그 로깅
+      console.log('거래 상태 업데이트:', {
+        이전_거래유형: state.tradeState.lastTradeType,
+        새_거래유형: newState.lastTradeType,
+        변경시간: newState.statusChangeTime
+      });
+      
+      // localStorage에 저장
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tradeState', JSON.stringify(newState));
+      }
+      
+      return { tradeState: newState };
+    });
+  },
 
   createOrder: async (params) => {
     try {
@@ -1557,11 +1506,15 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
     }
   },
 
-  // 거래 상태 리셋 함수 추가
+  // 거래 상태 리셋 함수 개선
   resetTradeState: () => {
+    // 현재 시간에서 5분 전 시간을 기본값으로 설정 (거래 제한)
+    const cooldownTime = new Date();
+    cooldownTime.setMinutes(cooldownTime.getMinutes() - 5);
+    
     const initialState: TradeState = {
-      lastTradeType: null,
-      statusChangeTime: new Date().toISOString(),
+      lastTradeType: 'ask', // null 대신 'ask'로 설정하여 즉시 매수 신호만 허용
+      statusChangeTime: cooldownTime.toISOString(), // 5분 전으로 설정
       currentPrice: 0,
       actionStartTime: null,
       isTrading: false,
@@ -1574,8 +1527,17 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.setItem('tradeState', JSON.stringify(initialState));
     }
+    
+    // 거래 내역도 초기화
+    set({ trades: [] });
+    
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('trades');
+    }
+    
+    console.log('거래 상태 및 내역이 초기화되었습니다. 5분 동안 매수 신호만 허용됩니다.');
   }
-})); 
+}));
 
 const detectMAReversal = (prices: number[], shortPeriod: number = 3, midPeriod: number = 10, longPeriod: number = 20): 'buy' | 'sell' | 'hold' => {
   if (prices.length < longPeriod + 2) return 'hold'; // 충분한 데이터가 없으면 홀드
@@ -1778,16 +1740,16 @@ const handleBacktestChartReady = ({ importedData, backtestCandleSeries, volumeSe
         
         // 약간의 지연 후 새 데이터 설정
         setTimeout(() => {
-            // 캔들스틱 데이터 설정
-            backtestCandleSeries.setData(processedData);
-            
-            // 볼륨 데이터 설정
-            const volumeData = (processedData as ExtendedCandlestickData[]).map(d => ({
-                time: d.time,
-                value: d.volume || 0,
-                color: (d.close || 0) >= (d.open || 0) ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
-            }));
-            volumeSeries.setData(volumeData);
+        // 캔들스틱 데이터 설정
+        backtestCandleSeries.setData(processedData);
+        
+        // 볼륨 데이터 설정
+        const volumeData = (processedData as ExtendedCandlestickData[]).map(d => ({
+            time: d.time,
+            value: d.volume || 0,
+            color: (d.close || 0) >= (d.open || 0) ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)'
+        }));
+        volumeSeries.setData(volumeData);
             
             // 거래 기록 다시 로드
             const store = useUpbitStore.getState();
@@ -1795,4 +1757,50 @@ const handleBacktestChartReady = ({ importedData, backtestCandleSeries, volumeSe
         }, 100);
     }
 };
- 
+
+// 차트에 거래 표시 로직 개선
+
+// handleBacktestChartReady 함수 내부(이 함수를 찾아서 수정)
+// ... existing code ...
+
+// 거래 마커 표시
+const trades = useUpbitStore.getState().trades;
+if (trades && trades.length > 0) {
+  console.log('차트에 표시할 거래:', trades.length);
+  
+  // 진입점 마커 (매수)
+  const buyMarkers = trades
+    .filter(trade => trade.type === 'long' && trade.entryTime)
+    .map(trade => ({
+      time: trade.entryTime / 1000, // 초 단위로 변환
+      position: 'belowBar',
+      color: '#2196F3',
+      shape: 'arrowUp',
+      text: `매수 $${trade.entryPrice.toFixed(0)}`,
+      id: `buy-${trade.id}`
+    }));
+  
+  // 청산점 마커 (매도)
+  const sellMarkers = trades
+    .filter(trade => trade.status === 'closed' && trade.exitTime)
+    .map(trade => ({
+      time: trade.exitTime! / 1000,
+      position: 'aboveBar',
+      color: '#FF5252',
+      shape: 'arrowDown',
+      text: `매도 $${trade.exitPrice!.toFixed(0)}`,
+      id: `sell-${trade.id}`
+    }));
+  
+  // 마커 적용
+  // backtestCandleSeries.setMarkers([...buyMarkers, ...sellMarkers]);
+  if (buyMarkers.length > 0 || sellMarkers.length > 0) {
+    // backtestCandleSeries.setMarkers([...buyMarkers, ...sellMarkers]);
+    console.log('마커 설정됨:', {
+      매수마커: buyMarkers.length,
+      매도마커: sellMarkers.length
+    });
+  }
+}
+
+// ... existing code ... 

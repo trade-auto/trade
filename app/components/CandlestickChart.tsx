@@ -109,7 +109,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   
   // 실시간 캔들 업데이트를 위한 ref
 
-  const { tradeStrategy, updateTradeStrategy } = useUpbitStore();
+  const { tradeStrategy, updateTradeStrategy, resetTradeState } = useUpbitStore();
 
   // CSV 임포트 관련 상태
   const [importedData, setImportedData] = useState<ExtendedCandlestickData[]>([]);
@@ -603,89 +603,131 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     fileInputRef.current?.click();
   }, []);
 
-  // 백테스트 차트 초기화 콜백
-  const handleBacktestChartReady = useCallback((
-    chartApi: IChartApi,
-    candleSeries: ISeriesApi<"Candlestick">,
-    volumeSeries: ISeriesApi<"Histogram">,
-    sixtyEMASeries: ISeriesApi<"Line">,
-    oneTwentyEMASeries: ISeriesApi<"Line">,
-    twoFortyEMASeries: ISeriesApi<"Line">,
-    threeHundredSixtyEMASeries: ISeriesApi<"Line">,
-    threeHundredEMASeries: ISeriesApi<"Line">,
-    nineHundredEMASeries: ISeriesApi<"Line">
-  ) => {
-    // 백테스트 차트용 레퍼런스 생성
-    const backtestChartApi = chartApi;
-    const backtestCandleSeries = candleSeries;
-    const backtestVolumeSeries = volumeSeries;
-    const backtestSixtyEMASeries = sixtyEMASeries;
-    const backtestOneTwentyEMASeries = oneTwentyEMASeries;
-    const backtestTwoFortyEMASeries = twoFortyEMASeries;
-    const backtestThreeHundredSixtyEMASeries = threeHundredSixtyEMASeries;
-    const backtestThreeHundredEMASeries = threeHundredEMASeries;
-    const backtestNineHundredEMASeries = nineHundredEMASeries;
+  // 백테스트 마커 설정 함수 추가
+  const updateBacktestMarkers = useCallback(() => {
+    if (!isDataImported || !importedData.length) return;
     
-    // 볼륨 시리즈 설정
-    backtestChartApi.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-      borderVisible: false,
-    });
-
-    // 임포트된 데이터가 있으면 차트에 표시
-    if (importedData.length > 0) {
-      // 캔들스틱 데이터 설정
-      backtestCandleSeries.setData(importedData);
+    // 거래 마커 표시 로직
+    const trades = useUpbitStore.getState().trades;
+    if (trades && trades.length > 0) {
+      console.log('차트에 표시할 거래:', trades.length);
       
-      // 볼륨 데이터 설정
-      const volumeData = importedData.map(d => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? '#26a69a' : '#ef5350',
-      }));
-      backtestVolumeSeries.setData(volumeData);
+      // 진입점 마커 (매수)
+      const buyMarkers = trades
+        .filter(trade => trade.type === 'long' && trade.entryTime)
+        .map(trade => ({
+          time: trade.entryTime / 1000 as Time, // 초 단위로 변환
+          position: 'belowBar' as SeriesMarkerPosition,
+          color: '#2196F3',
+          shape: 'arrowUp' as SeriesMarkerShape,
+          text: `매수 ₩${trade.entryPrice.toFixed(0)}`,
+          id: `buy-${trade.id}`
+        }));
       
-      // EMA 데이터 설정
-      const ema60Data = calculateEMA(importedData, 60);
-      const ema120Data = calculateEMA(importedData, 120);
-      const ema240Data = calculateEMA(importedData, 240);
-      const ema360Data = calculateEMA(importedData, 360);
-      const ema300Data = calculateEMA(importedData, 300);
-      const ema900Data = calculateEMA(importedData, 900);
-
-      backtestSixtyEMASeries.setData(ema60Data);
-      backtestOneTwentyEMASeries.setData(ema120Data);
-      backtestTwoFortyEMASeries.setData(ema240Data);
-      backtestThreeHundredSixtyEMASeries.setData(ema360Data);
-      backtestThreeHundredEMASeries.setData(ema300Data);
-      backtestNineHundredEMASeries.setData(ema900Data);
-
-      // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
-      const signals = useUpbitStore.getState().analyzeStrategy(importedData);
-      const newMarkers = createTradeMarkers(signals);
-      setBacktestMarkers(newMarkers);
-
-      // 차트 피팅
-      backtestChartApi.timeScale().fitContent();
+      // 청산점 마커 (매도)
+      const sellMarkers = trades
+        .filter(trade => trade.status === 'closed' && trade.exitTime)
+        .map(trade => ({
+          time: trade.exitTime! / 1000 as Time,
+          position: 'aboveBar' as SeriesMarkerPosition,
+          color: '#FF5252',
+          shape: 'arrowDown' as SeriesMarkerShape,
+          text: `매도 ₩${trade.exitPrice!.toFixed(0)}`,
+          id: `sell-${trade.id}`
+        }));
+      
+      // 마커 설정
+      setBacktestMarkers([...buyMarkers, ...sellMarkers]);
+      console.log('마커 설정됨:', {
+        매수마커: buyMarkers.length,
+        매도마커: sellMarkers.length
+      });
     }
-  }, [importedData]);
+  }, [isDataImported, importedData]);
 
-  // 전략 변경 시 백테스트 차트 업데이트
+  // 거래 상태 변경 시 마커 업데이트
   useEffect(() => {
-    if (importedData.length > 0) {
-      const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
-      const signals = selectedStrategy.analyze(importedData);
-      const strategyMarkers = createTradeMarkers(signals);
-      setBacktestMarkers(strategyMarkers);
-
-      // CSV 데이터에 대한 백테스트 결과 계산
-      const csvResult = calculateBacktestResult(importedData, signals, 'test');
-      setCsvBacktestResult(csvResult);
+    if (isDataImported && candleSeriesRef.current) {
+      updateBacktestMarkers();
     }
-  }, [tradeStrategy, importedData]);
+  }, [updateBacktestMarkers, isDataImported]);
+
+  // 트레이드 상태 감시
+  useEffect(() => {
+    // 이 함수는 trades 배열이 변경될 때마다 호출됩니다
+    const tradeUpdateHandler = () => {
+      console.log('거래 상태 변경 감지, 마커 업데이트');
+      updateBacktestMarkers();
+    };
+
+    // 상태 변경 감시 - 직접 구독 방식으로 변경
+    const subscribeId = setInterval(() => {
+      const currentTrades = useUpbitStore.getState().trades;
+      if (currentTrades && currentTrades.length > 0) {
+        tradeUpdateHandler();
+      }
+    }, 5000); // 5초마다 체크
+
+    // 컴포넌트 언마운트 시 타이머 제거
+    return () => {
+      clearInterval(subscribeId);
+    };
+  }, [updateBacktestMarkers]);
+
+  // 차트가 마커를 표시하는 함수
+  const applyMarkersToChart = useCallback(() => {
+    if (candleSeriesRef.current && backtestMarkers.length > 0) {
+      try {
+        // 마커 적용 시도 (DOM 업데이트 후)
+        // @ts-ignore - lightweight-charts의 타입 정의에는 setMarkers가 없지만 실제로는 존재함
+        candleSeriesRef.current.setMarkers?.(backtestMarkers);
+        console.log('차트에 마커 적용됨:', backtestMarkers.length);
+      } catch (error) {
+        console.error('마커 적용 실패:', error);
+      }
+    }
+  }, [backtestMarkers]);
+
+  // 마커가 변경될 때 차트에 적용
+  useEffect(() => {
+    applyMarkersToChart();
+  }, [applyMarkersToChart, backtestMarkers]);
+
+  // handleBacktestChartReady 함수 수정
+  const handleBacktestChartReady = useCallback((
+    chart: IChartApi,
+    candleSeries: ISeriesApi<"Candlestick">,
+    volumeSeries: ISeriesApi<"Histogram">
+  ) => {
+    if (!isDataImported || !importedData.length) return;
+    
+    // 캔들스틱 데이터 설정
+    candleSeries.setData(importedData);
+    
+    // 볼륨 데이터 설정
+    const volumeData = importedData.map((d) => ({
+      time: d.time,
+      value: d.volume || 0,
+      color: d.close >= d.open ? 'rgba(0, 150, 136, 0.5)' : 'rgba(255, 82, 82, 0.5)'
+    }));
+    volumeSeries.setData(volumeData);
+    
+    // 백테스트 마커 적용
+    updateBacktestMarkers();
+    
+    // 리사이즈 및 설정
+    chart.applyOptions({
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+      }
+    });
+    
+    setTimeout(() => {
+      chart.timeScale().fitContent();
+    }, 0);
+    
+  }, [isDataImported, importedData, updateBacktestMarkers]);
 
   const loadMASettings = () => {
     if (typeof window !== 'undefined') {
@@ -710,6 +752,13 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
   };
 
+  const handleResetTradeState = () => {
+    resetTradeState();
+    console.log('거래 상태가 초기화되었습니다.');
+    // 필요하다면 알림 표시
+    alert('거래 상태가 초기화되었습니다.');
+  };
+
   return (
     <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
       <TradingStrategyHover 
@@ -726,6 +775,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
               handleDateRangeChange={(date) => setDateRange(prev => ({ ...prev, startDate: date }))}
               handleEndDateChange={(date) => setDateRange(prev => ({ ...prev, endDate: date }))}
               progress={progress}
+              handleResetTradeState={handleResetTradeState}
             />
           </div>
           
