@@ -90,6 +90,18 @@ interface ExtendedMetadata {
   lowerBand?: number;
   isAbove360MA?: boolean;
   isAbove900MA?: boolean;
+  ma120UpCount?: number;
+  ma240UpCount?: number;
+  isMA120240Upward?: boolean;
+  isMA900Upward?: boolean;
+  isAbove120?: boolean;
+  isAbove240?: boolean;
+  ma120DownCount?: number;
+  ma240DownCount?: number;
+  isMA120240Downward?: boolean;
+  isMA900Downward?: boolean;
+  isBelow120?: boolean;
+  isBelow240?: boolean;
 }
 
 export type TradeSignal = {
@@ -287,21 +299,61 @@ const bollingerStrategy: TradingStrategy = {
       MA900: ma900Slope.toFixed(4) + '%'
     });
     console.log('매수 조건:', {
+      '체크 시간': new Date().toLocaleString('ko-KR', {
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }),
       'MA120 상향 지속 봉수': ma120UpCount + '봉',
       'MA240 상향 지속 봉수': ma240UpCount + '봉',
       'MA120/240 상향(10봉)': isMA120240Upward,
       'MA900 상향': isMA900Upward,
       'MA60이 MA120 위': isAbove120,
       'MA60이 MA240 위': isAbove240
+
     });
 
     // 매수 시그널 생성
     if (isMA120240Upward && isAbove120 && isAbove240 && isMA900Upward) {
-      console.log('✅ 매수 신호 발생!');
+      console.log('\n=== 매수 조건 충족 여부 ===');
+      console.log({
+        '체크 시간': new Date().toLocaleString('ko-KR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }),
+        'MA120/240 상향(10봉)': isMA120240Upward ? '✅' : '❌',
+        'MA60이 MA120 위': isAbove120 ? '✅' : '❌',
+        'MA60이 MA240 위': isAbove240 ? '✅' : '❌',
+        'MA900 상향': isMA900Upward ? '✅' : '❌',
+        '최종 판정': '✅ 매수 신호 발생!'
+      });
       return 'long';
     }
     
-    console.log('❌ 매수 조건 불충족');
+    console.log('\n=== 매수 조건 충족 여부 ===');
+    console.log({
+      '체크 시간': new Date().toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }),
+      'MA120/240 상향(10봉)': isMA120240Upward ? '✅' : '❌',
+      'MA60이 MA120 위': isAbove120 ? '✅' : '❌',
+      'MA60이 MA240 위': isAbove240 ? '✅' : '❌',
+      'MA900 상향': isMA900Upward ? '✅' : '❌',
+      '최종 판정': '❌ 매수 조건 불충족'
+    });
     return null;
   },
   
@@ -379,6 +431,13 @@ const bollingerStrategy: TradingStrategy = {
       MA900: ma900Slope.toFixed(4) + '%'
     });
     console.log('매도 조건:', {
+      '체크 시간': new Date().toLocaleString('ko-KR', {
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }),
       'MA120 하향 지속 봉수': ma120DownCount + '봉',
       'MA240 하향 지속 봉수': ma240DownCount + '봉',
       'MA120/240 하향(10봉)': isMA120240Downward,
@@ -389,11 +448,43 @@ const bollingerStrategy: TradingStrategy = {
 
     // 매도 시그널 생성
     if (isMA120240Downward && isBelow120 && isBelow240 && isMA900Downward) {
-      console.log('✅ 매도 신호 발생!');
+      console.log('\n=== 매도 조건 충족 여부 ===');
+      console.log({
+        '체크 시간': new Date().toLocaleString('ko-KR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }),
+        'MA120/240 하향(10봉)': isMA120240Downward ? '✅' : '❌',
+        'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
+        'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
+        'MA900 하향': isMA900Downward ? '✅' : '❌',
+        '최종 판정': '✅ 매도 신호 발생!'
+      });
       return true;
     }
 
-    console.log('❌ 매도 조건 불충족');
+    console.log('\n=== 매도 조건 충족 여부 ===');
+    console.log({
+      '체크 시간': new Date().toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }),
+      'MA120/240 하향(10봉)': isMA120240Downward ? '✅' : '❌',
+      'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
+      'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
+      'MA900 하향': isMA900Downward ? '✅' : '❌',
+      '최종 판정': '❌ 매도 조건 불충족'
+    });
     return false;
   },
   
@@ -434,6 +525,23 @@ const bollingerStrategy: TradingStrategy = {
     for (let i = 360; i < data.length; i++) {
       // 현재 포지션이 없는 경우에만 매수 신호 확인
       if (currentPosition === null) {
+        // 매수 조건 검사 전 로그 출력
+        console.log('\n=== 매수 조건 검사 시작 ===');
+        console.log({
+          '체크 시간': new Date().toLocaleString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          }),
+          '현재 포지션': currentPosition === null ? '없음' : currentPosition,
+          '마지막 거래 유형': lastTradeType === 'bid' ? '매수' : 
+                           lastTradeType === 'ask' ? '매도' : '없음'
+        });
+        
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'long') {
@@ -445,7 +553,15 @@ const bollingerStrategy: TradingStrategy = {
             price: data[i].close,
             strategy: 'BOLLINGER',
             reason: '매수 조건 충족',
-            metadata: self.calculateIndicators?.(data, i)
+            metadata: {
+              ...self.calculateIndicators?.(data, i),
+              ma120UpCount: self.calculateIndicators?.(data, i)?.ma120UpCount,
+              ma240UpCount: self.calculateIndicators?.(data, i)?.ma240UpCount,
+              isMA120240Upward: self.calculateIndicators?.(data, i)?.isMA120240Upward,
+              isMA900Upward: self.calculateIndicators?.(data, i)?.isMA900Upward,
+              isAbove120: self.calculateIndicators?.(data, i)?.isAbove120,
+              isAbove240: self.calculateIndicators?.(data, i)?.isAbove240
+            }
           });
           currentPosition = 'long';
           lastTradeId = tradeId;
@@ -459,13 +575,52 @@ const bollingerStrategy: TradingStrategy = {
           
           console.log('✅ 매수 신호 생성:', {
             시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
-            가격: data[i].close,
-            포지션: currentPosition
+            가격: data[i].close.toLocaleString('ko-KR') + '원',
+            포지션: currentPosition,
+            '거래 ID': tradeId
+          });
+          
+          // 매수 조건 상세 정보 로그
+          const indicators = self.calculateIndicators?.(data, i);
+          console.log('매수 조건 상세:', {
+            'MA120 상향 지속 봉수': indicators?.ma120UpCount + '봉',
+            'MA240 상향 지속 봉수': indicators?.ma240UpCount + '봉',
+            'MA120/240 상향(10봉)': indicators?.isMA120240Upward ? '✅' : '❌',
+            'MA900 상향': indicators?.isMA900Upward ? '✅' : '❌',
+            'MA60이 MA120 위': indicators?.isAbove120 ? '✅' : '❌',
+            'MA60이 MA240 위': indicators?.isAbove240 ? '✅' : '❌',
+            '체크 시간': new Date().toLocaleString('ko-KR', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false
+            })
           });
         }
       } 
       // 현재 롱 포지션인 경우에만 매도 신호 확인
       else if (currentPosition === 'long' && lastTradeId) {
+        // 매도 조건 검사 전 로그 출력
+        console.log('\n=== 매도 조건 검사 시작 ===');
+        console.log({
+          '체크 시간': new Date().toLocaleString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          }),
+          '현재 포지션': currentPosition,
+          '마지막 거래 유형': lastTradeType === 'bid' ? '매수' : 
+                           lastTradeType === 'ask' ? '매도' : '없음',
+          '마지막 거래 ID': lastTradeId
+        });
+        
         const entrySignalIndex = signals.findIndex(signal => signal.id === lastTradeId);
         
         if (entrySignalIndex >= 0) {
@@ -473,18 +628,25 @@ const bollingerStrategy: TradingStrategy = {
           const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
           
           if (shouldExit) {
+            const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             signals.push({
-              id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              id: exitTradeId,
               time: data[i].time as number,
               position: 'short',
               price: data[i].close,
               strategy: 'BOLLINGER',
               reason: '매도 조건 충족',
-              relatedTradeId: lastTradeId,
-              metadata: self.calculateIndicators?.(data, i)
+              metadata: {
+                ...self.calculateIndicators?.(data, i),
+                ma120DownCount: self.calculateIndicators?.(data, i)?.ma120DownCount,
+                ma240DownCount: self.calculateIndicators?.(data, i)?.ma240DownCount,
+                isMA120240Downward: self.calculateIndicators?.(data, i)?.isMA120240Downward,
+                isMA900Downward: self.calculateIndicators?.(data, i)?.isMA900Downward,
+                isBelow120: self.calculateIndicators?.(data, i)?.isBelow120,
+                isBelow240: self.calculateIndicators?.(data, i)?.isBelow240
+              },
+              relatedTradeId: lastTradeId
             });
-            currentPosition = null;
-            lastTradeId = null;
             
             // 매도 신호 생성 시 tradeState 업데이트
             store.updateTradeState({
@@ -495,8 +657,36 @@ const bollingerStrategy: TradingStrategy = {
             
             console.log('✅ 매도 신호 생성:', {
               시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
-              가격: data[i].close
+              가격: data[i].close.toLocaleString('ko-KR') + '원',
+              '이전 포지션': currentPosition,
+              '매수가': entryPrice.toLocaleString('ko-KR') + '원',
+              '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
+              '거래 ID': exitTradeId,
+              '관련 매수 ID': lastTradeId
             });
+            
+            // 매도 조건 상세 정보 로그
+            const indicators = self.calculateIndicators?.(data, i);
+            console.log('매도 조건 상세:', {
+              'MA120 하향 지속 봉수': indicators?.ma120DownCount + '봉',
+              'MA240 하향 지속 봉수': indicators?.ma240DownCount + '봉',
+              'MA120/240 하향(10봉)': indicators?.isMA120240Downward ? '✅' : '❌',
+              'MA900 하향': indicators?.isMA900Downward ? '✅' : '❌',
+              'MA60이 MA120 아래': indicators?.isBelow120 ? '✅' : '❌',
+              'MA60이 MA240 아래': indicators?.isBelow240 ? '✅' : '❌',
+              '체크 시간': new Date().toLocaleString('ko-KR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+              })
+            });
+            
+            currentPosition = null;
+            lastTradeId = null;
           }
         }
       }
@@ -1379,10 +1569,38 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
     const newState = { ...state.tradeState, ...update };
     
     // 거래 상태 변경 시 로그 추가
-    console.log('거래 상태 업데이트:', {
-      이전상태: state.tradeState,
-      새상태: newState
-    });
+    if (update.lastTradeType !== undefined) {
+      const lastTradeTime = update.statusChangeTime || new Date().toISOString();
+      const formattedTime = new Date(lastTradeTime).toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+
+      console.log('\n=== 거래 상태 업데이트 ===');
+      console.log('포지션 변경:', {
+        '이전 포지션': state.tradeState.lastTradeType === 'bid' ? '매수' : 
+                      state.tradeState.lastTradeType === 'ask' ? '매도' : '대기',
+        '새 포지션': update.lastTradeType === 'bid' ? '매수' : 
+                    update.lastTradeType === 'ask' ? '매도' : '대기',
+        '마지막 거래 시간': formattedTime
+      });
+      console.log('거래 상태:', {
+        '거래중': newState.isTrading ? 'O' : 'X',
+        '이론적 포지션': newState.theoreticalPosition,
+        '첫 사이클 미스': newState.missedFirstCycle ? 'O' : 'X'
+      });
+      if (update.currentPrice) {
+        console.log('가격 정보:', {
+          '현재가': update.currentPrice.toLocaleString('ko-KR') + '원',
+          '거래 시간': formattedTime
+        });
+      }
+    }
     
     // localStorage에 거래 상태 저장
     if (typeof window !== 'undefined') {
