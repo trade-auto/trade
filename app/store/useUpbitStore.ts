@@ -222,19 +222,20 @@ const bollingerStrategy: TradingStrategy = {
 
     if (lastTradeType === 'bid') {
       console.log('🚫 매수 제한 상세 정보:', {
-        현재시간: checkTime.toLocaleString('ko-KR'),
-        마지막거래: lastTradeType,
+        //현재시간: checkTime.toLocaleString('ko-KR'),
+        마지막거래: lastTradeType === null ? '없음' : lastTradeType === 'bid' ? '매수' : '매도',
         마지막거래시간: lastTradeTime.toLocaleString('ko-KR'),
         경과시간: `${timeDiffMinutes.toFixed(2)}분`,
-        거래상태: {
-          마지막거래유형: store.tradeState.lastTradeType,
-          상태변경시간: store.tradeState.statusChangeTime,
-          현재가격: store.tradeState.currentPrice,
-          거래시작시간: store.tradeState.actionStartTime,
-          거래중여부: store.tradeState.isTrading,
-          이론적포지션: store.tradeState.theoreticalPosition,
-          첫사이클미스: store.tradeState.missedFirstCycle
-        }
+      //  거래상태: {
+         // 마지막거래유형: store.tradeState.lastTradeType === 'ask' ? '매도' : '매수',
+         // 상태변경시간: store.tradeState.statusChangeTime,
+          현재가격: store.tradeState.currentPrice.toLocaleString('ko-KR') + '원',
+          거래시작시간: store.tradeState.actionStartTime ? new Date(store.tradeState.actionStartTime).toLocaleString('ko-KR') : '없음',
+          거래중여부: store.tradeState.isTrading ? '거래중' : '거래중지',
+          이론적포지션: store.tradeState.theoreticalPosition === 'bid' ? '매수' : 
+                      store.tradeState.theoreticalPosition === 'ask' ? '매도' : '대기',
+          첫사이클미스: store.tradeState.missedFirstCycle ? '예' : '아니오'
+       // }
       });
       
       // 매수 제한 마크 업데이트
@@ -1557,17 +1558,62 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
     console.log('새로운 거래 추가:', {
       거래ID: trade.id,
       시간: new Date(trade.entryTime).toLocaleString('ko-KR'),
-      유형: trade.type
+      진입가격: trade.entryPrice.toLocaleString('ko-KR') + '원',
+      유형: trade.type,
+      상태: trade.status
     });
+    
+    // 거래 상태도 함께 업데이트
+    if (trade.type === 'long' && trade.status === 'open') {
+      set((state) => ({
+        tradeState: {
+          ...state.tradeState,
+          lastTradeType: 'bid',
+          statusChangeTime: new Date().toISOString(),
+          currentPrice: trade.entryPrice,
+          isTrading: true
+        }
+      }));
+    } else if (trade.status === 'closed') {
+      set((state) => ({
+        tradeState: {
+          ...state.tradeState,
+          lastTradeType: 'ask',
+          statusChangeTime: new Date().toISOString(),
+          currentPrice: trade.exitPrice || 0,
+          isTrading: false
+        }
+      }));
+    }
     
     return { trades: newTrades };
   }),
 
-  updateTrade: (tradeId, updates) => set((state) => ({
-    trades: state.trades.map(trade =>
+  updateTrade: (tradeId, updates) => set((state) => {
+    const updatedTrades = state.trades.map(trade =>
       trade.id === tradeId ? { ...trade, ...updates } : trade
-    )
-  })),
+    );
+    
+    // localStorage에 업데이트된 거래 기록 저장
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('trades', JSON.stringify(updatedTrades));
+    }
+    
+    // 거래가 종료되면 거래 상태 업데이트
+    if (updates.status === 'closed') {
+      set((state) => ({
+        tradeState: {
+          ...state.tradeState,
+          lastTradeType: 'ask',
+          statusChangeTime: new Date().toISOString(),
+          currentPrice: updates.exitPrice || 0,
+          isTrading: false
+        }
+      }));
+    }
+    
+    return { trades: updatedTrades };
+  }),
 
   getOpenTrades: () => get().trades.filter(trade => trade.status === 'open'),
 
