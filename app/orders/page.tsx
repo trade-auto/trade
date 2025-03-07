@@ -24,10 +24,7 @@ const SYMBOLS = [
 
 export default function OrdersPage() {
   const [mode, setMode] = useState<'live' | 'test'>('test');
-  const [selectedSymbol, setSelectedSymbol] = useState(() => {
-    const saved = localStorage.getItem('selectedSymbol');
-    return saved || 'KRW-BTC';
-  });
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
   const openOrdersRef = useRef<{ loadOpenOrders?: () => void }>({});
   const [currentPrice, setCurrentPrice] = useState<number>(3850);
@@ -55,6 +52,14 @@ export default function OrdersPage() {
       mode: string;
     }) => Promise<void> 
   }>(null);
+
+  useEffect(() => {
+    // 클라이언트 사이드에서 localStorage 값을 불러옵니다
+    const saved = localStorage.getItem('selectedSymbol');
+    if (saved) {
+      setSelectedSymbol(saved);
+    }
+  }, []);
 
   // WebSocket을 통해 실시간 가격 업데이트
   useEffect(() => {

@@ -297,6 +297,8 @@ const bollingerStrategy: TradingStrategy = {
     // 60MA가 120MA와 240MA보다 위에 있는지 확인
     const isAbove120 = ma60 > ma120;
     const isAbove240 = ma60 > ma240;
+    // 60MA가 900MA보다 아래에 있는지 확인
+    const isBelow900 = ma60 < ma900;
 
     console.log('\n=== 매수 신호 분석 ===');
     console.log('현재 거래 상태:', {
@@ -322,11 +324,12 @@ const bollingerStrategy: TradingStrategy = {
       'MA120/240 상향(10봉)': isMA120240Upward,
       'MA900 상향': isMA900Upward,
       'MA60이 MA120 위': isAbove120,
-      'MA60이 MA240 위': isAbove240
+      'MA60이 MA240 위': isAbove240,
+      'MA60이 MA900 아래': isBelow900
     });
 
-    // 매수 시그널 생성
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) {
+    // 매수 시그널 생성 - 60MA가 900MA 아래에서 매수
+    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isBelow900) {
       console.log('\n=== 매수 조건 충족 여부 ===');
       console.log({
         '체크 시간': new Date().toLocaleString('ko-KR', {
@@ -341,7 +344,7 @@ const bollingerStrategy: TradingStrategy = {
         'MA120/240 상향(10봉)': isMA120240Upward ? '✅' : '❌',
         'MA60이 MA120 위': isAbove120 ? '✅' : '❌',
         'MA60이 MA240 위': isAbove240 ? '✅' : '❌',
-        'MA900 상향': isMA900Upward ? '✅' : '❌',
+        'MA60이 MA900 아래': isBelow900 ? '✅' : '❌',
         '최종 판정': '✅ 매수 신호 발생!'
       });
       return 'long';
@@ -650,26 +653,26 @@ let ma900UpCount = 0;
         const exitSignal = self.analyzeExit?.(data, i, currentPosition, data[i].close);
         
         if (exitSignal) {
-          signals.push({
+            signals.push({
             id: `${lastTradeId}-exit`,
-            time: data[i].time as number,
+              time: data[i].time as number,
             position: 'close',
-            price: data[i].close,
+              price: data[i].close,
             strategy: self.name,
             reason: '매도 신호 발생',
-            metadata: self.calculateIndicators?.(data, i)
-          });
-          currentPosition = null;
-          lastTradeId = null;
+              metadata: self.calculateIndicators?.(data, i)
+            });
+            currentPosition = null;
+            lastTradeId = null;
           hasGeneratedBuySignal = false;  // 매도 후 매수 신호 생성 가능하도록 리셋
-          
+            
           // 매도 신호 발생 시 tradeState 업데이트
-          store.updateTradeState({
-            lastTradeType: 'ask',
-            statusChangeTime: new Date().toISOString(),
-            isTrading: false
-          });
-          
+            store.updateTradeState({
+              lastTradeType: 'ask',
+              statusChangeTime: new Date().toISOString(),
+              isTrading: false
+            });
+            
           continue; // 매도 신호 발생 후 다음 캔들로 이동
         }
       }
@@ -934,7 +937,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
     
     if (crossAbove120 && crossAbove240 && isBelow900MA) {
       console.log('✅ 매수 시그널 발생: 60MA가 900MA 아래에서 120MA와 240MA를 동시에 상향돌파');
-      return 'long';
+        return 'long';
     }
     
     return null;

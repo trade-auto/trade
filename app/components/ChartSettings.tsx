@@ -1,4 +1,6 @@
-import React, { useCallback } from 'react';
+'use client';
+
+import React, { useCallback, useEffect, useState } from 'react';
 import { MASettings } from '../types/candlestick';
 
 interface ChartSettingsProps {
@@ -10,26 +12,53 @@ interface ChartSettingsProps {
 
 const STORAGE_KEY = 'chart_ma_settings';
 
+// 기본 MA 설정값 정의
+const DEFAULT_MA_SETTINGS: MASettings = {
+  sixty: false,
+  oneTwenty: false,
+  twoForty: false,
+  threeHundredSixty: false,
+  threeHundred: false,
+  nineHundred: false,
+  twelveHundred: false
+};
+
 const ChartSettings: React.FC<ChartSettingsProps> = ({
-  showMA,
+  showMA = DEFAULT_MA_SETTINGS,
   updateShowMA,
   chartHeight,
   handleHeightChange
 }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // MA 토글 함수
   const toggleMA = useCallback((key: keyof MASettings) => {
     const updatedShowMA = { ...showMA };
     updatedShowMA[key] = !updatedShowMA[key];
     
-    // 로컬 스토리지에 저장
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedShowMA));
-    } catch (error) {
-      console.error('MA 설정 저장 오류:', error);
+    // 로컬 스토리지에 저장 (클라이언트 사이드에서만)
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedShowMA));
+      } catch (error) {
+        console.error('MA 설정 저장 오류:', error);
+      }
     }
     
     updateShowMA(updatedShowMA);
   }, [showMA, updateShowMA]);
+
+  // 실제 사용할 MA 설정 (showMA가 없을 경우 기본값 사용)
+  const currentShowMA = showMA || DEFAULT_MA_SETTINGS;
+
+  // 서버 사이드 렌더링 시에는 기본 UI를 반환
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <div className="mb-4 space-y-4">
@@ -40,45 +69,45 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => toggleMA('sixty')}
-              className={`px-2 py-1 rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${currentShowMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.sixty ? '✓ 60MA 보기' : '60MA 숨김'}
+              {currentShowMA.sixty ? '✓ 60MA 보기' : '60MA 숨김'}
             </button>
             <button
               onClick={() => toggleMA('oneTwenty')}
-              className={`px-2 py-1 rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${currentShowMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.oneTwenty ? '✓ 120MA 보기' : '120MA 숨김'}
+              {currentShowMA.oneTwenty ? '✓ 120MA 보기' : '120MA 숨김'}
             </button>
             <button
               onClick={() => toggleMA('twoForty')}
-              className={`px-2 py-1 rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${currentShowMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.twoForty ? '✓ 240MA 보기' : '240MA 숨김'}
+              {currentShowMA.twoForty ? '✓ 240MA 보기' : '240MA 숨김'}
             </button>
             <button
               onClick={() => toggleMA('threeHundredSixty')}
-              className={`px-2 py-1 rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${currentShowMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.threeHundredSixty ? '✓ 360MA 보기' : '360MA 숨김'}
+              {currentShowMA.threeHundredSixty ? '✓ 360MA 보기' : '360MA 숨김'}
             </button>
             <button
               onClick={() => toggleMA('threeHundred')}
-              className={`px-2 py-1 rounded ${showMA.threeHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${currentShowMA.threeHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.threeHundred ? '✓ 300MA 보기' : '300MA 숨김'}
+              {currentShowMA.threeHundred ? '✓ 300MA 보기' : '300MA 숨김'}
             </button>
             <button
               onClick={() => toggleMA('nineHundred')}
-              className={`px-2 py-1 rounded ${showMA.nineHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${currentShowMA.nineHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.nineHundred ? '✓ 900MA 보기' : '900MA 숨김'}
+              {currentShowMA.nineHundred ? '✓ 900MA 보기' : '900MA 숨김'}
             </button>
             <button
               onClick={() => toggleMA('twelveHundred')}
-              className={`px-2 py-1 rounded ${showMA.twelveHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
+              className={`px-2 py-1 rounded ${currentShowMA.twelveHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
             >
-              {showMA.twelveHundred ? '✓ 1200MA 보기' : '1200MA 숨김'}
+              {currentShowMA.twelveHundred ? '✓ 1200MA 보기' : '1200MA 숨김'}
             </button>
           </div>
         </div>

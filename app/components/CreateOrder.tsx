@@ -303,10 +303,6 @@ export const CreateOrder = forwardRef<
 
   // localStorage에서 주문 제한 설정을 가져오는 함수
   const getOrderLimits = () => {
-    const savedSettings = localStorage.getItem('orderLimitSettings');
-    if (savedSettings) {
-      return JSON.parse(savedSettings);
-    }
     return {
       minOrderPrice: 5000,
       maxOrderPrice: 1000000000
@@ -317,6 +313,12 @@ export const CreateOrder = forwardRef<
 
   // 주문 제한 설정이 변경될 때마다 업데이트
   useEffect(() => {
+    // 클라이언트 사이드에서 localStorage 값을 불러옵니다
+    const savedSettings = localStorage.getItem('orderLimitSettings');
+    if (savedSettings) {
+      setOrderLimits(JSON.parse(savedSettings));
+    }
+
     const handleStorageChange = (e: Event) => {
       const customEvent = e as CustomEvent;
       if (customEvent.detail) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CreateOrder } from '../components/CreateOrder';
 import { OrderLimitSettings } from '../components/OrderLimitSettings';
 import { NavigationHeader } from '../components/NavigationHeader';
@@ -16,12 +16,17 @@ const SYMBOLS = [
 
 export default function OrderPage() {
   const [mode, setMode] = useState<'live' | 'test'>('test');
-  const [selectedSymbol, setSelectedSymbol] = useState(() => {
-    const saved = localStorage.getItem('selectedSymbol');
-    return saved || 'KRW-BTC';
-  });
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
   const [currentPrice, setCurrentPrice] = useState(0);
   const [orderQuantity, setOrderQuantity] = useState(0);
+
+  useEffect(() => {
+    // 클라이언트 사이드에서 localStorage 값을 불러옵니다
+    const saved = localStorage.getItem('selectedSymbol');
+    if (saved) {
+      setSelectedSymbol(saved);
+    }
+  }, []);
 
   const handleSymbolChange = (symbol: string) => {
     setSelectedSymbol(symbol);
