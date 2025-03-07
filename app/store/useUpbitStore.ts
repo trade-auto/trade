@@ -809,8 +809,19 @@ let ma900UpCount = 0;
             
             // 매도 신호 생성 후 즉시 포지션과 거래 ID 초기화
             currentPosition = null;
+              // store 상태 업데이트
+  store.updateTradeState({
+    lastTradeType: 'ask',
+    statusChangeTime: new Date().toISOString(),
+    isTrading: false
+  });
+  
+  console.log('✅ 매도 후 상태 초기화 완료:', {
+    '현재 포지션': currentPosition,
+    '다음 매수 준비': '완료'
+  });
             lastTradeId = null;
-            break; // 현재 캔들에서 매도 신호를 생성한 후 다음 캔들로 이동
+            continue; // 현재 캔들에서 매도 신호를 생성한 후 다음 캔들로 이동
           }
         }
       }
