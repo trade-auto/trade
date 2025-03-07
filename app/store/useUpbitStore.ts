@@ -336,15 +336,42 @@ const bollingerStrategy: TradingStrategy = {
     const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
     const ma900Slope = ((ma900 - prevMa900) / prevMa900) * 100;
 
-    // MA 기울기 하향 조건
-    const isMA120240Downward = ma120Slope < 0 && ma240Slope < 0;
-    const isMA900Downward = ma900Slope < 0;
+    // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
+    let ma120DownCount = 0;
+    let ma240DownCount = 0;
+    let ma60DownCount = 0; // MA60 하향 지속 카운트 추가
+    let ma900DownCount = 0; // MA900 하향 지속 카운트 추가
 
-    // 60MA의 하방 관통 조건
-    const crossBelow120 = prevMa60 >= prevMa120 && ma60 < ma120;
-    const crossBelow240 = prevMa60 >= prevMa240 && ma60 < ma240;
+    for (let i = 0; i < 10; i++) {
+      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
+      const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
+      const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
+      const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
+      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
+      const prevMa60Check = data.slice(index - i - 61, index - i - 1).reduce((a, b) => a + b.close, 0) / 60;
+      const currentMa900 = data.slice(index - i - 900, index - i).reduce((a, b) => a + b.close, 0) / 900;
+      const prevMa900Check = data.slice(index - i - 901, index - i - 1).reduce((a, b) => a + b.close, 0) / 900;
+
+      if (currentMa120 < prevMa120Check) ma120DownCount++;
+      if (currentMa240 < prevMa240Check) ma240DownCount++;
+      if (currentMa60 < prevMa60Check) ma60DownCount++; // MA60 하향 지속 체크
+      if (currentMa900 < prevMa900Check) ma900DownCount++; // MA900 하향 지속 체크
+    }
+
+    // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
+    const isMA120240Downward = ma120DownCount >= 10 && ma240DownCount >= 10;
+    const isMA60Downward = ma60DownCount >= 10; // MA60 하향 지속 조건
+    const isMA900Downward = ma900DownCount >= 10; // MA900 하향 지속 조건
+
+    // 60MA가 120MA와 240MA보다 아래에 있는지 확인
+    const isBelow120 = ma60 < ma120;
+    const isBelow240 = ma60 < ma240;
 
     console.log('\n=== 매도 신호 분석 ===');
+    console.log('현재 거래 상태:', {
+      '마지막 거래 유형': lastTradeType,
+      '매도 가능 여부': lastTradeType === 'bid'
+    });
     console.log('MA 기울기:', {
       MA60: ma60Slope.toFixed(4) + '%',
       MA120: ma120Slope.toFixed(4) + '%',
@@ -352,15 +379,16 @@ const bollingerStrategy: TradingStrategy = {
       MA900: ma900Slope.toFixed(4) + '%'
     });
     console.log('매도 조건:', {
-      'MA120/240 하향': isMA120240Downward,
+      'MA120 하향 지속 봉수': ma120DownCount + '봉',
+      'MA240 하향 지속 봉수': ma240DownCount + '봉',
+      'MA120/240 하향(10봉)': isMA120240Downward,
       'MA900 하향': isMA900Downward,
-      'MA60이 MA120 하방관통': crossBelow120,
-      'MA60이 MA240 하방관통': crossBelow240,
-      '이전 거래가 매수임': lastTradeType === 'bid'
+      'MA60이 MA120 아래': isBelow120,
+      'MA60이 MA240 아래': isBelow240
     });
 
     // 매도 시그널 생성
-    if (isMA120240Downward && crossBelow120 && crossBelow240 && isMA900Downward) {
+    if (isMA120240Downward && isBelow120 && isBelow240 && isMA900Downward) {
       console.log('✅ 매도 신호 발생!');
       return true;
     }
