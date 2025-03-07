@@ -81,14 +81,30 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   
   // 설정 상태
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
-  const [showMA, setShowMA] = useState<MASettings>({
-    sixty: false,
-    oneTwenty: false,
-    twoForty: false,
-    threeHundredSixty: false,
-    threeHundred: false,
-    nineHundred: false,
-    twelveHundred: false
+  const [showMA, setShowMA] = useState<MASettings>(() => {
+    try {
+      const savedSettings = localStorage.getItem('chart_ma_settings');
+      return savedSettings ? JSON.parse(savedSettings) : {
+        sixty: false,
+        oneTwenty: false,
+        twoForty: false,
+        threeHundredSixty: false,
+        threeHundred: false,
+        nineHundred: false,
+        twelveHundred: false
+      };
+    } catch (error) {
+      console.error('MA 설정 로드 오류:', error);
+      return {
+        sixty: false,
+        oneTwenty: false,
+        twoForty: false,
+        threeHundredSixty: false,
+        threeHundred: false,
+        nineHundred: false,
+        twelveHundred: false
+      };
+    }
   });
   
   // CSV 상태

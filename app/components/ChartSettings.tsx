@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { MASettings } from '../types/candlestick';
 
 interface ChartSettingsProps {
@@ -8,6 +8,8 @@ interface ChartSettingsProps {
   handleHeightChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
+const STORAGE_KEY = 'chart_ma_settings';
+
 const ChartSettings: React.FC<ChartSettingsProps> = ({
   showMA,
   updateShowMA,
@@ -15,11 +17,19 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
   handleHeightChange
 }) => {
   // MA 토글 함수
-  const toggleMA = (key: keyof MASettings) => {
+  const toggleMA = useCallback((key: keyof MASettings) => {
     const updatedShowMA = { ...showMA };
     updatedShowMA[key] = !updatedShowMA[key];
+    
+    // 로컬 스토리지에 저장
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedShowMA));
+    } catch (error) {
+      console.error('MA 설정 저장 오류:', error);
+    }
+    
     updateShowMA(updatedShowMA);
-  };
+  }, [showMA, updateShowMA]);
 
   return (
     <div className="mb-4 space-y-4">

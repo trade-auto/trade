@@ -129,6 +129,25 @@ interface SeriesRefs {
   twelveHundredEMA: ISeriesApi<"Line"> | null;
 }
 
+// 로컬 스토리지 키 상수 정의
+const STORAGE_KEYS = {
+  MA_SETTINGS: 'chart_ma_settings',
+  SCALE_SETTINGS: 'chart_scale_settings'
+} as const;
+
+// 기본 스케일 설정
+const DEFAULT_SCALE_SETTINGS = {
+  rightPriceScale: {
+    scaleMargins: {
+      top: 0.1,
+      bottom: 0.2,
+    },
+    borderVisible: false,
+    mode: 1,
+    alignLabels: true,
+  }
+};
+
 const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isFullscreen,
   chartHeight,
@@ -167,23 +186,45 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     }
   }, [chartHeight, isFullscreen]);
 
+  // 저장된 설정 불러오기
+  const loadSavedSettings = useCallback(() => {
+    try {
+      const savedMASettings = localStorage.getItem(STORAGE_KEYS.MA_SETTINGS);
+      const savedScaleSettings = localStorage.getItem(STORAGE_KEYS.SCALE_SETTINGS);
+
+      return {
+        maSettings: savedMASettings ? JSON.parse(savedMASettings) : null,
+        scaleSettings: savedScaleSettings ? JSON.parse(savedScaleSettings) : DEFAULT_SCALE_SETTINGS
+      };
+    } catch (error) {
+      console.error('설정 로드 오류:', error);
+      return {
+        maSettings: null,
+        scaleSettings: DEFAULT_SCALE_SETTINGS
+      };
+    }
+  }, []);
+
+  // 설정 저장 함수
+  const saveSettings = useCallback((maSettings: any, scaleSettings: any) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.MA_SETTINGS, JSON.stringify(maSettings));
+      localStorage.setItem(STORAGE_KEYS.SCALE_SETTINGS, JSON.stringify(scaleSettings));
+    } catch (error) {
+      console.error('설정 저장 오류:', error);
+    }
+  }, []);
+
   const initializeChart = useCallback(() => {
     if (!container.current || chartRef.current) return;
     
     const clientWidth = container.current.clientWidth;
+    const { scaleSettings } = loadSavedSettings();
     
     // 차트 생성
     const chart = createChart(container.current, {
       ...getChartOptions(clientWidth, chartHeight, chartType),
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.2,
-        },
-        borderVisible: false,
-        mode: 1,  // 자동 스케일링 모드
-        alignLabels: true,
-      },
+      rightPriceScale: scaleSettings.rightPriceScale,
       overlayPriceScales: {
         borderVisible: false,
       },
@@ -260,6 +301,17 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       });
     });
 
+    // 저장된 MA 설정 적용
+    const { maSettings } = loadSavedSettings();
+    if (maSettings) {
+      Object.entries(maSettings).forEach(([key, visible]) => {
+        const seriesKey = `${key}EMA` as EMAKey;
+        if (seriesRefs.current[seriesKey]) {
+          seriesRefs.current[seriesKey]?.applyOptions({ visible: visible as boolean });
+        }
+      });
+    }
+
     // 차트 준비 완료 콜백
     onChartReady(
       chart,
@@ -318,6 +370,33 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       chartType
     ));
   }, [chartType, chartHeight, isFullscreen]);
+
+  // 차트 스케일 변경 시 저장
+  const handleScaleChange = useCallback(() => {
+    if (!chartRef.current) return;
+    
+    const currentScaleSettings = {
+      rightPriceScale: chartRef.current.priceScale('right').options()
+    };
+    
+    saveSettings(null, currentScaleSettings);
+  }, [saveSettings]);
+
+  // MA 가시성 변경 시 저장
+  const handleMAVisibilityChange = useCallback((maSettings: Record<string, boolean>) => {
+    saveSettings(maSettings, null);
+  }, [saveSettings]);
+
+  useEffect(() => {
+    if (chartRef.current) {
+      chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(handleScaleChange);
+    }
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(handleScaleChange);
+      }
+    };
+  }, [handleScaleChange]);
 
   return (
     <div
