@@ -1478,7 +1478,7 @@ const slopeFilterStrategy: TradingStrategy = {
   // 기존 분석 함수
   analyze(data) {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'long' | 'short' | null = null;
+    let currentPosition: 'long' | null = null;
     let lastTradeId: string | null = null;
     
     // 충분한 데이터가 있는지 확인
@@ -1491,8 +1491,8 @@ const slopeFilterStrategy: TradingStrategy = {
     
     // 각 봉마다 분석
     for (let i = minDataPoints; i < data.length; i++) {
-      // 현재 포지션이 없거나 숏인 경우, 진입 조건 확인
-      if (currentPosition === null || currentPosition === 'short') {
+      // 현재 포지션이 없는 경우에만 매수 신호 확인
+      if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'long') {
@@ -1508,6 +1508,12 @@ const slopeFilterStrategy: TradingStrategy = {
           });
           currentPosition = 'long';
           lastTradeId = tradeId;
+          console.log('✅ 매수 신호 생성 (SLOPE_FILTER):', {
+            시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+            가격: data[i].close.toLocaleString('ko-KR') + '원',
+            '현재 포지션': currentPosition,
+            '거래 ID': tradeId
+          });
         }
       } 
       // 현재 롱 포지션인 경우, 청산 조건 확인
@@ -1521,8 +1527,9 @@ const slopeFilterStrategy: TradingStrategy = {
           const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
           
           if (shouldExit) {
+            const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             signals.push({
-              id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              id: exitTradeId,
               time: data[i].time as number,
               position: 'close',
               price: data[i].close,
@@ -1531,8 +1538,18 @@ const slopeFilterStrategy: TradingStrategy = {
               relatedTradeId: lastTradeId || undefined,
               metadata: self.calculateIndicators?.(data, i)
             });
-            currentPosition = 'short';
+            currentPosition = null; // 'short'에서 null로 변경
             lastTradeId = null;
+            console.log('✅ 매도 신호 생성 (SLOPE_FILTER):', {
+              시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+              가격: data[i].close.toLocaleString('ko-KR') + '원',
+              '이전 포지션': 'long',
+              '매수가': entryPrice.toLocaleString('ko-KR') + '원',
+              '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
+              '거래 ID': exitTradeId,
+              '관련 매수 ID': lastTradeId,
+              '다음 매수 준비': '완료'
+            });
           }
         }
       }
