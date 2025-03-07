@@ -211,41 +211,18 @@ const bollingerStrategy: TradingStrategy = {
   
   // 진입 조건 분석
   analyzeEntry(data, index) {
-    if (index < 360) return null; // 충분한 데이터 확보
+    if (index < 360) return null;
 
     const store = useUpbitStore.getState();
-    const lastTradeType = store.tradeState.lastTradeType;
-    const statusChangeTime = store.tradeState.statusChangeTime;
-    const checkTime = new Date();
-    const lastTradeTime = new Date(statusChangeTime);
-    const timeDiffMinutes = (checkTime.getTime() - lastTradeTime.getTime()) / (1000 * 60);
-
-    if (lastTradeType === 'bid') {
-      console.log('🚫 매수 제한 상세 정보:', {
-        //현재시간: checkTime.toLocaleString('ko-KR'),
-        마지막거래: lastTradeType === null ? '없음' : lastTradeType === 'bid' ? '매수' : '매도',
-        마지막거래시간: lastTradeTime.toLocaleString('ko-KR'),
-        경과시간: `${timeDiffMinutes.toFixed(2)}분`,
-      //  거래상태: {
-         // 마지막거래유형: store.tradeState.lastTradeType === 'ask' ? '매도' : '매수',
-         // 상태변경시간: store.tradeState.statusChangeTime,
-          현재가격: store.tradeState.currentPrice.toLocaleString('ko-KR') + '원',
-          거래시작시간: store.tradeState.actionStartTime ? new Date(store.tradeState.actionStartTime).toLocaleString('ko-KR') : '없음',
-          거래중여부: store.tradeState.isTrading ? '거래중' : '거래중지',
-          이론적포지션: store.tradeState.theoreticalPosition === 'bid' ? '매수' : 
-                      store.tradeState.theoreticalPosition === 'ask' ? '매도' : '대기',
-          첫사이클미스: store.tradeState.missedFirstCycle ? '예' : '아니오'
-       // }
+    const { lastTradeType, isTrading } = store.tradeState;
+    
+    // 이미 매수 포지션이 있거나 거래 중인 경우 매수 신호를 발생시키지 않음
+    if (lastTradeType === 'bid' || isTrading) {
+      console.log('❌ 매수 제한:', {
+        '이유': lastTradeType === 'bid' ? '이미 매수 포지션 존재' : '거래 진행 중',
+        '현재 거래 상태': isTrading ? '거래중' : '대기중',
+        '마지막 거래 유형': lastTradeType
       });
-      
-      // 매수 제한 마크 업데이트
-      store.updateTradeState({
-        buyLimitMark: {
-          time: checkTime.toISOString(),
-          reason: '이전 매수 포지션 미청산'
-        }
-      });
-      
       return null;
     }
     
@@ -253,119 +230,64 @@ const bollingerStrategy: TradingStrategy = {
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
+    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
     
     // 이전 MA 계산
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
     const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
+    const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
 
     // MA 기울기 계산
     const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
     const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
-    const ma360SlopeRelative = ((ma360 - prevMa360) / prevMa360) * 100;
+    const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
+    const ma900Slope = ((ma900 - prevMa900) / prevMa900) * 100;
 
-    // MA 기울기 계산 (절대값 - 각도)
-    const ma360Points = [];
+    // MA120/240 상향 지속 기간 체크 (10봉 기준)
+    let ma120UpCount = 0;
+    let ma240UpCount = 0;
     for (let i = 0; i < 10; i++) {
-        const pointIndex = index - 9 + i;
-        const ma = data.slice(pointIndex - 360, pointIndex).reduce((a, b) => a + b.close, 0) / 360;
-        ma360Points.push({ x: i, y: ma });
+      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
+      const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
+      const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
+      const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
+      
+      if (currentMa120 > prevMa120Check) ma120UpCount++;
+      if (currentMa240 > prevMa240Check) ma240UpCount++;
     }
-    const ma360SlopeAbsolute = Math.atan2(
-        ma360Points[ma360Points.length - 1].y - ma360Points[0].y,
-        ma360Points[ma360Points.length - 1].x - ma360Points[0].x
-    ) * (180 / Math.PI);
 
-    // 30초 전 MA 계산
-    const prevMa60_30s = data.slice(index - 60 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120_30s = data.slice(index - 120 - 30, index - 30).reduce((a, b) => a + b.close, 0) / 120;
+    // MA 기울기 상향 조건 (10봉 연속 상향인 경우)
+    const isMA120240Upward = ma120UpCount >= 10 && ma240UpCount >= 10;
+    const isMA900Upward = ma900Slope > 0;
 
-    // 이격도 계산
-    const deviation = ((ma60 / ma120) * 100) - 100;
-    const prevDeviation = ((prevMa60_30s / prevMa120_30s) * 100) - 100;
-
-    // 현재 시간 가져오기 (초 단위를 밀리초로 변환)
-    const currentTime = new Date((data[index].time as number) * 1000);
-    const formattedTime = currentTime.toLocaleString('ko-KR', { 
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
+    // 60MA가 120MA와 240MA보다 위에 있는지 확인
+    const isAbove120 = ma60 > ma120;
+    const isAbove240 = ma60 > ma240;
 
     console.log('\n=== 매수 신호 분석 ===');
-    console.log('분석 시간:', formattedTime);
-    console.log('현재가:', data[index].close);
-    console.log('MA 값:', {
-      MA60: ma60.toFixed(2),
-      MA120: ma120.toFixed(2),
-      MA240: ma240.toFixed(2),
-      MA360: ma360.toFixed(2)
+    console.log('현재 거래 상태:', {
+      '마지막 거래 유형': lastTradeType,
+      '매수 가능 여부': lastTradeType === 'ask' || lastTradeType === null
     });
     console.log('MA 기울기:', {
       MA60: ma60Slope.toFixed(4) + '%',
       MA120: ma120Slope.toFixed(4) + '%',
-      MA360: {
-        상대값: ma360SlopeRelative.toFixed(4) + '%',
-        절대각도: ma360SlopeAbsolute.toFixed(4) + '°'
-      }
+      MA240: ma240Slope.toFixed(4) + '%',
+      MA900: ma900Slope.toFixed(4) + '%'
     });
-    console.log('이격도:', {
-      현재: deviation.toFixed(4) + '%',
-      이전: prevDeviation.toFixed(4) + '%'
-    });
-
-    // 360MA 횡보 상태 체크 (상대값과 절대값 모두 고려)
-    if (  Math.abs(ma360SlopeAbsolute) <= 0.5) {
-      console.log('🚫 매수 제한: 360MA 횡보 상태', {
-        상대기울기: ma360SlopeRelative.toFixed(4) + '%',
-        절대각도: ma360SlopeAbsolute.toFixed(4) + '°'
-      });
-      return null;
-    }
-
-    // 매수 조건 체크 - 기준도 함께 조정
-    const isRapidSlopeChange = ma60Slope < -0.2 && ma60Slope > 0.2; // 급하강에서 급상승 기준 조정
-    const isBothMADownward = ma60Slope < -0.1 && ma120Slope < -0.1; // 하락 기준 조정
-    const strongBuyCross = ma60 > ma120 && prevMa60 <= prevMa120 && ma60Slope > 0.2; // 상방 관통 기준 조정
-    const gapNarrowing = deviation < prevDeviation; // 이격도 축소
-    const buyCrossOrAbove = ma60 > ma120; // 60MA가 120MA 위에 있음
-    const buySlope = ma60Slope > 0; // 60MA 상승 기울기
-    const isFullProperAlignment = ma60 > ma120 && ma120 > ma240; // 완전 정배열
-    const isReverseAlignment = ma60 < ma120 && ma120 < ma240; // 역배열
-
     console.log('매수 조건:', {
-      급격한기울기변화: isRapidSlopeChange,
-      MA하락중: isBothMADownward,
-      강한상방돌파: strongBuyCross,
-      이격도축소: gapNarrowing,
-      MA60이상단: buyCrossOrAbove,
-      MA60상승: buySlope,
-      정배열: isFullProperAlignment,
-      역배열: isReverseAlignment
+      'MA120 상향 지속 봉수': ma120UpCount + '봉',
+      'MA240 상향 지속 봉수': ma240UpCount + '봉',
+      'MA120/240 상향(10봉)': isMA120240Upward,
+      'MA900 상향': isMA900Upward,
+      'MA60이 MA120 위': isAbove120,
+      'MA60이 MA240 위': isAbove240
     });
-
-    // 연속 거래 간격 체크
-    // const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    // const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
-    // if (timeDiff < 30) {
-    //   console.log('🚫 매수 제한: 최소 거래 간격 미충족');
-    //   return null;
-    // }
 
     // 매수 시그널 생성
-    if (!isBothMADownward && (
-      isRapidSlopeChange ||
-      (strongBuyCross && !isReverseAlignment) ||
-      (gapNarrowing && buyCrossOrAbove && buySlope && !isReverseAlignment) ||
-      (isFullProperAlignment && buyCrossOrAbove)
-    )) {
-      console.log('✅ 매수 신호 발생!', formattedTime);
+    if (isMA120240Upward && isAbove120 && isAbove240 && isMA900Upward) {
+      console.log('✅ 매수 신호 발생!');
       return 'long';
     }
     
@@ -379,104 +301,57 @@ const bollingerStrategy: TradingStrategy = {
 
     const store = useUpbitStore.getState();
     const lastTradeType = store.tradeState.lastTradeType;
-    const statusChangeTime = store.tradeState.statusChangeTime;
 
-    // 현재 시간 가져오기 (초 단위를 밀리초로 변환)
-    const currentTime = new Date((data[index].time as number) * 1000);
-    const formattedTime = currentTime.toLocaleString('ko-KR', { 
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-
-    console.log('\n=== 매도 신호 분석 ===');
-    console.log('분석 시간:', formattedTime);
-    console.log('마지막 거래 유형:', lastTradeType);
-    console.log('마지막 거래 시간:', new Date(statusChangeTime).toLocaleString('ko-KR'));
-
-    // lastTradeType이 null이고 position이 'long'인 경우에는 매수 상태로 간주
-    if (lastTradeType === null && position === 'long') {
-        console.log('포지션이 롱인데 마지막 거래가 null입니다. 매수 상태로 간주합니다.');
-        store.updateTradeState({
-            lastTradeType: 'bid',
-            statusChangeTime: currentTime.toISOString()
-        });
-        return false;
-    }
-
+    // 마지막 거래가 매수가 아니면 매도하지 않음
     if (lastTradeType !== 'bid') {
-        console.log('🚫 매도 제한: 마지막 거래가 매수가 아님 (현재:', lastTradeType, ')');
-        return false;
+      console.log('❌ 매도 제한: 이전 거래가 매수가 아님');
+      return false;
     }
 
     // MA 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
-
+    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
+    
     // 이전 MA 계산
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
+    const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
 
     // MA 기울기 계산
-    const ma60Slope = (ma60 - prevMa60) / prevMa60 * 100;
+    const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
+    const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
+    const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
+    const ma900Slope = ((ma900 - prevMa900) / prevMa900) * 100;
 
-    // 이격도 계산
-    const deviation = ((ma60 / ma120) * 100) - 100;
-    const prevDeviation = ((prevMa60 / prevMa120) * 100) - 100;
+    // MA 기울기 하향 조건
+    const isMA120240Downward = ma120Slope < 0 && ma240Slope < 0;
+    const isMA900Downward = ma900Slope < 0;
 
-    console.log('현재가:', data[index].close);
-    console.log('진입가:', entryPrice);
-    console.log('수익률:', ((data[index].close / entryPrice - 1) * 100).toFixed(2) + '%');
-    console.log('MA 값:', {
-      MA60: ma60.toFixed(2),
-      MA120: ma120.toFixed(2),
-      MA240: ma240.toFixed(2),
-      MA360: ma360.toFixed(2)
+    // 60MA의 하방 관통 조건
+    const crossBelow120 = prevMa60 >= prevMa120 && ma60 < ma120;
+    const crossBelow240 = prevMa60 >= prevMa240 && ma60 < ma240;
+
+    console.log('\n=== 매도 신호 분석 ===');
+    console.log('MA 기울기:', {
+      MA60: ma60Slope.toFixed(4) + '%',
+      MA120: ma120Slope.toFixed(4) + '%',
+      MA240: ma240Slope.toFixed(4) + '%',
+      MA900: ma900Slope.toFixed(4) + '%'
     });
-    console.log('MA60 기울기:', ma60Slope.toFixed(4) + '%');
-    console.log('이격도:', {
-      현재: deviation.toFixed(4) + '%',
-      이전: prevDeviation.toFixed(4) + '%'
-    });
-
-    // 매도 조건 체크
-    const gapNarrowing = deviation < prevDeviation; // 이격도 축소
-    const sellCrossOrBelow = ma60 < ma120; // 60MA가 120MA 아래에 있음
-    const sellSlope = ma60Slope < 0; // 60MA 하락 기울기
-    const isFullReverseAlignment = ma60 < ma120 && ma120 < ma240; // 완전 역배열
-
     console.log('매도 조건:', {
-      이격도축소: gapNarrowing,
-      MA60이하단: sellCrossOrBelow,
-      MA60하락: sellSlope,
-      역배열: isFullReverseAlignment
+      'MA120/240 하향': isMA120240Downward,
+      'MA900 하향': isMA900Downward,
+      'MA60이 MA120 하방관통': crossBelow120,
+      'MA60이 MA240 하방관통': crossBelow240,
+      '이전 거래가 매수임': lastTradeType === 'bid'
     });
 
-    // 360MA 위에 있는지 체크
-    if (data[index].close > ma360) {
-      console.log('🚫 매도 제한: 가격이 360MA 위에 있음');
-      return false;
-    }
-    
-    // 연속 거래 간격 체크
-    // const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    // const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
-    // if (timeDiff < 30) {
-    //   console.log('🚫 매도 제한: 최소 거래 간격 미충족 (현재 간격:', timeDiff.toFixed(1), '초)');
-    //   return false;
-    // }
-
-    const shouldSell = (gapNarrowing && sellCrossOrBelow && sellSlope) || 
-                      (isFullReverseAlignment && sellCrossOrBelow);
-    
-    if (shouldSell) {
-      console.log('✅ 매도 신호 발생!', formattedTime);
+    // 매도 시그널 생성
+    if (isMA120240Downward && crossBelow120 && crossBelow240 && isMA900Downward) {
+      console.log('✅ 매도 신호 발생!');
       return true;
     }
 
@@ -507,20 +382,18 @@ const bollingerStrategy: TradingStrategy = {
   // 기존 analyze 함수는 새로운 함수들을 활용
   analyze(data) {
     const signals: TradeSignal[] = [];
-    const shortPeriod = 30;
-    const longPeriod = 60;
     let currentPosition: 'long' | 'short' | null = null;
     let lastTradeId: string | null = null;
     
-    if (data.length < longPeriod) {
+    if (data.length < 360) {
       return signals;
     }
     
     const self = this; // this 컨텍스트 저장
 
-    for (let i = longPeriod; i < data.length; i++) {
-      // 현재 포지션이 없거나 숏인 경우, 진입 조건 확인
-      if (currentPosition === null || currentPosition === 'short') {
+    for (let i = 360; i < data.length; i++) {
+      // 현재 포지션이 없는 경우에만 매수 신호 확인
+      if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'long') {
@@ -531,16 +404,20 @@ const bollingerStrategy: TradingStrategy = {
             position: 'long',
             price: data[i].close,
             strategy: 'BOLLINGER',
-            reason: '단기 이동평균선이 장기 이동평균선을 상향 돌파',
+            reason: '매수 조건 충족',
             metadata: self.calculateIndicators?.(data, i)
           });
           currentPosition = 'long';
           lastTradeId = tradeId;
+          console.log('✅ 매수 신호 생성:', {
+            시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+            가격: data[i].close
+          });
         }
-      } else if (currentPosition === 'long') {
-        // 마지막 롱 진입 신호의 인덱스 찾기
-        const entrySignalIndex = signals.findIndex(signal => 
-          signal.id === lastTradeId && signal.position === 'long');
+      } 
+      // 현재 롱 포지션인 경우에만 매도 신호 확인
+      else if (currentPosition === 'long' && lastTradeId) {
+        const entrySignalIndex = signals.findIndex(signal => signal.id === lastTradeId);
         
         if (entrySignalIndex >= 0) {
           const entryPrice = signals[entrySignalIndex].price;
@@ -553,12 +430,16 @@ const bollingerStrategy: TradingStrategy = {
               position: 'short',
               price: data[i].close,
               strategy: 'BOLLINGER',
-              reason: '단기 이동평균선이 장기 이동평균선을 하향 돌파',
-              relatedTradeId: lastTradeId || undefined,
+              reason: '매도 조건 충족',
+              relatedTradeId: lastTradeId,
               metadata: self.calculateIndicators?.(data, i)
             });
-            currentPosition = 'short';
+            currentPosition = null; // 포지션 초기화하여 다음 매수 가능하도록 설정
             lastTradeId = null;
+            console.log('✅ 매도 신호 생성:', {
+              시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
+              가격: data[i].close
+            });
           }
         }
       }
@@ -1558,62 +1439,17 @@ export const useUpbitStore = create<UpbitStore>()((set, get) => ({
     console.log('새로운 거래 추가:', {
       거래ID: trade.id,
       시간: new Date(trade.entryTime).toLocaleString('ko-KR'),
-      진입가격: trade.entryPrice.toLocaleString('ko-KR') + '원',
-      유형: trade.type,
-      상태: trade.status
+      유형: trade.type
     });
-    
-    // 거래 상태도 함께 업데이트
-    if (trade.type === 'long' && trade.status === 'open') {
-      set((state) => ({
-        tradeState: {
-          ...state.tradeState,
-          lastTradeType: 'bid',
-          statusChangeTime: new Date().toISOString(),
-          currentPrice: trade.entryPrice,
-          isTrading: true
-        }
-      }));
-    } else if (trade.status === 'closed') {
-      set((state) => ({
-        tradeState: {
-          ...state.tradeState,
-          lastTradeType: 'ask',
-          statusChangeTime: new Date().toISOString(),
-          currentPrice: trade.exitPrice || 0,
-          isTrading: false
-        }
-      }));
-    }
     
     return { trades: newTrades };
   }),
 
-  updateTrade: (tradeId, updates) => set((state) => {
-    const updatedTrades = state.trades.map(trade =>
+  updateTrade: (tradeId, updates) => set((state) => ({
+    trades: state.trades.map(trade =>
       trade.id === tradeId ? { ...trade, ...updates } : trade
-    );
-    
-    // localStorage에 업데이트된 거래 기록 저장
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('trades', JSON.stringify(updatedTrades));
-    }
-    
-    // 거래가 종료되면 거래 상태 업데이트
-    if (updates.status === 'closed') {
-      set((state) => ({
-        tradeState: {
-          ...state.tradeState,
-          lastTradeType: 'ask',
-          statusChangeTime: new Date().toISOString(),
-          currentPrice: updates.exitPrice || 0,
-          isTrading: false
-        }
-      }));
-    }
-    
-    return { trades: updatedTrades };
-  }),
+    )
+  })),
 
   getOpenTrades: () => get().trades.filter(trade => trade.status === 'open'),
 
