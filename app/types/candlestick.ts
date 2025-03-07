@@ -122,6 +122,7 @@ export interface MASettings {
 }
 
 export interface TradeSignal {
+  id?: string;
   time: number;
   position: 'long' | 'short' | 'close';
   price: number;
@@ -133,4 +134,5 @@ export interface TradeSignal {
     ma120?: number;
     isAbove360MA?: boolean;
   };
+  relatedTradeId?: string;
 }

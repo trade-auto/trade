@@ -44,14 +44,40 @@ export const getInitialDateRange = (type: string): DateRange => {
 
 /// 마커 생성 함수
 export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[] => {
-  return signals.map(signal => ({
-    time: signal.time as Time,
-    position: signal.position === 'long' ? ('belowBar' as SeriesMarkerPosition) : ('aboveBar' as SeriesMarkerPosition),
-    color: signal.position === 'long' ? '#26a69a' : '#ef5350',
-    shape: signal.position === 'long' ? ('arrowUp' as SeriesMarkerShape) : ('arrowDown' as SeriesMarkerShape),
-    text: signal.position === 'long' ? 'buy' : 'sell',
-    size: 2
-  }));
+  return signals.map(signal => {
+    // 포지션에 따른 마커 설정
+    let position: SeriesMarkerPosition;
+    let color: string;
+    let shape: SeriesMarkerShape;
+    let text: string;
+    
+    if (signal.position === 'long') {
+      position = 'belowBar' as SeriesMarkerPosition;
+      color = '#26a69a'; // 녹색
+      shape = 'arrowUp' as SeriesMarkerShape;
+      text = 'buy';
+    } else if (signal.position === 'short' || signal.position === 'close') {
+      position = 'aboveBar' as SeriesMarkerPosition;
+      color = '#ef5350'; // 빨간색
+      shape = 'arrowDown' as SeriesMarkerShape;
+      text = 'sell';
+    } else {
+      // 기본값 설정
+      position = 'belowBar' as SeriesMarkerPosition;
+      color = '#888888'; // 회색
+      shape = 'circle' as SeriesMarkerShape;
+      text = signal.position;
+    }
+    
+    return {
+      time: signal.time as Time,
+      position,
+      color,
+      shape,
+      text,
+      size: 2
+    };
+  });
 };
 
 // EMA 계산 함수
