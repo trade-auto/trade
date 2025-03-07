@@ -25,6 +25,8 @@ interface ChartContainerProps {
   symbol: string;
   chartType: string;
   markers: SeriesMarker<Time>[];
+  isAutoUpdate?: boolean;
+  isRealtimeAPIEnabled?: boolean;
   onChartReady: (
     chartApi: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
@@ -124,9 +126,6 @@ interface SeriesRefs {
   nineHundredEMA: ISeriesApi<"Line"> | null;
 }
 
-
-
-
 const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isFullscreen,
   chartHeight,
@@ -134,6 +133,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   symbol,
   chartType,
   markers,
+  isAutoUpdate,
+  isRealtimeAPIEnabled,
   onChartReady,
 }) => {
   const container = useRef<HTMLDivElement>(null);
@@ -152,8 +153,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   });
   const { tradeStrategy } = useUpbitStore();
 
-
-  
   const handleResize = useCallback(() => {
     if (container.current && chartRef.current) {
       const { clientWidth } = container.current;
@@ -166,10 +165,30 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
 
   const initializeChart = useCallback(() => {
     if (!container.current || chartRef.current) return;
-
-    const { clientWidth } = container.current;
+    
+    const clientWidth = container.current.clientWidth;
+    
+    // 차트 생성
     const chart = createChart(container.current, getChartOptions(clientWidth, chartHeight, chartType));
     chartRef.current = chart;
+    
+    // 실시간 차트 설정
+    if (chartType.startsWith('seconds/')) {
+      chart.applyOptions({
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: true,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            // 초 단위 차트는 시/분/초 표시
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const seconds = date.getSeconds().toString().padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+          }
+        }
+      });
+    }
 
     // 시리즈 생성
     seriesRefs.current.candle = chart.addSeries(CandlestickSeries, {
@@ -179,9 +198,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       wickUpColor: CHART_COLORS.upColor,
       wickDownColor: CHART_COLORS.downColor,
     });
-
-    // 마커 플러그인 초기화
-    markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
 
     seriesRefs.current.volume = chart.addSeries(HistogramSeries, {
       color: CHART_COLORS.upColor,
@@ -259,29 +275,49 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   }, [chartType, chartHeight, isFullscreen]);
 
   return (
-    <div className="chart-container">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-white text-lg font-bold">
-          {symbol} {chartType} 차트
-        </h2>
+    <div
+      ref={chartContainerRef}
+      className="relative bg-gray-900 rounded-lg overflow-hidden"
+    >
+      {/* 차트 정보 및 토글 버튼 */}
+      <div className="absolute top-2 left-2 right-2 z-10 flex justify-between items-center">
+        <div className="bg-gray-800 bg-opacity-75 px-3 py-1 rounded-lg flex items-center">
+          <span className="text-white font-bold mr-2">{symbol}</span>
+          <span className="text-gray-300 text-sm">{chartType}</span>
+          {isRealtimeAPIEnabled && (
+            <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full animate-pulse">
+              실시간
+            </span>
+          )}
+          {isAutoUpdate && !isRealtimeAPIEnabled && (
+            <span className="ml-2 px-2 py-0.5 bg-green-600 text-white text-xs rounded-full">
+              자동
+            </span>
+          )}
+        </div>
         <button
           onClick={toggleFullscreen}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded flex items-center"
+          className="bg-gray-700 hover:bg-gray-600 text-white p-1 rounded"
+          aria-label="Toggle fullscreen"
         >
-          {isFullscreen ? "⊖ 축소" : "⊕ 전체화면"}
+          {isFullscreen ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          )}
         </button>
       </div>
-
-      <div 
-        ref={chartContainerRef}
-        className={`relative ${isFullscreen ? 'bg-[#1e1e1e] p-4' : ''}`}
-      >
-        <div 
-          ref={container} 
-          className="w-full chart-wrapper"
-          style={{ height: isFullscreen ? '90vh' : `${chartHeight}px` }}
-        />
-      </div>
+      
+      {/* 차트 컨테이너 */}
+      <div
+        ref={container}
+        className="w-full"
+        style={{ height: `${chartHeight}px` }}
+      />
     </div>
   );
 });
