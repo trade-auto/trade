@@ -749,7 +749,7 @@ let ma900UpCount = 0;
             signals.push({
               id: exitTradeId,
               time: data[i].time as number,
-              position: 'short',
+              position: 'close',
               price: data[i].close,
               strategy: 'BOLLINGER',
               reason: '매도 조건 충족',
@@ -999,7 +999,7 @@ const maCrossStrategy: TradingStrategy = {
             signals.push({
               id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               time: data[i].time as number,
-              position: 'short',
+              position: 'close',
               price: data[i].close,
               strategy: 'MA_CROSS',
               reason: '단기 이동평균선이 장기 이동평균선을 하향 돌파',
@@ -1206,7 +1206,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
             signals.push({
               id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               time: data[i].time as number,
-              position: 'short',
+              position: 'close',
               price: data[i].close,
               strategy: 'MA_CROSS_DEVIATION',
               reason: '이동평균선 하향 돌파 또는 추세 붕괴',
@@ -1487,7 +1487,7 @@ const slopeFilterStrategy: TradingStrategy = {
             signals.push({
               id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               time: data[i].time as number,
-              position: 'short',
+              position: 'close',
               price: data[i].close,
               strategy: 'SLOPE_FILTER',
               reason: '기술적 조건 붕괴 또는 한계 도달',

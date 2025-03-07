@@ -49,7 +49,7 @@ export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[]
     position: signal.position === 'long' ? ('belowBar' as SeriesMarkerPosition) : ('aboveBar' as SeriesMarkerPosition),
     color: signal.position === 'long' ? '#26a69a' : '#ef5350',
     shape: signal.position === 'long' ? ('arrowUp' as SeriesMarkerShape) : ('arrowDown' as SeriesMarkerShape),
-    text: `${signal.position} @ ${signal.price.toLocaleString()}`,
+    text: signal.position === 'long' ? 'buy' : 'sell',
     size: 2
   }));
 };
@@ -123,12 +123,15 @@ export const calculateBacktestResult = (
     
     if (signal.position === 'long') {
       buyPoint = signal;
-    } else if (signal.position === 'short' && buyPoint) {
+      console.log(`Backtest: BUY signal detected at ${formatTime(signal.time)} - price: ${signal.price}`);
+    } else if ((signal.position === 'close' || signal.position === 'short') && buyPoint) {
       // 360MA 위에 있으면 매도 신호 무시 (백테스트에서도 적용)
       if (signal.metadata?.isAbove360MA) {
         console.log(`Backtest: SELL signal ignored at ${new Date((signal.time as number) * 1000).toLocaleTimeString()} - price is above 360MA`);
         continue; // 다음 포인트로 넘어감
       }
+      
+      console.log(`Backtest: SELL signal detected at ${formatTime(signal.time)} - price: ${signal.price}`);
       
       // buyPoint는 이미 null 체크를 했으므로 안전합니다
       const entryCandle = candleData.find(candle => candle.time === buyPoint!.time);
@@ -143,6 +146,8 @@ export const calculateBacktestResult = (
       const entryPrice = entryCandle.high;
       const exitPrice = exitCandle.low;
       const returnRate = (exitPrice - entryPrice) / entryPrice;
+      
+      console.log(`Backtest: Trade completed - Entry: ${entryPrice}, Exit: ${exitPrice}, Return: ${(returnRate * 100).toFixed(2)}%`);
       
       trades.push({
         entryTime: buyPoint.time as Time,
@@ -199,7 +204,7 @@ export const calculateSlope = (data: ExtendedCandlestickData[], period: number):
 };
 
 // 시간 표시 형식
-export const formatTime = (time: Time): string => {
+export const formatTime = (time: Time | number): string => {
   if (typeof time === 'number') {
     return new Date(time * 1000).toLocaleString();
   } else if (typeof time === 'object' && time !== null) {
