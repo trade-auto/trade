@@ -451,11 +451,11 @@ const bollingerStrategy: TradingStrategy = {
           lastTradeId = tradeId;
           
           // 매수 신호 생성 시 tradeState 업데이트
-          // store.updateTradeState({
-          //   lastTradeType: 'bid',
-          //   statusChangeTime: new Date().toISOString(),
-          //   isTrading: true
-          // });
+          store.updateTradeState({
+            lastTradeType: 'bid',
+            statusChangeTime: new Date().toISOString(),
+            isTrading: true
+          });
           
           console.log('✅ 매수 신호 생성:', {
             시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
