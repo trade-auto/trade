@@ -236,7 +236,8 @@ const bollingerStrategy: TradingStrategy = {
 
     const signals: TradeSignal[] = [];
     const lastIndex = data.length - 1;
-    let currentPosition: 'long' | 'short' | null = null;
+    let currentPosition: 'long' | null = null;
+    let currentTradeId: string | null = null;
 
     // 각 캔들에 대해 분석
     for (let i = 360; i <= lastIndex; i++) {
@@ -267,14 +268,16 @@ const bollingerStrategy: TradingStrategy = {
       // 추가 필터: 360 EMA 기준
       const isAbove360MA = currentCandle.close > ema360;
 
+      // 매수 신호 (포지션이 없을 때만)
       if (isGoldenCross && isAbove360MA && !currentPosition) {
-        const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        signals.push({
-          id: tradeId,
+        currentTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const buySignal: TradeSignal = {
+          id: currentTradeId,
           time: currentCandle.time as number,
           position: 'long',
           price: currentCandle.close,
           strategy: 'BOLLINGER',
+          reason: '골든크로스 + 360MA 상향돌파',
           metadata: {
             ma60: ema60,
             ma120: ema120,
@@ -282,15 +285,21 @@ const bollingerStrategy: TradingStrategy = {
             ma360: ema360,
             isAbove360MA
           }
-        });
+        };
+        signals.push(buySignal);
         currentPosition = 'long';
-      } else if (isDeadCross && currentPosition === 'long') {
-        signals.push({
-          id: `${currentCandle.time}-short-${i}`,
+        console.log(`매수 신호 생성 [ID: ${currentTradeId}] - 가격: ${currentCandle.close}`);
+      } 
+      // 매도 신호 (매수 포지션이 있을 때만)
+      else if (isDeadCross && currentPosition === 'long' && currentTradeId) {
+        const sellSignal: TradeSignal = {
+          id: `${currentTradeId}-exit`,
           time: currentCandle.time as number,
-          position: 'short',
+          position: 'close',  // 'short'에서 'close'로 변경
           price: currentCandle.close,
           strategy: 'BOLLINGER',
+          reason: '데드크로스',
+          relatedTradeId: currentTradeId,
           metadata: {
             ma60: ema60,
             ma120: ema120,
@@ -298,13 +307,39 @@ const bollingerStrategy: TradingStrategy = {
             ma360: ema360,
             isAbove360MA
           }
-        });
+        };
+        signals.push(sellSignal);
+        console.log(`매도 신호 생성 [ID: ${currentTradeId}-exit, 관련 매수 ID: ${currentTradeId}] - 가격: ${currentCandle.close}`);
         currentPosition = null;
+        currentTradeId = null;
       }
     }
 
-    console.log('생성된 신호:', signals.length);
-    return signals;
+    // 매수/매도 신호 쌍 검증 및 정리
+    const validSignals: TradeSignal[] = [];
+    for (let i = 0; i < signals.length; i++) {
+      const signal = signals[i];
+      if (signal.position === 'long') {
+        // 매수 신호 다음에 매도 신호가 있는지 확인
+        const sellSignal = signals.find(s => s.relatedTradeId === signal.id && s.position === 'close');
+        if (sellSignal) {
+          validSignals.push(signal);    // 매수 신호 추가
+          validSignals.push(sellSignal); // 매도 신호 추가
+        }
+      }
+    }
+
+    const tradePairs = validSignals.length / 2;
+    console.log(`검증된 매매 신호: 총 ${validSignals.length}개 (매수/매도 쌍: ${tradePairs}쌍)`);
+    console.log('매매 내역:');
+    for (let i = 0; i < validSignals.length; i += 2) {
+      const buy = validSignals[i];
+      const sell = validSignals[i + 1];
+      const profit = ((sell.price - buy.price) / buy.price) * 100;
+      console.log(`[${i/2 + 1}번째 거래] 매수: ${buy.price} -> 매도: ${sell.price} (수익률: ${profit.toFixed(2)}%)`);
+    }
+
+    return validSignals;
   }
 };
 

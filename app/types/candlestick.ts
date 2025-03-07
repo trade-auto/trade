@@ -12,20 +12,19 @@ export interface CandlestickData {
 
 // Define a Trade interface
 export interface Trade {
-  entryTime: Time;
-  exitTime: Time;
+  id: string;
+  entryTime: number;
+  exitTime: number;
   entryPrice: number;
   exitPrice: number;
   return: number;
-  isSuccess: boolean;
-  isAutomatic?: boolean;
-  mode: 'test' | 'test-auto' | 'live-auto';  // 'live'를 'live-auto'로 변경
-  metadata?: {
-    entryMa360?: number;
-    exitMa360?: number;
-    entryMa120?: number;
-    exitMa120?: number;
-  };
+  type: 'long' | 'short';
+  status: 'open' | 'closed';
+  strategy: string;
+  entryReason?: string;
+  exitReason?: string;
+  entryMetadata?: any;
+  exitMetadata?: any;
 }
 
 // 날짜 선택을 위한 인터페이스 추가
@@ -123,15 +122,12 @@ export interface MASettings {
 }
 
 export interface TradeSignal {
+  id: string;
   time: number;
   position: 'long' | 'short' | 'close';
   price: number;
-  strategy: TradeStrategy;
-  metadata?: {
-    deviation?: number;
-    slope?: number;
-    ma360?: number;
-    ma120?: number;
-    isAbove360MA?: boolean;
-  };
+  strategy: string;
+  reason?: string;
+  metadata?: any;
+  relatedTradeId?: string;
 }

@@ -115,77 +115,71 @@ export const calculateBacktestResult = (
   mode: 'live' | 'test'
 ): BacktestResult => {
   const trades: Trade[] = [];
-  let buyPoint: TradeSignal | null = null;
   const feeRate = 0.0005;
   
   console.log('백테스트 시작:', {
     '캔들 데이터 수': candleData.length,
     '신호 수': signals.length
   });
-  
-  for (let i = 0; i < signals.length; i++) {
-    const signal = signals[i];
-    console.log('신호 분석:', {
-      '시간': new Date((signal.time as number) * 1000).toLocaleTimeString(),
-      '포지션': signal.position,
-      '가격': signal.price,
-      'MA360 위 여부': signal.metadata?.isAbove360MA
-    });
-    
-    if (signal.position === 'long') {
-      if (!buyPoint) {  // 이미 매수 포지션이 없을 때만 새로운 매수 신호 처리
-        buyPoint = signal;
-        console.log('매수 포인트 설정:', {
-          '시간': new Date((signal.time as number) * 1000).toLocaleTimeString(),
-          '가격': signal.price
-        });
-      }
-    } else if (signal.position === 'short' && buyPoint) {
-      const entryCandle = candleData.find(candle => candle.time === buyPoint!.time);
-      const exitCandle = candleData.find(candle => candle.time === signal.time);
-      
-      if (!entryCandle || !exitCandle) {
-        console.warn('매칭되는 캔들 데이터를 찾을 수 없음:', {
-          '매수 시간': buyPoint.time,
-          '매도 시간': signal.time
-        });
-        continue;
-      }
 
-      const entryPrice = entryCandle.high;
-      const exitPrice = exitCandle.low;
-      const returnRate = (exitPrice - entryPrice) / entryPrice;
-      
-      trades.push({
-        entryTime: buyPoint.time as Time,
-        exitTime: signal.time as Time,
-        entryPrice,
-        exitPrice,
-        return: returnRate,
-        isSuccess: returnRate > 0,
-        mode: mode === 'test' ? 'test-auto' : 'live-auto',
-        metadata: {
-          entryMa360: buyPoint.metadata?.ma360,
-          exitMa360: signal.metadata?.ma360,
-          entryMa120: buyPoint.metadata?.ma120,
-          exitMa120: signal.metadata?.ma120
-        }
-      });
-      
-      console.log('거래 기록:', {
-        '매수 시간': new Date((buyPoint.time as number) * 1000).toLocaleTimeString(),
-        '매도 시간': new Date((signal.time as number) * 1000).toLocaleTimeString(),
-        '매수가': entryPrice,
-        '매도가': exitPrice,
-        '수익률': (returnRate * 100).toFixed(2) + '%'
-      });
-      
-      buyPoint = null;
+  // 매수/매도 신호를 쌍으로 처리
+  for (let i = 0; i < signals.length; i += 2) {
+    const buySignal = signals[i];
+    const sellSignal = signals[i + 1];
+
+    // 매수/매도 신호가 쌍으로 존재하는지 확인
+    if (!buySignal || !sellSignal || buySignal.position !== 'long' || sellSignal.position !== 'close') {
+      console.log('잘못된 매매 신호 쌍:', { buySignal, sellSignal });
+      continue;
     }
+
+    // 캔들 데이터 찾기
+    const entryCandle = candleData.find(candle => candle.time === buySignal.time);
+    const exitCandle = candleData.find(candle => candle.time === sellSignal.time);
+
+    if (!entryCandle || !exitCandle) {
+      console.warn('매칭되는 캔들 데이터를 찾을 수 없음:', {
+        '매수 시간': buySignal.time,
+        '매도 시간': sellSignal.time
+      });
+      continue;
+    }
+
+    const entryPrice = buySignal.price;
+    const exitPrice = sellSignal.price;
+    const returnRate = (exitPrice - entryPrice) / entryPrice;
+    const netReturnRate = returnRate - (feeRate * 2); // 매수/매도 수수료 고려
+
+    const trade: Trade = {
+      id: buySignal.id,
+      entryTime: buySignal.time,
+      exitTime: sellSignal.time,
+      entryPrice,
+      exitPrice,
+      return: returnRate,
+      type: 'long',
+      status: 'closed',
+      strategy: buySignal.strategy,
+      entryReason: buySignal.reason,
+      exitReason: sellSignal.reason,
+      entryMetadata: buySignal.metadata,
+      exitMetadata: sellSignal.metadata
+    };
+
+    trades.push(trade);
+    
+    console.log('거래 기록:', {
+      '매수 시간': new Date(buySignal.time * 1000).toLocaleString(),
+      '매도 시간': new Date(sellSignal.time * 1000).toLocaleString(),
+      '매수가': entryPrice,
+      '매도가': exitPrice,
+      '수익률': (returnRate * 100).toFixed(2) + '%',
+      '순수익률': (netReturnRate * 100).toFixed(2) + '%'
+    });
   }
 
   const totalTrades = trades.length;
-  const successfulTrades = trades.filter(trade => trade.isSuccess).length;
+  const successfulTrades = trades.filter(trade => trade.return > 0).length;
   const totalReturn = trades.reduce((sum, trade) => sum + trade.return, 0);
   const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - (feeRate * 2)), 0);
   
@@ -193,7 +187,8 @@ export const calculateBacktestResult = (
     '총 거래 수': totalTrades,
     '성공 거래 수': successfulTrades,
     '총 수익률': (totalReturn * 100).toFixed(2) + '%',
-    '순 수익률': (totalNetReturn * 100).toFixed(2) + '%'
+    '순 수익률': (totalNetReturn * 100).toFixed(2) + '%',
+    '승률': ((successfulTrades / totalTrades) * 100).toFixed(2) + '%'
   });
   
   return {
@@ -222,11 +217,10 @@ export const calculateSlope = (data: ExtendedCandlestickData[], period: number):
 };
 
 // 시간 표시 형식
-export const formatTime = (time: Time): string => {
+export const formatTime = (time: Time | number): string => {
   if (typeof time === 'number') {
     return new Date(time * 1000).toLocaleString();
   } else if (typeof time === 'object' && time !== null) {
-    // BusinessDay 객체인 경우
     const businessDay = time as BusinessDay;
     return new Date(businessDay.year, businessDay.month - 1, businessDay.day).toLocaleDateString();
   }
