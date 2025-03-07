@@ -46,6 +46,10 @@ interface TradeState {
   isTrading: boolean;
   theoreticalPosition: 'bid' | 'ask' | 'wait';
   missedFirstCycle: boolean;
+  buyLimitMark?: {
+    time: string;
+    reason: string;
+  };
 }
 
 // TradeStrategy 타입을 export
@@ -211,8 +215,36 @@ const bollingerStrategy: TradingStrategy = {
 
     const store = useUpbitStore.getState();
     const lastTradeType = store.tradeState.lastTradeType;
+    const statusChangeTime = store.tradeState.statusChangeTime;
+    const checkTime = new Date();
+    const lastTradeTime = new Date(statusChangeTime);
+    const timeDiffMinutes = (checkTime.getTime() - lastTradeTime.getTime()) / (1000 * 60);
+
     if (lastTradeType === 'bid') {
-      console.log('🚫 매수 제한: 마지막 거래가 매수');
+      console.log('🚫 매수 제한 상세 정보:', {
+        현재시간: checkTime.toLocaleString('ko-KR'),
+        마지막거래: lastTradeType,
+        마지막거래시간: lastTradeTime.toLocaleString('ko-KR'),
+        경과시간: `${timeDiffMinutes.toFixed(2)}분`,
+        거래상태: {
+          마지막거래유형: store.tradeState.lastTradeType,
+          상태변경시간: store.tradeState.statusChangeTime,
+          현재가격: store.tradeState.currentPrice,
+          거래시작시간: store.tradeState.actionStartTime,
+          거래중여부: store.tradeState.isTrading,
+          이론적포지션: store.tradeState.theoreticalPosition,
+          첫사이클미스: store.tradeState.missedFirstCycle
+        }
+      });
+      
+      // 매수 제한 마크 업데이트
+      store.updateTradeState({
+        buyLimitMark: {
+          time: checkTime.toISOString(),
+          reason: '이전 매수 포지션 미청산'
+        }
+      });
+      
       return null;
     }
     

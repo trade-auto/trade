@@ -278,7 +278,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         }
         
         setProgress(85);
-        // 매매 신호 분석 및 마커 생성
+            // 매매 신호 분석 및 마커 생성
         const signals = useUpbitStore.getState().analyzeStrategy(allProcessedData);
         const markers = createTradeMarkers(signals);  
         // 매수/매도 포인트 계산
@@ -423,12 +423,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         setChartPrice(processedCandle.close);
         
         // 데이터 업데이트
-        setAllData(currentData);
+        setAllData(data => [...data, ...currentData]);
 
         // 매매 신호 분석 및 마커 생성
         const signals = useUpbitStore.getState().analyzeStrategy(currentData);
         const newMarkers = createTradeMarkers(signals);
-        setMarkers(newMarkers);
+        setMarkers(markers => [...markers, ...newMarkers]);
 
         // 업데이트 상태 갱신
         setRealtimeUpdateStatus(prev => ({
@@ -464,16 +464,16 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     if (!isAutoUpdate) return;
     
     const updateInterval = 10000; // 10초
-    
-    const updateTimer = setInterval(() => {
-      if (!ongoingRequestRef.current) {
+      
+      const updateTimer = setInterval(() => {
+        if (!ongoingRequestRef.current) {
         console.log('자동 업데이트 실행...');
-        const now = new Date();
-        setDateRange(prev => ({ ...prev, endDate: now }));
-      }
-    }, updateInterval);
-    
-    return () => clearInterval(updateTimer);
+          const now = new Date();
+          setDateRange(prev => ({ ...prev, endDate: now }));
+        }
+      }, updateInterval);
+      
+      return () => clearInterval(updateTimer);
   }, [isAutoUpdate]);
 
   // 실시간 API 업데이트 타이머
@@ -498,9 +498,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     }
     
     if (isAutoUpdate) {
-      timeoutRef.current = setTimeout(() => {
-        loadData();
-      }, 300);
+    timeoutRef.current = setTimeout(() => {
+      loadData();
+    }, 300);
     }
     
     return () => {

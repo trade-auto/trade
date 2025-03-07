@@ -199,6 +199,9 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       wickDownColor: CHART_COLORS.downColor,
     });
 
+    // 마커 플러그인 초기화
+    markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
+
     seriesRefs.current.volume = chart.addSeries(HistogramSeries, {
       color: CHART_COLORS.upColor,
       priceFormat: { type: 'volume' },
@@ -250,7 +253,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     if (!markerPluginRef.current) return;
     console.log('tradeStrategy 마커 업데이트', tradeStrategy);
     try {
-      markerPluginRef.current.setMarkers([]);
 
       markerPluginRef.current.setMarkers(markers);
     } catch (error) {
