@@ -428,7 +428,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         // 매매 신호 분석 및 마커 생성
         const signals = useUpbitStore.getState().analyzeStrategy(currentData);
         const newMarkers = createTradeMarkers(signals);
-        setMarkers(markers => [...markers, ...newMarkers]);
+        setMarkers(newMarkers);
 
         // 업데이트 상태 갱신
         setRealtimeUpdateStatus(prev => ({

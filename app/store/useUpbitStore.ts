@@ -382,14 +382,16 @@ const bollingerStrategy: TradingStrategy = {
   // 기존 analyze 함수는 새로운 함수들을 활용
   analyze(data) {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'long' | 'short' | null = null;
+    const store = useUpbitStore.getState();
+    const { lastTradeType } = store.tradeState;
+    let currentPosition = lastTradeType === 'bid' ? 'long' : null;
     let lastTradeId: string | null = null;
     
     if (data.length < 360) {
       return signals;
     }
     
-    const self = this; // this 컨텍스트 저장
+    const self = this;
 
     for (let i = 360; i < data.length; i++) {
       // 현재 포지션이 없는 경우에만 매수 신호 확인
@@ -409,9 +411,18 @@ const bollingerStrategy: TradingStrategy = {
           });
           currentPosition = 'long';
           lastTradeId = tradeId;
+          
+          // 매수 신호 생성 시 tradeState 업데이트
+          // store.updateTradeState({
+          //   lastTradeType: 'bid',
+          //   statusChangeTime: new Date().toISOString(),
+          //   isTrading: true
+          // });
+          
           console.log('✅ 매수 신호 생성:', {
             시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
-            가격: data[i].close
+            가격: data[i].close,
+            포지션: currentPosition
           });
         }
       } 
@@ -434,8 +445,16 @@ const bollingerStrategy: TradingStrategy = {
               relatedTradeId: lastTradeId,
               metadata: self.calculateIndicators?.(data, i)
             });
-            currentPosition = null; // 포지션 초기화하여 다음 매수 가능하도록 설정
+            currentPosition = null;
             lastTradeId = null;
+            
+            // 매도 신호 생성 시 tradeState 업데이트
+            store.updateTradeState({
+              lastTradeType: 'ask',
+              statusChangeTime: new Date().toISOString(),
+              isTrading: false
+            });
+            
             console.log('✅ 매도 신호 생성:', {
               시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
               가격: data[i].close
