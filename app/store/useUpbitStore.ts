@@ -347,23 +347,6 @@ const bollingerStrategy: TradingStrategy = {
       return 'long';
     }
     
-    console.log('\n=== 매수 조건 충족 여부 ===');
-    console.log({
-      '체크 시간': new Date().toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      'MA120/240 상향(10봉)': isMA120240Upward ? '✅' : '❌',
-      'MA60이 MA120 위': isAbove120 ? '✅' : '❌',
-      'MA60이 MA240 위': isAbove240 ? '✅' : '❌',
-      'MA900 상향': isMA900Upward ? '✅' : '❌',
-      '최종 판정': '❌ 매수 조건 불충족'
-    });
     return null;
   },
   
@@ -621,9 +604,10 @@ let ma900UpCount = 0;
   analyze(data) {
     const signals: TradeSignal[] = [];
     const store = useUpbitStore.getState();
-    const { lastTradeType } = store.tradeState;
+    const { lastTradeType, isTrading } = store.tradeState;
     let currentPosition = lastTradeType === 'bid' ? 'long' : null;
     let lastTradeId: string | null = null;
+    let hasGeneratedBuySignal = false;  // 매수 신호 생성 여부를 추적하는 플래그 추가
     
     if (data.length < 360) {
       return signals;
@@ -633,197 +617,60 @@ let ma900UpCount = 0;
 
     for (let i = 360; i < data.length; i++) {
       // 현재 포지션이 없는 경우에만 매수 신호 확인
-      if (currentPosition === null) {
-        // 매수 조건 검사 전 로그 출력
-        console.log('\n=== 매수 조건 검사 시작 ===');
-        console.log({
-          '체크 시간': new Date().toLocaleString('ko-KR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-          }),
-          '현재 포지션': currentPosition === null ? '없음' : currentPosition,
-          '마지막 거래 유형': lastTradeType === 'bid' ? '매수' : 
-                           lastTradeType === 'ask' ? '매도' : '없음'
-        });
-        
+      if (currentPosition === null && !isTrading && !hasGeneratedBuySignal) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'long') {
-          console.log('\n=== 🔔 매수 신호 감지! ===');
-          console.log({
-            '체크 시간': new Date().toLocaleString('ko-KR', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: false
-            }),
-            '매수 신호 유형': entrySignal,
-            '현재 가격': data[i].close
-          });
-          
-          // 매수 신호 생성
           const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           signals.push({
             id: tradeId,
             time: data[i].time as number,
             position: 'long',
             price: data[i].close,
-            strategy: 'BOLLINGER',
-            reason: '매수 조건 충족',
-            metadata: {
-              ...self.calculateIndicators?.(data, i),
-              ma120UpCount: self.calculateIndicators?.(data, i)?.ma120UpCount,
-              ma240UpCount: self.calculateIndicators?.(data, i)?.ma240UpCount,
-              ma900UpCount: self.calculateIndicators?.(data, i)?.ma900UpCount,
-              ma60Above120Count: self.calculateIndicators?.(data, i)?.ma60Above120Count,
-              ma60Above240Count: self.calculateIndicators?.(data, i)?.ma60Above240Count,
-              isMA120240Upward: self.calculateIndicators?.(data, i)?.isMA120240Upward,
-              isMA900Upward: self.calculateIndicators?.(data, i)?.isMA900Upward,
-              isAbove120: self.calculateIndicators?.(data, i)?.isAbove120,
-              isAbove240: self.calculateIndicators?.(data, i)?.isAbove240
-            }
+            strategy: self.name,
+            reason: '매수 신호 발생',
+            metadata: self.calculateIndicators?.(data, i)
           });
-          
-          lastTradeId = tradeId;
           currentPosition = 'long';
+          lastTradeId = tradeId;
+          hasGeneratedBuySignal = true;  // 매수 신호 생성 표시
           
-          // 매수 신호 생성 시 tradeState 업데이트
+          // 매수 신호 발생 시 tradeState 업데이트
           store.updateTradeState({
             lastTradeType: 'bid',
+            statusChangeTime: new Date().toISOString(),
+            isTrading: true
+          });
+          
+          continue; // 매수 신호 발생 후 다음 캔들로 이동
+        }
+      }
+      // 현재 포지션이 롱인 경우에만 매도 신호 확인
+      else if (currentPosition === 'long' && lastTradeId) {
+        const exitSignal = self.analyzeExit?.(data, i, currentPosition, data[i].close);
+        
+        if (exitSignal) {
+          signals.push({
+            id: `${lastTradeId}-exit`,
+            time: data[i].time as number,
+            position: 'close',
+            price: data[i].close,
+            strategy: self.name,
+            reason: '매도 신호 발생',
+            metadata: self.calculateIndicators?.(data, i)
+          });
+          currentPosition = null;
+          lastTradeId = null;
+          hasGeneratedBuySignal = false;  // 매도 후 매수 신호 생성 가능하도록 리셋
+          
+          // 매도 신호 발생 시 tradeState 업데이트
+          store.updateTradeState({
+            lastTradeType: 'ask',
             statusChangeTime: new Date().toISOString(),
             isTrading: false
           });
           
-          console.log('\n=== ✅ 매수 마커 생성 완료 ===');
-          console.log({
-            '체크 시간': new Date().toLocaleString('ko-KR', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: false
-            })
-          });
-          continue; // 매수 신호가 발생하면 매도 조건을 확인하지 않고 다음 캔들로 이동
-        } else {
-          console.log('❌ 매수 신호 없음');
-        }
-      } 
-      // 현재 롱 포지션인 경우에만 매도 신호 확인
-      else if (currentPosition === 'long' && lastTradeId) {
-        // 매도 조건 검사 전 로그 출력
-        console.log('\n=== 매도 조건 검사 시작 ===');
-        console.log({
-          '체크 시간': new Date().toLocaleString('ko-KR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-          }),
-          '현재 포지션': currentPosition,
-          '마지막 거래 유형': lastTradeType === 'bid' ? '매수' : 
-                           lastTradeType === 'ask' ? '매도' : '없음',
-          '마지막 거래 ID': lastTradeId
-        });
-        
-        const entrySignalIndex = signals.findIndex(signal => signal.id === lastTradeId);
-        
-        if (entrySignalIndex >= 0) {
-          const entryPrice = signals[entrySignalIndex].price;
-          const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
-          
-          if (shouldExit) {
-            const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            signals.push({
-              id: exitTradeId,
-              time: data[i].time as number,
-              position: 'short',
-              price: data[i].close,
-              strategy: 'BOLLINGER',
-              reason: '매도 조건 충족',
-              metadata: {
-                ...self.calculateIndicators?.(data, i),
-                ma120DownCount: self.calculateIndicators?.(data, i)?.ma120DownCount,
-                ma240DownCount: self.calculateIndicators?.(data, i)?.ma240DownCount,
-                ma900DownCount: self.calculateIndicators?.(data, i)?.ma900DownCount,
-                ma60Below120Count: self.calculateIndicators?.(data, i)?.ma60Below120Count,
-                ma60Below240Count: self.calculateIndicators?.(data, i)?.ma60Below240Count,
-                isMA120240Downward: self.calculateIndicators?.(data, i)?.isMA120240Downward,
-                isMA900Downward: self.calculateIndicators?.(data, i)?.isMA900Downward,
-                isBelow120: self.calculateIndicators?.(data, i)?.isBelow120,
-                isBelow240: self.calculateIndicators?.(data, i)?.isBelow240
-              },
-              relatedTradeId: lastTradeId
-            });
-            
-            // 매도 신호 생성 시 tradeState 업데이트
-            store.updateTradeState({
-              lastTradeType: 'ask',
-              statusChangeTime: new Date().toISOString(),
-              isTrading: false
-            });
-            
-            console.log('✅ 매도 신호 생성:', {
-              시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
-              가격: data[i].close.toLocaleString('ko-KR') + '원',
-              '이전 포지션': currentPosition,
-              '매수가': entryPrice.toLocaleString('ko-KR') + '원',
-              '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
-              '거래 ID': exitTradeId,
-              '관련 매수 ID': lastTradeId
-            });
-            
-            // 매도 조건 상세 정보 로그
-            const indicators = self.calculateIndicators?.(data, i);
-            console.log('매도 조건 상세:', {
-              'MA240 하향 지속 봉수': indicators?.ma240DownCount + '봉',
-              'MA900 하향 지속 봉수': indicators?.ma900DownCount + '봉',
-              'MA60이 MA120 아래 지속 봉수': indicators?.ma60Below120Count + '봉',
-              'MA60이 MA240 아래 지속 봉수': indicators?.ma60Below240Count + '봉',
-              'MA120/240 하향(10봉)': indicators?.isMA120240Downward ? '✅' : '❌',
-              'MA900 하향': indicators?.isMA900Downward ? '✅' : '❌',
-              'MA60이 MA120 아래': indicators?.isBelow120 ? '✅' : '❌',
-              'MA60이 MA240 아래': indicators?.isBelow240 ? '✅' : '❌',
-              '체크 시간': new Date().toLocaleString('ko-KR', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-              })
-            });
-            
-            // 매도 신호 생성 후 즉시 포지션과 거래 ID 초기화
-            currentPosition = null;
-              // store 상태 업데이트
-  store.updateTradeState({
-    lastTradeType: 'ask',
-    statusChangeTime: new Date().toISOString(),
-    isTrading: false
-  });
-  
-  console.log('✅ 매도 후 상태 초기화 완료:', {
-    '현재 포지션': currentPosition,
-    '다음 매수 준비': '완료'
-  });
-            lastTradeId = null;
-            continue; // 현재 캔들에서 매도 신호를 생성한 후 다음 캔들로 이동
-          }
+          continue; // 매도 신호 발생 후 다음 캔들로 이동
         }
       }
     }
