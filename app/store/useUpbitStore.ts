@@ -288,7 +288,7 @@ const bollingerStrategy: TradingStrategy = {
     });
 
     // 360MA 횡보 상태 체크 (상대값과 절대값 모두 고려)
-    if (Math.abs(ma360SlopeRelative) <= 0.2 || Math.abs(ma360SlopeAbsolute) <= 0.5) {
+    if (  Math.abs(ma360SlopeAbsolute) <= 0.5) {
       console.log('🚫 매수 제한: 360MA 횡보 상태', {
         상대기울기: ma360SlopeRelative.toFixed(4) + '%',
         절대각도: ma360SlopeAbsolute.toFixed(4) + '°'
@@ -318,12 +318,12 @@ const bollingerStrategy: TradingStrategy = {
     });
 
     // 연속 거래 간격 체크
-    const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
-    if (timeDiff < 30) {
-      console.log('🚫 매수 제한: 최소 거래 간격 미충족');
-      return null;
-    }
+    // const lastTradeTime = new Date(store.tradeState.statusChangeTime);
+    // const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
+    // if (timeDiff < 30) {
+    //   console.log('🚫 매수 제한: 최소 거래 간격 미충족');
+    //   return null;
+    // }
 
     // 매수 시그널 생성
     if (!isBothMADownward && (
@@ -432,12 +432,12 @@ const bollingerStrategy: TradingStrategy = {
     }
     
     // 연속 거래 간격 체크
-    const lastTradeTime = new Date(store.tradeState.statusChangeTime);
-    const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
-    if (timeDiff < 30) {
-      console.log('🚫 매도 제한: 최소 거래 간격 미충족 (현재 간격:', timeDiff.toFixed(1), '초)');
-      return false;
-    }
+    // const lastTradeTime = new Date(store.tradeState.statusChangeTime);
+    // const timeDiff = (currentTime.getTime() - lastTradeTime.getTime()) / 1000;
+    // if (timeDiff < 30) {
+    //   console.log('🚫 매도 제한: 최소 거래 간격 미충족 (현재 간격:', timeDiff.toFixed(1), '초)');
+    //   return false;
+    // }
 
     const shouldSell = (gapNarrowing && sellCrossOrBelow && sellSlope) || 
                       (isFullReverseAlignment && sellCrossOrBelow);
