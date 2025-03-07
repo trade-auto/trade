@@ -4,14 +4,10 @@ import {
   IChartApi,
   ISeriesApi,
   Time,
-  CandlestickSeries,
-  LineSeries,
-  HistogramSeries,
-  createSeriesMarkers,
-  ISeriesMarkersPluginApi,
+  SeriesMarker,
   LineWidth,
+  createSeriesMarkers,
 } from 'lightweight-charts';
-import { SeriesMarker } from 'lightweight-charts';
 import { useUpbitStore } from '../store/useUpbitStore';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
@@ -162,7 +158,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   const container = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const markerPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const markerPluginRef = useRef<any | null>(null);
   const seriesRefs = useRef<SeriesRefs>({
     candle: null,
     volume: null,
@@ -249,7 +245,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     }
 
     // 캔들스틱 시리즈 생성
-    seriesRefs.current.candle = chart.addSeries(CandlestickSeries, {
+    const candleSeries = (chart as any).addCandlestickSeries({
       upColor: CHART_COLORS.upColor,
       downColor: CHART_COLORS.downColor,
       borderVisible: false,
@@ -261,18 +257,28 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         minMove: 0.01,
       },
     });
+    seriesRefs.current.candle = candleSeries;
 
-    // 마커 플러그인 초기화
-    markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
+    // 마커 설정
+    if (markers.length > 0 && candleSeries.setMarkers) {
+      candleSeries.setMarkers(markers);
+    } else if (typeof createSeriesMarkers === 'function') {
+      try {
+        markerPluginRef.current = createSeriesMarkers(candleSeries);
+      } catch (error) {
+        console.error('마커 플러그인 초기화 실패:', error);
+      }
+    }
 
     // 볼륨 시리즈 생성
-    seriesRefs.current.volume = chart.addSeries(HistogramSeries, {
+    const volumeSeries = (chart as any).addHistogramSeries({
       color: CHART_COLORS.upColor,
       priceFormat: {
         type: 'volume',
       },
       priceScaleId: 'volume',
     });
+    seriesRefs.current.volume = volumeSeries;
 
     // 볼륨 스케일 설정
     chart.priceScale('volume').applyOptions({
@@ -286,19 +292,24 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     // MA 시리즈 생성
     Object.entries(MA_COLORS).forEach(([key, color]) => {
       const seriesKey = `${key}EMA` as EMAKey;
-      (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = chart.addSeries(LineSeries, {
-        color,
-        lineWidth: 2,
-        visible: false,
-        lastValueVisible: true,
-        priceLineVisible: false,
-        crosshairMarkerVisible: true,
-        priceFormat: {
-          type: 'price',
-          precision: 2,
-          minMove: 0.01,
-        }
-      });
+      try {
+        const lineSeries = (chart as any).addLineSeries({
+          color,
+          lineWidth: 2,
+          visible: false,
+          lastValueVisible: true,
+          priceLineVisible: false,
+          crosshairMarkerVisible: true,
+          priceFormat: {
+            type: 'price',
+            precision: 2,
+            minMove: 0.01,
+          }
+        });
+        (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = lineSeries;
+      } catch (error) {
+        console.error(`${key} EMA 시리즈 생성 실패:`, error);
+      }
     });
 
     // 저장된 MA 설정 적용
@@ -345,11 +356,14 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
 
   // 마커 업데이트 - 최적화
   useEffect(() => {
-    if (!markerPluginRef.current) return;
+    if (!seriesRefs.current.candle) return;
     console.log('tradeStrategy 마커 업데이트', tradeStrategy);
     try {
-
-      markerPluginRef.current.setMarkers(markers);
+      if (seriesRefs.current.candle.setMarkers) {
+        seriesRefs.current.candle.setMarkers(markers);
+      } else if (markerPluginRef.current) {
+        markerPluginRef.current.setMarkers(markers);
+      }
     } catch (error) {
       console.error('마커 업데이트 실패:', error);
     }

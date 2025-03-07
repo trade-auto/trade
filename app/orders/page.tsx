@@ -9,7 +9,7 @@ import { OrderListById } from '../components/OrderListById';
 import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
-import { CandlestickChart } from '../components/CandlestickChart';
+import CandlestickChart from '../components/CandlestickChart';
 import { getAccountBalance } from '../api/upbitAccount';
 
 const SYMBOLS = [
@@ -24,10 +24,7 @@ const SYMBOLS = [
 
 export default function OrdersPage() {
   const [mode, setMode] = useState<'live' | 'test'>('test');
-  const [selectedSymbol, setSelectedSymbol] = useState(() => {
-    const saved = localStorage.getItem('selectedSymbol');
-    return saved || 'KRW-BTC';
-  });
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
   const openOrdersRef = useRef<{ loadOpenOrders?: () => void }>({});
   const [currentPrice, setCurrentPrice] = useState<number>(3850);
@@ -55,6 +52,14 @@ export default function OrdersPage() {
       mode: string;
     }) => Promise<void> 
   }>(null);
+
+  // localStorage 접근을 useEffect로 이동
+  useEffect(() => {
+    const savedSymbol = localStorage.getItem('selectedSymbol');
+    if (savedSymbol) {
+      setSelectedSymbol(savedSymbol);
+    }
+  }, []);
 
   // WebSocket을 통해 실시간 가격 업데이트
   useEffect(() => {

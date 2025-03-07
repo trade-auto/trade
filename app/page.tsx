@@ -1,9 +1,9 @@
 'use client';
 
 import { useUpbitWebSocket } from './hooks/useUpbitWebSocket';
-import { CandlestickChart } from './components/CandlestickChart';
+import CandlestickChart from './components/CandlestickChart';
 import { useUpbitStore } from './store/useUpbitStore';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavigationHeader } from './components/NavigationHeader';
 import { OrderLimitSettings } from './components/OrderLimitSettings';
 
@@ -30,10 +30,17 @@ const CHART_TYPES = [
 type ChartMode = "live" | "test";
 
 export default function Home() {
-  const [selectedSymbol, setSelectedSymbol] = useState('KRW-BTC');
-  // 추가: 차트 모드 상태 변수 (기본은 test)
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
   const [chartMode, setChartMode] = useState<ChartMode>("test");
   
+  // localStorage 접근을 useEffect로 이동
+  useEffect(() => {
+    const savedSymbol = localStorage.getItem('selectedSymbol');
+    if (savedSymbol) {
+      setSelectedSymbol(savedSymbol);
+    }
+  }, []);
+
   // 선택된 심볼에 대해서만 WebSocket 연결
   useUpbitWebSocket(selectedSymbol);
   

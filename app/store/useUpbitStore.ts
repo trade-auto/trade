@@ -94,6 +94,7 @@ interface ExtendedMetadata {
   lowerBand?: number;
   isAbove360MA?: boolean;
   isAbove900MA?: boolean;
+  isBelow900MA?: boolean;  // 추가
   ma120UpCount?: number;
   ma240UpCount?: number;
   ma900UpCount?: number;
@@ -232,7 +233,7 @@ const bollingerStrategy: TradingStrategy = {
   },
   
   analyze(data: CandlestickData<Time>[]): TradeSignal[] {
-    if (data.length < 360) return [];
+    if (data.length < 900) return [];  // 900EMA를 위해 최소 데이터 수 증가
 
     const signals: TradeSignal[] = [];
     const lastIndex = data.length - 1;
@@ -240,7 +241,7 @@ const bollingerStrategy: TradingStrategy = {
     let currentTradeId: string | null = null;
 
     // 각 캔들에 대해 분석
-    for (let i = 360; i <= lastIndex; i++) {
+    for (let i = 900; i <= lastIndex; i++) {
       const currentCandle = data[i];
       const prevCandle = data[i - 1];
 
@@ -248,9 +249,9 @@ const bollingerStrategy: TradingStrategy = {
       const ema60 = (currentCandle as any).ema60;
       const ema120 = (currentCandle as any).ema120;
       const ema240 = (currentCandle as any).ema240;
-      const ema360 = (currentCandle as any).ema360;
+      const ema900 = (currentCandle as any).ema900;
 
-      if (!ema60 || !ema120 || !ema240 || !ema360) continue;
+      if (!ema60 || !ema120 || !ema240 || !ema900) continue;
 
       // 이전 캔들의 EMA
       const prevEma60 = (prevCandle as any).ema60;
@@ -259,17 +260,38 @@ const bollingerStrategy: TradingStrategy = {
 
       if (!prevEma60 || !prevEma120 || !prevEma240) continue;
 
-      // 매수 조건: 60 EMA가 120 EMA를 상향 돌파
-      const isGoldenCross = prevEma60 <= prevEma120 && ema60 > ema120;
-      
-      // 매도 조건: 60 EMA가 120 EMA를 하향 돌파
-      const isDeadCross = prevEma60 >= prevEma120 && ema60 < ema120;
+      // 매수 조건: 60 EMA가 120 EMA와 240 EMA를 동시에 상향 돌파
+      const crossAbove120 = prevEma60 <= prevEma120 && ema60 > ema120;
+      const crossAbove240 = prevEma60 <= prevEma240 && ema60 > ema240;
+      const isBelow900MA = currentCandle.close < ema900;
 
-      // 추가 필터: 360 EMA 기준
-      const isAbove360MA = currentCandle.close > ema360;
+      // 매수 조건 디버깅 로그 추가
+      console.log('\n=== 매수 신호 조건 체크 ===');
+      console.log('시간:', new Date(currentCandle.time as number * 1000).toLocaleString('ko-KR'));
+      console.log('현재 가격:', currentCandle.close);
+      console.log('조건 상태:', {
+        '60EMA/120EMA 상향돌파': crossAbove120 ? '✅' : '❌',
+        '60EMA/240EMA 상향돌파': crossAbove240 ? '✅' : '❌',
+        '900EMA 아래': isBelow900MA ? '✅' : '❌',
+        '포지션 없음': !currentPosition ? '✅' : '❌'
+      });
+      console.log('EMA 값:', {
+        'EMA60': ema60,
+        'EMA120': ema120,
+        'EMA240': ema240,
+        'EMA900': ema900,
+        '이전 EMA60': prevEma60,
+        '이전 EMA120': prevEma120,
+        '이전 EMA240': prevEma240
+      });
+
+      // 매도 조건: 60 EMA가 120/240 EMA를 하향 돌파하고 900EMA 위에 있을 때
+      const crossBelow120 = prevEma60 >= prevEma120 && ema60 < ema120;
+      const crossBelow240 = prevEma60 >= prevEma240 && ema60 < ema240;
+      const isAbove900MA = currentCandle.close > ema900;
 
       // 매수 신호 (포지션이 없을 때만)
-      if (isGoldenCross && isAbove360MA && !currentPosition) {
+      if (crossAbove120 && crossAbove240 && isBelow900MA && !currentPosition) {
         currentTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const buySignal: TradeSignal = {
           id: currentTradeId,
@@ -277,13 +299,14 @@ const bollingerStrategy: TradingStrategy = {
           position: 'long',
           price: currentCandle.close,
           strategy: 'BOLLINGER',
-          reason: '골든크로스 + 360MA 상향돌파',
+          reason: '60EMA가 120/240EMA 상향돌파 + 900EMA 아래',
           metadata: {
             ma60: ema60,
             ma120: ema120,
             ma240: ema240,
-            ma360: ema360,
-            isAbove360MA
+            ma900: ema900,
+            isBelow900MA,
+            isAbove900MA
           }
         };
         signals.push(buySignal);
@@ -291,21 +314,22 @@ const bollingerStrategy: TradingStrategy = {
         console.log(`매수 신호 생성 [ID: ${currentTradeId}] - 가격: ${currentCandle.close}`);
       } 
       // 매도 신호 (매수 포지션이 있을 때만)
-      else if (isDeadCross && currentPosition === 'long' && currentTradeId) {
+      else if (crossBelow120 && crossBelow240 && isAbove900MA && currentPosition === 'long' && currentTradeId) {
         const sellSignal: TradeSignal = {
           id: `${currentTradeId}-exit`,
           time: currentCandle.time as number,
-          position: 'close',  // 'short'에서 'close'로 변경
+          position: 'close',
           price: currentCandle.close,
           strategy: 'BOLLINGER',
-          reason: '데드크로스',
+          reason: '60EMA가 120/240EMA 하향돌파 + 900EMA 위',
           relatedTradeId: currentTradeId,
           metadata: {
             ma60: ema60,
             ma120: ema120,
             ma240: ema240,
-            ma360: ema360,
-            isAbove360MA
+            ma900: ema900,
+            isBelow900MA,
+            isAbove900MA
           }
         };
         signals.push(sellSignal);
@@ -320,11 +344,10 @@ const bollingerStrategy: TradingStrategy = {
     for (let i = 0; i < signals.length; i++) {
       const signal = signals[i];
       if (signal.position === 'long') {
-        // 매수 신호 다음에 매도 신호가 있는지 확인
         const sellSignal = signals.find(s => s.relatedTradeId === signal.id && s.position === 'close');
         if (sellSignal) {
-          validSignals.push(signal);    // 매수 신호 추가
-          validSignals.push(sellSignal); // 매도 신호 추가
+          validSignals.push(signal);
+          validSignals.push(sellSignal);
         }
       }
     }
