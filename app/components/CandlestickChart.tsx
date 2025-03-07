@@ -263,17 +263,27 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         
         setProgress(70);
         
-        // EMA 계산 및 설정 - 병렬 처리
-        const [ema60Data, ema120Data, ema240Data, ema360Data, ema300Data, ema900Data, ema1200Data] = await Promise.all([
-          Promise.resolve(calculateEMA(allProcessedData, 60)),
-          Promise.resolve(calculateEMA(allProcessedData, 120)),
-          Promise.resolve(calculateEMA(allProcessedData, 240)),
-          Promise.resolve(calculateEMA(allProcessedData, 360)),
-          Promise.resolve(calculateEMA(allProcessedData, 300)),
-          Promise.resolve(calculateEMA(allProcessedData, 900)),
-          Promise.resolve(calculateEMA(allProcessedData, 1200))
-        ]);
-        
+        // EMA 데이터 계산
+        const ema60Data = calculateEMA(allProcessedData, 60);
+        const ema120Data = calculateEMA(allProcessedData, 120);
+        const ema240Data = calculateEMA(allProcessedData, 240);
+        const ema360Data = calculateEMA(allProcessedData, 360);
+        const ema300Data = calculateEMA(allProcessedData, 300);
+        const ema900Data = calculateEMA(allProcessedData, 900);
+        const ema1200Data = calculateEMA(allProcessedData, 1200);
+
+        // 각 캔들에 EMA 데이터 추가
+        const candlesWithEMA = allProcessedData.map((candle, index) => ({
+          ...candle,
+          ema60: ema60Data[index]?.value,
+          ema120: ema120Data[index]?.value,
+          ema240: ema240Data[index]?.value,
+          ema360: ema360Data[index]?.value,
+          ema300: ema300Data[index]?.value,
+          ema900: ema900Data[index]?.value,
+          ema1200: ema1200Data[index]?.value
+        }));
+
         if (
           sixtyEMASeriesRef.current && 
           oneTwentyEMASeriesRef.current && 
@@ -303,14 +313,59 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         }
         
         setProgress(85);
-            // 매매 신호 분석 및 마커 생성
-        const signals = useUpbitStore.getState().analyzeStrategy(allProcessedData);
-        const markers = createTradeMarkers(signals);  
-        // 매수/매도 포인트 계산
+        
+        // 매매 신호 분석 및 마커 생성
+        const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+        if (!selectedStrategy) {
+          console.error('선택된 전략을 찾을 수 없습니다:', tradeStrategy);
+          return;
+        }
+
+        // 거래 신호 생성
+        const signals = selectedStrategy.analyze(candlesWithEMA).map((signal, index) => {
+          const candleIndex = candlesWithEMA.findIndex(c => c.time === signal.time);
+          const ma360Value = candleIndex >= 0 ? ema360Data[candleIndex]?.value : undefined;
+          const currentCandle = candlesWithEMA[candleIndex];
+          const isAbove360MA = currentCandle && ma360Value ? currentCandle.close > ma360Value : false;
+          
+          // 매수/매도 신호 생성 조건 수정
+          if (signal.position === 'long') {
+            // 매수 신호는 360MA 위에서만 발생
+            if (!isAbove360MA) {
+              return null;
+            }
+          } else if (signal.position === 'short') {
+            // 매도 신호는 360MA 아래에서만 발생
+            if (isAbove360MA) {
+              return null;
+            }
+          }
+          
+          return signal ? {
+            ...signal,
+            id: `${signal.time}-${signal.position}-${index}`,
+            strategy: tradeStrategy,
+            time: signal.time,
+            position: signal.position,
+            price: signal.price || (currentCandle ? currentCandle.close : 0),
+            metadata: {
+              ...signal.metadata,
+              isAbove360MA,
+              ma360: ma360Value
+            }
+          } : null;
+        }).filter(signal => signal !== null);
+
+        console.log('생성된 거래 신호:', signals);
+
+        // 매수/매도 포인트 마커 생성
+        const markers = createTradeMarkers(signals);
+        console.log('생성된 마커:', markers);
         setMarkers(markers);
         
         // 백테스트 결과 계산
-        const backtestResult = calculateBacktestResult(allProcessedData, signals, 'test');
+        const backtestResult = calculateBacktestResult(candlesWithEMA, signals, 'test');
+        console.log('백테스트 결과:', backtestResult);
         setBacktestResult(backtestResult);
         
         // 현재 가격 설정
@@ -453,10 +508,80 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         // 데이터 업데이트
         setAllData(data => [...data, ...currentData]);
 
+        // EMA 계산
+        const ema60Data = calculateEMA(currentData, 60);
+        const ema120Data = calculateEMA(currentData, 120);
+        const ema240Data = calculateEMA(currentData, 240);
+        const ema360Data = calculateEMA(currentData, 360);
+        const ema300Data = calculateEMA(currentData, 300);
+        const ema900Data = calculateEMA(currentData, 900);
+        const ema1200Data = calculateEMA(currentData, 1200);
+
+        // 각 캔들에 EMA 데이터 추가
+        const candlesWithEMA = currentData.map((candle, index) => ({
+          ...candle,
+          ema60: ema60Data[index]?.value,
+          ema120: ema120Data[index]?.value,
+          ema240: ema240Data[index]?.value,
+          ema360: ema360Data[index]?.value,
+          ema300: ema300Data[index]?.value,
+          ema900: ema900Data[index]?.value,
+          ema1200: ema1200Data[index]?.value
+        }));
+
         // 매매 신호 분석 및 마커 생성
-        const signals = useUpbitStore.getState().analyzeStrategy(currentData);
+        const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+        if (!selectedStrategy) {
+          console.error('선택된 전략을 찾을 수 없습니다:', tradeStrategy);
+          return;
+        }
+
+        // 거래 신호 생성
+        const signals = selectedStrategy.analyze(candlesWithEMA).map((signal, index) => {
+          const candleIndex = candlesWithEMA.findIndex(c => c.time === signal.time);
+          const ma360Value = candleIndex >= 0 ? ema360Data[candleIndex]?.value : undefined;
+          const currentCandle = candlesWithEMA[candleIndex];
+          const isAbove360MA = currentCandle && ma360Value ? currentCandle.close > ma360Value : false;
+          
+          // 매수/매도 신호 생성 조건 수정
+          if (signal.position === 'long') {
+            // 매수 신호는 360MA 위에서만 발생
+            if (!isAbove360MA) {
+              return null;
+            }
+          } else if (signal.position === 'short') {
+            // 매도 신호는 360MA 아래에서만 발생
+            if (isAbove360MA) {
+              return null;
+            }
+          }
+          
+          return signal ? {
+            ...signal,
+            id: `${signal.time}-${signal.position}-${index}`,
+            strategy: tradeStrategy,
+            time: signal.time,
+            position: signal.position,
+            price: signal.price || (currentCandle ? currentCandle.close : 0),
+            metadata: {
+              ...signal.metadata,
+              isAbove360MA,
+              ma360: ma360Value
+            }
+          } : null;
+        }).filter(signal => signal !== null);
+
+        console.log('실시간 거래 신호:', signals);
+
+        // 매수/매도 포인트 마커 생성
         const newMarkers = createTradeMarkers(signals);
+        console.log('실시간 마커:', newMarkers);
         setMarkers(newMarkers);
+
+        // 백테스트 결과 계산
+        const backtestResult = calculateBacktestResult(candlesWithEMA, signals, 'test');
+        console.log('실시간 백테스트 결과:', backtestResult);
+        setBacktestResult(backtestResult);
 
         // 업데이트 상태 갱신
         setRealtimeUpdateStatus(prev => ({

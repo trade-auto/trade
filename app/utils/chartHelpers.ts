@@ -118,28 +118,40 @@ export const calculateBacktestResult = (
   let buyPoint: TradeSignal | null = null;
   const feeRate = 0.0005;
   
+  console.log('백테스트 시작:', {
+    '캔들 데이터 수': candleData.length,
+    '신호 수': signals.length
+  });
+  
   for (let i = 0; i < signals.length; i++) {
     const signal = signals[i];
+    console.log('신호 분석:', {
+      '시간': new Date((signal.time as number) * 1000).toLocaleTimeString(),
+      '포지션': signal.position,
+      '가격': signal.price,
+      'MA360 위 여부': signal.metadata?.isAbove360MA
+    });
     
     if (signal.position === 'long') {
-      buyPoint = signal;
-    } else if (signal.position === 'short' && buyPoint) {
-      // 360MA 위에 있으면 매도 신호 무시 (백테스트에서도 적용)
-      if (signal.metadata?.isAbove360MA) {
-        console.log(`Backtest: SELL signal ignored at ${new Date((signal.time as number) * 1000).toLocaleTimeString()} - price is above 360MA`);
-        continue; // 다음 포인트로 넘어감
+      if (!buyPoint) {  // 이미 매수 포지션이 없을 때만 새로운 매수 신호 처리
+        buyPoint = signal;
+        console.log('매수 포인트 설정:', {
+          '시간': new Date((signal.time as number) * 1000).toLocaleTimeString(),
+          '가격': signal.price
+        });
       }
-      
-      // buyPoint는 이미 null 체크를 했으므로 안전합니다
+    } else if (signal.position === 'short' && buyPoint) {
       const entryCandle = candleData.find(candle => candle.time === buyPoint!.time);
       const exitCandle = candleData.find(candle => candle.time === signal.time);
       
       if (!entryCandle || !exitCandle) {
-        console.warn('Cannot find matching candle data for signal');
+        console.warn('매칭되는 캔들 데이터를 찾을 수 없음:', {
+          '매수 시간': buyPoint.time,
+          '매도 시간': signal.time
+        });
         continue;
       }
 
-      // 매수는 고가(high)로, 매도는 저가(low)로 계산하여 보수적으로 추정
       const entryPrice = entryCandle.high;
       const exitPrice = exitCandle.low;
       const returnRate = (exitPrice - entryPrice) / entryPrice;
@@ -160,18 +172,29 @@ export const calculateBacktestResult = (
         }
       });
       
+      console.log('거래 기록:', {
+        '매수 시간': new Date((buyPoint.time as number) * 1000).toLocaleTimeString(),
+        '매도 시간': new Date((signal.time as number) * 1000).toLocaleTimeString(),
+        '매수가': entryPrice,
+        '매도가': exitPrice,
+        '수익률': (returnRate * 100).toFixed(2) + '%'
+      });
+      
       buyPoint = null;
     }
   }
 
   const totalTrades = trades.length;
   const successfulTrades = trades.filter(trade => trade.isSuccess).length;
-  
-  // 수수료 제외 총 수익률 (매수+매도 수수료 고려)
   const totalReturn = trades.reduce((sum, trade) => sum + trade.return, 0);
-  
-  // 수수료 포함 순수익률 계산 (각 거래마다 매수+매도 수수료 차감)
   const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - (feeRate * 2)), 0);
+  
+  console.log('백테스트 결과:', {
+    '총 거래 수': totalTrades,
+    '성공 거래 수': successfulTrades,
+    '총 수익률': (totalReturn * 100).toFixed(2) + '%',
+    '순 수익률': (totalNetReturn * 100).toFixed(2) + '%'
+  });
   
   return {
     totalTrades,

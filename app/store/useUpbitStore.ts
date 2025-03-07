@@ -194,7 +194,7 @@ export interface TradingStrategy {
   entryRules?: EntryRules;              // 진입 규칙
   exitRules?: ExitRules;                // 청산 규칙
   
-  // 기존 분석 함수
+  // 분석 함수
   analyze: (data: CandlestickData<Time>[]) => TradeSignal[];
   
   // 새로운 분석 함수 (개별 컴포넌트별로 분리)
@@ -231,450 +231,79 @@ const bollingerStrategy: TradingStrategy = {
     positionSizePercent: 50
   },
   
-  // 진입 조건 분석
-  analyzeEntry(data, index) {
-    if (index < 360) return null;
+  analyze(data: CandlestickData<Time>[]): TradeSignal[] {
+    if (data.length < 360) return [];
 
-    const store = useUpbitStore.getState();
-    const { lastTradeType, isTrading } = store.tradeState;
-    
-    // 이미 매수 포지션이 있거나 거래 중인 경우 매수 신호를 발생시키지 않음
-    if (lastTradeType === 'bid' || isTrading) {
-      console.log('❌ 매수 제한:', {
-        '이유': lastTradeType === 'bid' ? '이미 매수 포지션 존재' : '거래 진행 중',
-        '현재 거래 상태': isTrading ? '거래중' : '대기중',
-        '마지막 거래 유형': lastTradeType
-      });
-      return null;
-    }
-    
-    // MA 계산
-    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
-    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
-    
-    // 이전 MA 계산
-    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-
-    // MA 기울기 계산
-    const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
-    const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
-    const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
-    const ma900Slope = ((ma900 - prevMa900) / prevMa900) * 100;
-
-    // MA120/240 상향 지속 기간 체크 (10봉 기준)
-    let ma120UpCount = 0;
-    let ma240UpCount = 0;
-    let ma60Above120Count = 0;
-    let ma60Above240Count = 0;
-    let ma900UpCount = 0;
-
-    for (let i = 0; i < 10; i++) {
-      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
-      const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
-      const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
-      const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
-      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
-      const prevMa60Check = data.slice(index - i - 61, index - i - 1).reduce((a, b) => a + b.close, 0) / 60;
-      const currentMa900 = data.slice(index - i - 900, index - i).reduce((a, b) => a + b.close, 0) / 900;
-      const prevMa900Check = data.slice(index - i - 901, index - i - 1).reduce((a, b) => a + b.close, 0) / 900;
-
-      if (currentMa120 > prevMa120Check) ma120UpCount++;
-      if (currentMa240 > prevMa240Check) ma240UpCount++;
-      if (currentMa60 > currentMa120) ma60Above120Count++;
-      if (currentMa60 > currentMa240) ma60Above240Count++;
-      if (currentMa900 > prevMa900Check) ma900UpCount++;
-    }
-
-    // MA 기울기 상향 조건 (10봉 연속 상향인 경우)
-    const isMA120240Upward = ma120UpCount >= 10 && ma240UpCount >= 10;
-    const isMA900Upward = ma900UpCount >= 10;
-
-    // 60MA가 120MA와 240MA보다 위에 있는지 확인
-    const isAbove120 = ma60 > ma120;
-    const isAbove240 = ma60 > ma240;
-
-    console.log('\n=== 매수 신호 분석 ===');
-    console.log('현재 거래 상태:', {
-      '마지막 거래 유형': lastTradeType,
-      '매수 가능 여부': lastTradeType === 'ask' || lastTradeType === null
-    });
-    console.log('MA 기울기:', {
-      MA60: ma60Slope.toFixed(4) + '%',
-      MA120: ma120Slope.toFixed(4) + '%',
-      MA240: ma240Slope.toFixed(4) + '%',
-      MA900: ma900Slope.toFixed(4) + '%'
-    });
-    console.log('매수 조건:', {
-      '체크 시간': new Date().toLocaleString('ko-KR', {
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      'MA120 상향 지속 봉수': ma120UpCount + '봉',
-      'MA240 상향 지속 봉수': ma240UpCount + '봉',
-      'MA120/240 상향(10봉)': isMA120240Upward,
-      'MA900 상향': isMA900Upward,
-      'MA60이 MA120 위': isAbove120,
-      'MA60이 MA240 위': isAbove240
-    });
-
-    // 매수 시그널 생성
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) {
-      console.log('\n=== 매수 조건 충족 여부 ===');
-      console.log({
-        '체크 시간': new Date().toLocaleString('ko-KR', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        }),
-        'MA120/240 상향(10봉)': isMA120240Upward ? '✅' : '❌',
-        'MA60이 MA120 위': isAbove120 ? '✅' : '❌',
-        'MA60이 MA240 위': isAbove240 ? '✅' : '❌',
-        'MA900 상향': isMA900Upward ? '✅' : '❌',
-        '최종 판정': '✅ 매수 신호 발생!'
-      });
-      return 'long';
-    }
-    
-    return null;
-  },
-  
-  // 청산 조건 분석
-  analyzeExit(data, index, position, entryPrice) {
-    if (index < 360 || position !== 'long') return false;
-
-    const store = useUpbitStore.getState();
-    const lastTradeType = store.tradeState.lastTradeType;
-    const lastBuyTime = store.tradeState.statusChangeTime;
-let ma900UpCount = 0; 
-    // 마지막 거래가 매수가 아니면 매도하지 않음
-    if (lastTradeType !== 'bid') {
-      console.log('❌ 매도 제한: 이전 거래가 매수가 아님');
-      return false;
-    }
-
-    // MA 계산
-    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
-    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
-    
-    // 이전 MA 계산
-    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-
-    // MA 기울기 계산
-    const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
-    const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
-    const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
-    const ma900Slope = ((ma900 - prevMa900) / prevMa900) * 100;
-
-    // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
-    let ma120DownCount = 0;
-    let ma240DownCount = 0;
-    let ma60Below120Count = 0;
-    let ma60Below240Count = 0;
-    let ma900DownCount = 0;
-
-    for (let i = 0; i < 10; i++) {
-      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
-      const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
-      const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
-      const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
-      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
-      const prevMa60Check = data.slice(index - i - 61, index - i - 1).reduce((a, b) => a + b.close, 0) / 60;
-      const currentMa900 = data.slice(index - i - 900, index - i).reduce((a, b) => a + b.close, 0) / 900;
-      const prevMa900Check = data.slice(index - i - 901, index - i - 1).reduce((a, b) => a + b.close, 0) / 900;
-
-      if (currentMa120 < prevMa120Check) ma120DownCount++;
-      if (currentMa240 < prevMa240Check) ma240DownCount++;
-      if (currentMa60 < currentMa120) ma60Below120Count++;
-      if (currentMa60 < currentMa240) ma60Below240Count++;
-      if (currentMa900 < prevMa900Check) ma900DownCount++;
-      if (currentMa900 > prevMa900Check) ma900UpCount++; // 이 줄을 추가하세요
-    }
-
-    // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
-    const isMA120240Downward = ma120DownCount >= 10 && ma240DownCount >= 10;
-    const isMA900Downward = ma900DownCount >= 10;
-    const isMA900Upward = ma900UpCount >= 10; // 이 줄을 추가하세요
-
-    // 60MA가 120MA와 240MA보다 아래에 있는지 확인
-    const isBelow120 = ma60 < ma120;
-    const isBelow240 = ma60 < ma240;
-
-    console.log('\n=== 매도 신호 분석 ===');
-    console.log('현재 거래 상태:', {
-      '마지막 거래 유형': lastTradeType,
-      '매도 가능 여부': lastTradeType === 'bid',
-      '마지막 매수 시간': new Date(lastBuyTime).toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      })
-    });
-    console.log('MA 기울기:', {
-      MA60: ma60Slope.toFixed(4) + '%',
-      MA120: ma120Slope.toFixed(4) + '%',
-      MA240: ma240Slope.toFixed(4) + '%',
-      MA900: ma900Slope.toFixed(4) + '%'
-    });
-    console.log('매도 조건:', {
-      '체크 시간': new Date().toLocaleString('ko-KR', {
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      'MA120 하향 지속 봉수': ma120DownCount + '봉',
-      'MA240 하향 지속 봉수': ma240DownCount + '봉',
-      'MA120/240 하향(10봉)': isMA120240Downward,
-      'MA900 하향': isMA900Downward,
-      'MA60이 MA120 아래': isBelow120,
-      'MA60이 MA240 아래': isBelow240
-    });
-
-    // 매도 시그널 생성
-    if (ma240DownCount >= 5 && isBelow120 && isBelow240 && isMA900Upward) {
-      console.log('\n=== 매도 조건 충족 여부 ===');
-      console.log({
-        '체크 시간': new Date().toLocaleString('ko-KR', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        }),
-        'MA120/240 하향(10봉)': isMA120240Downward ? '✅' : '❌',
-        'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
-        'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
-        'MA900 상향': isMA900Upward ? '✅' : '❌',
-        '최종 판정': '✅ 매도 신호 발생!'
-      });
-      return true;
-    }
-
-    console.log('\n=== 매도 조건 충족 여부 ===');
-    console.log({
-      '체크 시간': new Date().toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      'MA120/240 하향(10봉)': isMA120240Downward ? '✅' : '❌',
-      'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
-      'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
-      'MA900 상향': isMA900Upward ? '✅' : '❌',
-      '최종 판정': '❌ 매도 조건 불충족'
-    });
-    return false;
-  },
-  
-  // 지표 계산 함수
-  calculateIndicators(data, index) {
-    if (index < 900) {
-      return {} as ExtendedMetadata;
-    }
-    
-    // MA 계산
-    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
-    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
-    
-    // 이전 MA 계산
-    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-
-    // MA 기울기 계산
-    const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
-    const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
-    const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
-    const ma900Slope = ((ma900 - prevMa900) / prevMa900) * 100;
-
-    // MA 상향/하향 지속 기간 체크 (10봉 기준)
-    let ma120UpCount = 0;
-    let ma240UpCount = 0;
-    let ma900UpCount = 0;
-    let ma60Above120Count = 0;
-    let ma60Above240Count = 0;
-    
-    let ma120DownCount = 0;
-    let ma240DownCount = 0;
-    let ma900DownCount = 0;
-    let ma60Below120Count = 0;
-    let ma60Below240Count = 0;
-
-    for (let i = 0; i < 10; i++) {
-      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
-      const prevMa60Check = data.slice(index - i - 61, index - i - 1).reduce((a, b) => a + b.close, 0) / 60;
-      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
-      const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
-      const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
-      const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
-      const currentMa900 = data.slice(index - i - 900, index - i).reduce((a, b) => a + b.close, 0) / 900;
-      const prevMa900Check = data.slice(index - i - 901, index - i - 1).reduce((a, b) => a + b.close, 0) / 900;
-
-      // 상향 카운트
-      if (currentMa120 > prevMa120Check) ma120UpCount++;
-      if (currentMa240 > prevMa240Check) ma240UpCount++;
-      if (currentMa900 > prevMa900Check) ma900UpCount++;
-      if (currentMa60 > currentMa120) ma60Above120Count++;
-      if (currentMa60 > currentMa240) ma60Above240Count++;
-      
-      // 하향 카운트
-      if (currentMa120 < prevMa120Check) ma120DownCount++;
-      if (currentMa240 < prevMa240Check) ma240DownCount++;
-      if (currentMa900 < prevMa900Check) ma900DownCount++;
-      if (currentMa60 < currentMa120) ma60Below120Count++;
-      if (currentMa60 < currentMa240) ma60Below240Count++;
-    }
-
-    // 조건 판정
-    const isMA120240Upward = ma120UpCount >= 10 && ma240UpCount >= 10;
-    const isMA900Upward = ma900UpCount >= 10;
-    const isAbove120 = ma60 > ma120;
-    const isAbove240 = ma60 > ma240;
-    
-    const isMA120240Downward = ma120DownCount >= 10 && ma240DownCount >= 10;
-    const isMA900Downward = ma900DownCount >= 10;
-    const isBelow120 = ma60 < ma120;
-    const isBelow240 = ma60 < ma240;
-    
-    const metadata: ExtendedMetadata = {
-      ma30: 0,
-      ma60,
-      ma120,
-      ma240,
-      ma900,
-      ma60Slope,
-      ma120Slope,
-      ma240Slope,
-      ma900Slope,
-      ma120UpCount,
-      ma240UpCount,
-      ma900UpCount,
-      ma60Above120Count,
-      ma60Above240Count,
-      isMA120240Upward,
-      isMA900Upward,
-      isAbove120,
-      isAbove240,
-      ma120DownCount,
-      ma240DownCount,
-      ma900DownCount,
-      ma60Below120Count,
-      ma60Below240Count,
-      isMA120240Downward,
-      isMA900Downward,
-      isBelow120,
-      isBelow240
-    };
-    
-    return metadata;
-  },
-  
-  // 기존 analyze 함수는 새로운 함수들을 활용
-  analyze(data) {
     const signals: TradeSignal[] = [];
-    const store = useUpbitStore.getState();
-    const { lastTradeType, isTrading } = store.tradeState;
-    let currentPosition = lastTradeType === 'bid' ? 'long' : null;
-    let lastTradeId: string | null = null;
-    let hasGeneratedBuySignal = false;  // 매수 신호 생성 여부를 추적하는 플래그 추가
-    
-    if (data.length < 360) {
-      return signals;
-    }
-    
-    const self = this;
+    const lastIndex = data.length - 1;
+    let currentPosition: 'long' | 'short' | null = null;
 
-    for (let i = 360; i < data.length; i++) {
-      // 현재 포지션이 없는 경우에만 매수 신호 확인
-      if (currentPosition === null && !isTrading && !hasGeneratedBuySignal) {
-        const entrySignal = self.analyzeEntry?.(data, i);
-        
-        if (entrySignal === 'long') {
-          const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          signals.push({
-            id: tradeId,
-            time: data[i].time as number,
-            position: 'long',
-            price: data[i].close,
-            strategy: self.name,
-            reason: '매수 신호 발생',
-            metadata: self.calculateIndicators?.(data, i)
-          });
-          currentPosition = 'long';
-          lastTradeId = tradeId;
-          hasGeneratedBuySignal = true;  // 매수 신호 생성 표시
-          
-          // 매수 신호 발생 시 tradeState 업데이트
-          store.updateTradeState({
-            lastTradeType: 'bid',
-            statusChangeTime: new Date().toISOString(),
-            isTrading: true
-          });
-          
-          continue; // 매수 신호 발생 후 다음 캔들로 이동
-        }
-      }
-      // 현재 포지션이 롱인 경우에만 매도 신호 확인
-      else if (currentPosition === 'long' && lastTradeId) {
-        const exitSignal = self.analyzeExit?.(data, i, currentPosition, data[i].close);
-        
-        if (exitSignal) {
-          signals.push({
-            id: `${lastTradeId}-exit`,
-            time: data[i].time as number,
-            position: 'close',
-            price: data[i].close,
-            strategy: self.name,
-            reason: '매도 신호 발생',
-            metadata: self.calculateIndicators?.(data, i)
-          });
-          currentPosition = null;
-          lastTradeId = null;
-          hasGeneratedBuySignal = false;  // 매도 후 매수 신호 생성 가능하도록 리셋
-          
-          // 매도 신호 발생 시 tradeState 업데이트
-          store.updateTradeState({
-            lastTradeType: 'ask',
-            statusChangeTime: new Date().toISOString(),
-            isTrading: false
-          });
-          
-          continue; // 매도 신호 발생 후 다음 캔들로 이동
-        }
+    // 각 캔들에 대해 분석
+    for (let i = 360; i <= lastIndex; i++) {
+      const currentCandle = data[i];
+      const prevCandle = data[i - 1];
+
+      // EMA 계산
+      const ema60 = (currentCandle as any).ema60;
+      const ema120 = (currentCandle as any).ema120;
+      const ema240 = (currentCandle as any).ema240;
+      const ema360 = (currentCandle as any).ema360;
+
+      if (!ema60 || !ema120 || !ema240 || !ema360) continue;
+
+      // 이전 캔들의 EMA
+      const prevEma60 = (prevCandle as any).ema60;
+      const prevEma120 = (prevCandle as any).ema120;
+      const prevEma240 = (prevCandle as any).ema240;
+
+      if (!prevEma60 || !prevEma120 || !prevEma240) continue;
+
+      // 매수 조건: 60 EMA가 120 EMA를 상향 돌파
+      const isGoldenCross = prevEma60 <= prevEma120 && ema60 > ema120;
+      
+      // 매도 조건: 60 EMA가 120 EMA를 하향 돌파
+      const isDeadCross = prevEma60 >= prevEma120 && ema60 < ema120;
+
+      // 추가 필터: 360 EMA 기준
+      const isAbove360MA = currentCandle.close > ema360;
+
+      if (isGoldenCross && isAbove360MA && !currentPosition) {
+        const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        signals.push({
+          id: tradeId,
+          time: currentCandle.time as number,
+          position: 'long',
+          price: currentCandle.close,
+          strategy: 'BOLLINGER',
+          metadata: {
+            ma60: ema60,
+            ma120: ema120,
+            ma240: ema240,
+            ma360: ema360,
+            isAbove360MA
+          }
+        });
+        currentPosition = 'long';
+      } else if (isDeadCross && currentPosition === 'long') {
+        signals.push({
+          id: `${currentCandle.time}-short-${i}`,
+          time: currentCandle.time as number,
+          position: 'short',
+          price: currentCandle.close,
+          strategy: 'BOLLINGER',
+          metadata: {
+            ma60: ema60,
+            ma120: ema120,
+            ma240: ema240,
+            ma360: ema360,
+            isAbove360MA
+          }
+        });
+        currentPosition = null;
       }
     }
-    
+
+    console.log('생성된 신호:', signals.length);
     return signals;
   }
 };
