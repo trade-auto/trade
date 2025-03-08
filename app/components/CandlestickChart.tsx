@@ -28,7 +28,7 @@ import {
   calculateBacktestResult,
   formatDate,
 } from '../utils/chartHelpers';
-import { useUpbitStore } from '../store/useUpbitStore';
+import useUpbitStore from '../store/useUpbitStore';
 import TradingStrategyHover from './TradingStrategyHover';
 import axios from 'axios';
 import { TradeSignal } from '../types/candlestick';

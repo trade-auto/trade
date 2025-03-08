@@ -1,5 +1,5 @@
 import React from 'react';
-import { TradeStrategy } from '../store/useUpbitStore';
+import { TradeStrategy } from '../strategies/types';
 
 interface TradingStrategyHoverProps {
   tradeStrategy: TradeStrategy;

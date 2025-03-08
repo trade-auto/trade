@@ -12,7 +12,7 @@ import {
   LineWidth,
 } from 'lightweight-charts';
 import { SeriesMarker } from 'lightweight-charts';
-import { useUpbitStore } from '../store/useUpbitStore';
+import useUpbitStore from '../store/useUpbitStore';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
   setMarkers?: (markers: SeriesMarker<Time>[]) => void;

@@ -2,7 +2,7 @@
 
 import { useUpbitWebSocket } from './hooks/useUpbitWebSocket';
 import { CandlestickChart } from './components/CandlestickChart';
-import { useUpbitStore } from './store/useUpbitStore';
+import useUpbitStore from './store/useUpbitStore';
 import { useState } from 'react';
 import { NavigationHeader } from './components/NavigationHeader';
 import { OrderLimitSettings } from './components/OrderLimitSettings';

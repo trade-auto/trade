@@ -1,5 +1,5 @@
 import { Time } from 'lightweight-charts';
-import { TradeStrategy } from '../store/useUpbitStore';
+import { TradeStrategy } from '../strategies/types';
 
 export interface CandlestickData {
   time: Time;

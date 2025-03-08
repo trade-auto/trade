@@ -2,7 +2,7 @@
 
 import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
-import { useUpbitStore } from '../store/useUpbitStore';
+import useUpbitStore from '../store/useUpbitStore';
 
 interface CreateOrderProps {
   market: string;
@@ -271,13 +271,15 @@ export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
 >(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate, onBacktestStart }, ref) => {
-  const { 
-    tradeState, 
-    updateTradeState, 
-    maPeriods, 
-    tradeStrategy, 
+  const {
+    tradeState,
+    updateTradeState,
+    createOrder,
+    orderLimits,
+    tradeStrategy,
     updateTradeStrategy,
     dateRange,
+    maPeriods
   } = useUpbitStore();
   
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
@@ -300,39 +302,6 @@ export const CreateOrder = forwardRef<
   
   // 백테스트 관련 상태
   const [isBacktesting, setIsBacktesting] = useState(false);
-
-  // localStorage에서 주문 제한 설정을 가져오는 함수
-  const getOrderLimits = () => {
-    const savedSettings = localStorage.getItem('orderLimitSettings');
-    if (savedSettings) {
-      return JSON.parse(savedSettings);
-    }
-    return {
-      minOrderPrice: 5000,
-      maxOrderPrice: 1000000000
-    };
-  };
-
-  const [orderLimits, setOrderLimits] = useState(getOrderLimits());
-
-  // 주문 제한 설정이 변경될 때마다 업데이트
-  useEffect(() => {
-    const handleStorageChange = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      if (customEvent.detail) {
-        setOrderLimits(customEvent.detail);
-      } else {
-        setOrderLimits(getOrderLimits());
-      }
-    };
-
-    // 커스텀 이벤트 리스너 등록
-    window.addEventListener('orderLimitSettingsChanged', handleStorageChange);
-    
-    return () => {
-      window.removeEventListener('orderLimitSettingsChanged', handleStorageChange);
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
