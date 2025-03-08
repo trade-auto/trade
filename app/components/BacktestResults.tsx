@@ -36,6 +36,12 @@ const BacktestResults: React.FC<BacktestResultsProps> = ({ backtestResult }) => 
           </div>
         </div>
         <div className="bg-gray-800 p-4 rounded-lg">
+          <div className="text-gray-400 text-sm">실패 거래 횟수</div>
+          <div className="text-white text-lg font-bold">
+            {backtestResult.failedTrades}회
+          </div>
+        </div>
+        <div className="bg-gray-800 p-4 rounded-lg">
           <div className="text-gray-400 text-sm">성공률</div>
           <div className="text-white text-lg font-bold">
             {backtestResult.successRate.toFixed(2)}%

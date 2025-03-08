@@ -27,6 +27,7 @@ import {
   getChartEndpoint,
   calculateBacktestResult,
   formatDate,
+  formatTime
 } from '../utils/chartHelpers';
 import { useUpbitStore } from '../store/useUpbitStore';
 import TradingStrategyHover from './TradingStrategyHover';
@@ -796,7 +797,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           position: signal.position === 'long' ? ('belowBar' as SeriesMarkerPosition) : ('aboveBar' as SeriesMarkerPosition),
           color: signal.position === 'long' ? '#26a69a' : '#ef5350',
           shape: signal.position === 'long' ? ('arrowUp' as SeriesMarkerShape) : ('arrowDown' as SeriesMarkerShape),
-          text: `${signal.position} @ ${signal.price.toLocaleString()}`,
+          text: signal.position === 'long' ? `매수 @ ${signal.price.toLocaleString()}` : `매도 @ ${signal.price.toLocaleString()}`,
           size: 2
         }));
 
@@ -892,16 +893,85 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   // 전략 변경 시 백테스트 차트 업데이트
   useEffect(() => {
     if (importedData.length > 0) {
+      console.log(`전략 '${tradeStrategy}' 변경으로 인한 백테스트 차트 업데이트 시작`);
       const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+      
+      if (!selectedStrategy) {
+        console.error(`오류: 전략 '${tradeStrategy}'을 찾을 수 없습니다.`);
+        return;
+      }
+      
       const signals = selectedStrategy.analyze(importedData);
+      console.log(`전략 분석 결과: ${signals.length}개의 신호 생성됨`);
+      
+      if (signals.length === 0) {
+        console.warn('경고: 생성된 신호가 없습니다. 전략 또는 데이터를 확인하세요.');
+        // 빈 마커 설정 (이전 마커 제거)
+        setBacktestMarkers([]);
+        setCsvBacktestResult(null);
+        return;
+      }
+      
+      // 생성된 신호 로깅 (처음 3개와 마지막 3개)
+      const firstSignals = signals.slice(0, Math.min(3, signals.length));
+      const lastSignals = signals.slice(Math.max(0, signals.length - 3));
+      
+      console.log('첫 신호들:', firstSignals.map(s => ({
+        포지션: s.position, 
+        시간: formatTime(s.time), 
+        가격: s.price.toLocaleString()
+      })));
+      
+      console.log('마지막 신호들:', lastSignals.map(s => ({
+        포지션: s.position, 
+        시간: formatTime(s.time), 
+        가격: s.price.toLocaleString()
+      })));
+      
       const strategyMarkers = createTradeMarkers(signals);
+      console.log(`생성된 마커 수: ${strategyMarkers.length}`);
+      
+      // 마커 샘플 출력 (처음/마지막 몇 개)
+      if (strategyMarkers.length > 0) {
+        console.log('첫 마커들:', strategyMarkers.slice(0, Math.min(3, strategyMarkers.length)));
+        console.log('마지막 마커들:', strategyMarkers.slice(Math.max(0, strategyMarkers.length - 3)));
+      }
+      
       setBacktestMarkers(strategyMarkers);
+      console.log('백테스트 마커 설정 완료');
 
       // CSV 데이터에 대한 백테스트 결과 계산
       const csvResult = calculateBacktestResult(importedData, signals, 'test');
       setCsvBacktestResult(csvResult);
+      
+      // 거래 내역 요약 출력
+      if (csvResult && csvResult.trades.length > 0) {
+        console.log(`백테스트 거래 내역 요약: 총 ${csvResult.trades.length}개 거래`);
+        const firstTrades = csvResult.trades.slice(0, Math.min(2, csvResult.trades.length));
+        const lastTrades = csvResult.trades.slice(Math.max(0, csvResult.trades.length - 2));
+        
+        console.log('첫 거래들:', firstTrades.map(t => ({
+          매수시간: formatTime(t.entryTime),
+          매도시간: formatTime(t.exitTime),
+          매수가: t.entryPrice.toLocaleString(),
+          매도가: t.exitPrice.toLocaleString(),
+          수익률: `${(t.return * 100).toFixed(2)}%`
+        })));
+        
+        console.log('마지막 거래들:', lastTrades.map(t => ({
+          매수시간: formatTime(t.entryTime),
+          매도시간: formatTime(t.exitTime),
+          매수가: t.entryPrice.toLocaleString(),
+          매도가: t.exitPrice.toLocaleString(),
+          수익률: `${(t.return * 100).toFixed(2)}%`
+        })));
+      } else {
+        console.warn('백테스트 결과: 생성된 거래가 없습니다.');
+      }
+      
+      console.log('백테스트 결과 계산 완료');
     }
-  }, [tradeStrategy, importedData]);
+  }, [importedData, tradeStrategy]);
 
   const loadMASettings = () => {
     if (typeof window !== 'undefined') {

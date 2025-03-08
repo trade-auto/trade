@@ -104,6 +104,7 @@ export interface SeriesMarker<T> {
 export interface BacktestResult {
   totalTrades: number;
   successfulTrades: number;
+  failedTrades: number;
   totalReturn: number;
   totalNetReturn: number;
   successRate: number;
