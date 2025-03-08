@@ -310,26 +310,46 @@ const bollingerStrategy: TradingStrategy = {
   
   // 기존 분석 함수는 새로운 함수들을 활용
   analyze(data) {
+    // 데이터가 충분하지 않으면 빈 배열 반환
+    if (data.length < 900) {
+      return [];
+    }
+    
+    // 이미 생성된 신호를 저장할 배열
     const signals: TradeSignal[] = [];
+    
+    // 이미 처리된 시간을 추적하기 위한 Set
+    const processedTimes = new Set<number>();
+    
     let currentPosition: 'long' | null = null;
     let lastTradeId: string | null = null;
     
-    if (data.length < 900) {
-      return signals;
-    }
-    
     const self = this;
-
+    
+    // 매수 신호 먼저 찾기
     for (let i = 900; i < data.length; i++) {
+      // 현재 캔들 시간
+      const currentTime = data[i].time as number;
+      
+      // 이미 처리된 시간이면 건너뛰기
+      if (processedTimes.has(currentTime)) {
+        continue;
+      }
+      
       // 현재 포지션이 없는 경우에만 매수 신호 확인
       if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'long') {
-          const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          // 매수 신호 생성
+          const tradeId = `trade-${currentTime}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          // 이 시간에 대한 신호 처리 표시
+          processedTimes.add(currentTime);
+          
           signals.push({
             id: tradeId,
-            time: data[i].time as number,
+            time: currentTime,
             position: 'long',
             price: data[i].close,
             strategy: 'BOLLINGER',
@@ -350,51 +370,69 @@ const bollingerStrategy: TradingStrategy = {
               minute: '2-digit',
               second: '2-digit',
               hour12: false
-            })
+            }),
+            '캔들 시간': new Date(currentTime * 1000).toLocaleString('ko-KR')
           });
-          continue; // 매수 신호가 발생하면 매도 조건을 확인하지 않고 다음 캔들로 이동
-        }
-      } 
-      // 현재 롱 포지션인 경우에만 매도 신호 확인
-      else if (currentPosition === 'long' && lastTradeId) {
-        const entrySignalIndex = signals.findIndex(signal => signal.id === lastTradeId);
-        
-        if (entrySignalIndex >= 0) {
-          const entryPrice = signals[entrySignalIndex].price;
-          const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
           
-          if (shouldExit) {
-            const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            signals.push({
-              id: exitTradeId,
-              time: data[i].time as number,
-              position: 'close',
-              price: data[i].close,
-              strategy: 'BOLLINGER',
-              reason: '매도 조건 충족',
-              metadata: self.calculateIndicators?.(data, i),
-              relatedTradeId: lastTradeId
-            });
+          // 매수 후 매도 신호 찾기
+          for (let j = i + 1; j < data.length; j++) {
+            const exitTime = data[j].time as number;
             
-            console.log('✅ 매도 신호 생성:', {
-              시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
-              가격: data[i].close.toLocaleString('ko-KR') + '원',
-              '이전 포지션': currentPosition,
-              '매수가': entryPrice.toLocaleString('ko-KR') + '원',
-              '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
-              '거래 ID': exitTradeId,
-              '관련 매수 ID': lastTradeId
-            });
+            // 이미 처리된 시간이면 건너뛰기
+            if (processedTimes.has(exitTime)) {
+              continue;
+            }
             
-            // 매도 신호 생성 후 즉시 포지션과 거래 ID 초기화
-            currentPosition = null;
-            
-            console.log('✅ 매도 후 상태 초기화 완료:', {
-              '현재 포지션': currentPosition,
-              '다음 매수 준비': '완료'
-            });
-            lastTradeId = null;
-            continue; // 현재 캔들에서 매도 신호를 생성한 후 다음 캔들로 이동
+            if (currentPosition === 'long' && lastTradeId) {
+              const entrySignalIndex = signals.findIndex(signal => signal.id === lastTradeId);
+              
+              if (entrySignalIndex >= 0) {
+                const entryPrice = signals[entrySignalIndex].price;
+                const shouldExit = self.analyzeExit?.(data, j, 'long', entryPrice);
+                
+                if (shouldExit) {
+                  // 매도 신호 생성
+                  const exitTradeId = `trade-${exitTime}-${Math.random().toString(36).substr(2, 9)}`;
+                  
+                  // 이 시간에 대한 신호 처리 표시
+                  processedTimes.add(exitTime);
+                  
+                  signals.push({
+                    id: exitTradeId,
+                    time: exitTime,
+                    position: 'close',
+                    price: data[j].close,
+                    strategy: 'BOLLINGER',
+                    reason: '매도 조건 충족',
+                    metadata: self.calculateIndicators?.(data, j),
+                    relatedTradeId: lastTradeId
+                  });
+                  
+                  console.log('✅ 매도 신호 생성:', {
+                    시간: new Date(exitTime * 1000).toLocaleString('ko-KR'),
+                    가격: data[j].close.toLocaleString('ko-KR') + '원',
+                    '이전 포지션': currentPosition,
+                    '매수가': entryPrice.toLocaleString('ko-KR') + '원',
+                    '수익률': ((data[j].close / entryPrice - 1) * 100).toFixed(2) + '%',
+                    '거래 ID': exitTradeId,
+                    '관련 매수 ID': lastTradeId
+                  });
+                  
+                  // 매도 신호 생성 후 즉시 포지션과 거래 ID 초기화
+                  currentPosition = null;
+                  
+                  console.log('✅ 매도 후 상태 초기화 완료:', {
+                    '현재 포지션': currentPosition,
+                    '다음 매수 준비': '완료'
+                  });
+                  lastTradeId = null;
+                  
+                  // 매도 후 다음 매수 신호를 찾기 위해 i를 j로 업데이트
+                  i = j;
+                  break; // 매도 신호를 찾았으므로 내부 루프 종료
+                }
+              }
+            }
           }
         }
       }

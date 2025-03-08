@@ -258,51 +258,51 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
   
   return {
     // 가격 데이터 관련 상태 및 메서드
-    prices: {},
-    tickers: {},
-    isConnected: false,
+  prices: {},
+  tickers: {},
+  isConnected: false,
     addPrice: (symbol, price) => {
       set((state) => ({
-        prices: {
-          ...state.prices,
-          [symbol]: {
-            currentPrice: price,
+    prices: {
+      ...state.prices,
+      [symbol]: {
+        currentPrice: price,
             lastUpdated: new Date().toISOString()
-          }
-        }
+      }
+    }
       }));
     },
     setIsConnected: (status) => set({ isConnected: status }),
     updateLastUpdated: (symbol) => {
       set((state) => ({
-        prices: {
-          ...state.prices,
-          [symbol]: {
-            ...state.prices[symbol],
+    prices: {
+      ...state.prices,
+      [symbol]: {
+        ...state.prices[symbol],
             lastUpdated: new Date().toISOString()
-          }
-        }
+      }
+    }
       }));
     },
     updateTickerData: (symbol, data) => {
       set((state) => ({
-        tickers: {
-          ...state.tickers,
-          [symbol]: data
-        }
+    tickers: {
+      ...state.tickers,
+      [symbol]: data
+    }
       }));
     },
-    
+
     // 거래 상태 관련
-    tradeState: {
-      lastTradeType: null,
+  tradeState: {
+    lastTradeType: null,
       statusChangeTime: new Date().toISOString(),
-      currentPrice: 0,
-      actionStartTime: null,
-      isTrading: false,
+    currentPrice: 0,
+    actionStartTime: null,
+    isTrading: false,
       theoreticalPosition: 'wait',
-      missedFirstCycle: false
-    },
+    missedFirstCycle: false
+  },
     updateTradeState: (update) => {
       set((state) => ({
         tradeState: {
@@ -313,7 +313,7 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
     },
     
     // 주문 관련
-    createOrder: async (params) => {
+  createOrder: async (params) => {
       // 실제 주문 로직 구현 (API 호출 등)
       console.log('주문 생성:', params);
       // 주문 성공 시 상태 업데이트
@@ -326,49 +326,49 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
         }
       }));
     },
-    orderLimits: {
-      minOrderPrice: 5000,
-      maxOrderPrice: 1000000000
-    },
-    
+  orderLimits: {
+    minOrderPrice: 5000,
+    maxOrderPrice: 1000000000
+  },
+
     // MA 설정 관련
     maPeriods,
     updateMAPeriod: (type, value) => {
       set((state) => {
-        const newMAPeriods = {
-          ...state.maPeriods,
+    const newMAPeriods = {
+      ...state.maPeriods,
           [type]: value
-        };
-        
-        // 로컬 스토리지에 저장
+    };
+    
+      // 로컬 스토리지에 저장
         if (typeof window !== 'undefined') {
-          localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
-        }
-        
-        return { maPeriods: newMAPeriods };
+      localStorage.setItem('maPeriods', JSON.stringify(newMAPeriods));
+    }
+    
+    return { maPeriods: newMAPeriods };
       });
     },
     showMA,
     updateShowMA: (type) => {
       set((state) => {
-        const newShowMA = {
-          ...state.showMA,
+    const newShowMA = {
+      ...state.showMA,
           [type]: !state.showMA[type]
-        };
-        
-        // 로컬 스토리지에 저장
+    };
+    
+      // 로컬 스토리지에 저장
         if (typeof window !== 'undefined') {
-          localStorage.setItem('showMA', JSON.stringify(newShowMA));
-        }
-        
-        return { showMA: newShowMA };
+      localStorage.setItem('showMA', JSON.stringify(newShowMA));
+    }
+    
+    return { showMA: newShowMA };
       });
     },
-    
+
     // 전략 관련
-    tradeStrategy,
-    updateTradeStrategy: (strategy) => {
-      set({ tradeStrategy: strategy });
+  tradeStrategy,
+  updateTradeStrategy: (strategy) => {
+    set({ tradeStrategy: strategy });
       
       // 로컬 스토리지에 저장
       if (typeof window !== 'undefined') {
@@ -388,27 +388,27 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
         }));
       }
     },
-    
+
     // 전략 객체 및 분석 메서드
-    strategies,
-    getStrategy: (name) => strategies[name],
-    analyzeStrategy: (data) => {
+  strategies,
+  getStrategy: (name) => strategies[name],
+  analyzeStrategy: (data) => {
       const { tradeStrategy } = get();
       const strategy = strategies[tradeStrategy];
       return strategy.analyze(data);
-    },
-    
+  },
+
     // 거래 내역 관련
     trades,
     addTrade: (trade) => {
       set((state) => {
-        const newTrades = [...state.trades, trade];
-        
+    const newTrades = [...state.trades, trade];
+    
         // 로컬 스토리지에 저장
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('trades', JSON.stringify(newTrades));
-        }
-        
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('trades', JSON.stringify(newTrades));
+    }
+    
         return { trades: newTrades };
       });
     },
@@ -425,7 +425,7 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
         };
         
         // 로컬 스토리지에 저장
-        if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
           localStorage.setItem('trades', JSON.stringify(newTrades));
         }
         
@@ -444,18 +444,18 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
       // 로컬 스토리지에서 삭제
       if (typeof window !== 'undefined') {
         localStorage.removeItem('trades');
-      }
-    },
-    resetTradeState: () => {
+    }
+  },
+  resetTradeState: () => {
       set({
         tradeState: {
-          lastTradeType: null,
-          statusChangeTime: new Date().toISOString(),
-          currentPrice: 0,
-          actionStartTime: null,
-          isTrading: false,
+      lastTradeType: null,
+      statusChangeTime: new Date().toISOString(),
+      currentPrice: 0,
+      actionStartTime: null,
+      isTrading: false,
           theoreticalPosition: 'wait',
-          missedFirstCycle: false
+      missedFirstCycle: false
         }
       });
     }
