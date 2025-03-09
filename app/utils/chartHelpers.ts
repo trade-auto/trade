@@ -44,7 +44,16 @@ export const getInitialDateRange = (type: string): DateRange => {
 
 /// 마커 생성 함수
 export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[] => {
+  if (!signals || signals.length === 0) return [];
+  
+  console.log(`마커 생성 중: ${signals.length}개 신호`);
+  
   return signals.map(signal => {
+    if (!signal || !signal.time) {
+      console.warn('유효하지 않은 신호 스킵:', signal);
+      return null;
+    }
+    
     // 포지션에 따른 마커 설정
     let position: SeriesMarkerPosition;
     let color: string;
@@ -55,29 +64,33 @@ export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[]
       position = 'belowBar' as SeriesMarkerPosition;
       color = '#26a69a'; // 녹색
       shape = 'arrowUp' as SeriesMarkerShape;
-      text = 'buy';
+      text = '매수';
     } else if (signal.position === 'short' || signal.position === 'close') {
       position = 'aboveBar' as SeriesMarkerPosition;
       color = '#ef5350'; // 빨간색
       shape = 'arrowDown' as SeriesMarkerShape;
-      text = 'sell';
+      text = '매도';
     } else {
       // 기본값 설정
       position = 'belowBar' as SeriesMarkerPosition;
       color = '#888888'; // 회색
       shape = 'circle' as SeriesMarkerShape;
-      text = signal.position;
+      text = signal.position || '알 수 없음';
     }
     
+    const markerTime = signal.time as Time;
+    console.log(`마커 생성: ${text}, 시간: ${new Date(signal.time * 1000).toLocaleString('ko-KR')}`);
+    
     return {
-      time: signal.time as Time,
+      time: markerTime,
       position,
       color,
       shape,
-      text,
-      size: 2
+      text: `${text} @ ${signal.price.toLocaleString()}`,
+      size: 3, // 크기 증가
+      id: signal.id // 고유 ID 추가
     };
-  });
+  }).filter(Boolean) as SeriesMarker<Time>[];
 };
 
 // EMA 계산 함수

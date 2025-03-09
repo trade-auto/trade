@@ -248,17 +248,76 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 의도적으로 의존성 배열을 비워서 한 번만 실행되도록 함
 
-  // 마커 업데이트 - 최적화
-  useEffect(() => {
-    if (!markerPluginRef.current) return;
-    console.log('tradeStrategy 마커 업데이트', tradeStrategy);
-    try {
-
-      markerPluginRef.current.setMarkers(markers);
-    } catch (error) {
-      console.error('마커 업데이트 실패:', error);
+  // 마커 플러그인 생성 및 설정 함수 
+  const setupMarkerPlugin = useCallback(() => {
+    if (!seriesRefs.current.candle) {
+      console.warn('캔들 시리즈가 준비되지 않아 마커 플러그인을 생성할 수 없습니다.');
+      return;
     }
-  }, [markers, tradeStrategy]);
+    
+    try {
+      console.log('마커 플러그인 설정 시작');
+      
+      // 이전 플러그인 정리
+      markerPluginRef.current = null;
+      
+      // 새 플러그인 생성
+      markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
+      
+      // 마커가 있으면 적용
+      if (markers.length > 0 && markerPluginRef.current) {
+        console.log('초기 마커 설정:', markers.length, '개');
+        markerPluginRef.current.setMarkers(markers);
+        
+        // 안전장치: 지연 마커 적용
+        setTimeout(() => {
+          if (markerPluginRef.current) {
+            console.log('지연 마커 재확인:', markers.length, '개');
+            markerPluginRef.current.setMarkers(markers);
+          }
+        }, 300);
+      }
+      
+      console.log('마커 플러그인 설정 완료');
+    } catch (error) {
+      console.error('마커 플러그인 설정 오류:', error);
+    }
+  }, [markers]);
+
+  // 초기화 후 마커 플러그인 설정
+  useEffect(() => {
+    if (seriesRefs.current.candle) {
+      setupMarkerPlugin();
+    }
+  }, [setupMarkerPlugin]);
+  
+  // 마커 업데이트
+  useEffect(() => {
+    if (!markerPluginRef.current && seriesRefs.current.candle) {
+      setupMarkerPlugin();
+      return;
+    }
+    
+    if (markerPluginRef.current && markers.length > 0) {
+      console.log('마커 업데이트:', markers.length, '개');
+      try {
+        markerPluginRef.current.setMarkers(markers);
+        
+        // 안전장치: 지연 마커 확인
+        setTimeout(() => {
+          if (markerPluginRef.current) {
+            console.log('지연 마커 확인:', markers.length, '개');
+            markerPluginRef.current.setMarkers(markers);
+          }
+        }, 300);
+      } catch (error) {
+        console.error('마커 업데이트 실패:', error);
+        
+        // 오류 발생 시 플러그인 재설정 시도
+        setupMarkerPlugin();
+      }
+    }
+  }, [markers, tradeStrategy, setupMarkerPlugin]);
 
   // 전체화면 변경 시 차트 크기 조정
   useEffect(() => {

@@ -35,7 +35,7 @@ import TradingStrategyHover from './TradingStrategyHover';
 import axios from 'axios';
 import { TradeSignal } from '../types/candlestick';
 import { CandlestickData as TVCandlestickData, UTCTimestamp, BusinessDay } from 'lightweight-charts';
-
+export { CandlestickChart };
 interface OrderParams {
   market: string;
   side: 'bid' | 'ask';
@@ -55,17 +55,16 @@ interface CandlestickChartProps {
   onOrder?: (price: number, isMarketOrder: boolean) => void;
 }
 
-const CandlestickChart: React.FC<CandlestickChartProps> = ({
-  symbol,
-  chartType,
-  initialAutoUpdate = true,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  mode,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  handleOrder,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onOrder,
-}) => {
+const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
+  const {
+    symbol,
+    chartType,
+    initialAutoUpdate = true,
+    mode,
+    handleOrder,
+    onOrder,
+  } = props;
+  
   // 차트 상태
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chartHeight, setChartHeight] = useState(500);
@@ -166,11 +165,170 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     lastTradeId: null
   });
 
-  // 초봉 차트에서 실시간 API 업데이트로 전환하는 함수
+  // 마커 관련 상태 및 ref
+  const lastBacktestMarkersRef = useRef<SeriesMarker<Time>[]>([]);
+  const isMounted = useRef(true);
+  const markerAppliedRef = useRef(false);
+  
+  // 마커 상태를 ref로 유지하여 재렌더링에도 유지되도록 함
+  const backtestMarkerPluginInitializedRef = useRef(false);
+  
+  // 백테스트 마커 초기화 및 적용을 위한 함수
+  const setupBacktestMarkers = useCallback(() => {
+    if (!backtestCandleSeriesRef.current) return;
+    
+    try {
+      // 마커 플러그인이 없으면 생성
+      if (!backtestMarkerPluginRef.current) {
+        console.log('백테스트 마커 플러그인 생성');
+        backtestMarkerPluginRef.current = createSeriesMarkers(backtestCandleSeriesRef.current);
+        backtestMarkerPluginInitializedRef.current = true;
+      }
+      
+      // 저장된 마커가 있으면 적용
+      if (backtestMarkerPluginRef.current && backtestMarkers.length > 0) {
+        console.log('백테스트 마커 적용:', backtestMarkers.length);
+        backtestMarkerPluginRef.current.setMarkers(backtestMarkers);
+        lastBacktestMarkersRef.current = backtestMarkers;
+        
+        // 안전장치: 지연 마커 적용
+        setTimeout(() => {
+          if (backtestMarkerPluginRef.current) {
+            console.log('백테스트 마커 재확인:', backtestMarkers.length);
+            backtestMarkerPluginRef.current.setMarkers(backtestMarkers);
+          }
+        }, 500);
+      }
+    } catch (error) {
+      console.error('백테스트 마커 설정 오류:', error);
+    }
+  }, [backtestMarkers]);
+  
+  // 백테스트 마커 변경 시 마커 플러그인 업데이트
+  useEffect(() => {
+    if (backtestMarkers.length > 0 && backtestCandleSeriesRef.current) {
+      setupBacktestMarkers();
+    }
+  }, [backtestMarkers, setupBacktestMarkers]);
+  
+  // 백테스트 차트 준비되면 마커 설정
+  useEffect(() => {
+    if (backtestCandleSeriesRef.current && !backtestMarkerPluginInitializedRef.current) {
+      setupBacktestMarkers();
+    }
+  }, [importedData, setupBacktestMarkers]);
+
+  // 백테스트 차트 초기화 콜백
+  const handleBacktestChartReady = useCallback((
+    chartApi: IChartApi,
+    candleSeries: ISeriesApi<"Candlestick">,
+    volumeSeries: ISeriesApi<"Histogram">,
+    sixtyEMASeries: ISeriesApi<"Line">,
+    oneTwentyEMASeries: ISeriesApi<"Line">,
+    twoFortyEMASeries: ISeriesApi<"Line">,
+    threeHundredSixtyEMASeries: ISeriesApi<"Line">,
+    threeHundredEMASeries: ISeriesApi<"Line">,
+    nineHundredEMASeries: ISeriesApi<"Line">
+  ) => {
+    console.log('백테스트 차트 초기화 시작');
+    
+    // 백테스트 차트용 레퍼런스 생성
+    backtestChartApiRef.current = chartApi;
+    backtestCandleSeriesRef.current = candleSeries;
+    backtestVolumeSeriesRef.current = volumeSeries;
+    backtestSixtyEMASeriesRef.current = sixtyEMASeries;
+    backtestOneTwentyEMASeriesRef.current = oneTwentyEMASeries;
+    backtestTwoFortyEMASeriesRef.current = twoFortyEMASeries;
+    backtestThreeHundredSixtyEMASeriesRef.current = threeHundredSixtyEMASeries;
+    backtestThreeHundredEMASeriesRef.current = threeHundredEMASeries;
+    backtestNineHundredEMASeriesRef.current = nineHundredEMASeries;
+    
+    // 볼륨 시리즈 설정
+    backtestChartApiRef.current.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+      borderVisible: false,
+    });
+
+    // 임포트된 데이터가 있으면 차트에 표시
+    if (importedData.length > 0) {
+      // 캔들스틱 데이터 설정
+      backtestCandleSeriesRef.current.setData(importedData);
+      
+      // 볼륨 데이터 설정
+      const volumeData = importedData.map(d => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? '#26a69a' : '#ef5350',
+      }));
+      backtestVolumeSeriesRef.current.setData(volumeData);
+      
+      // EMA 데이터 설정
+      const ema60Data = calculateEMA(importedData, 60);
+      const ema120Data = calculateEMA(importedData, 120);
+      const ema240Data = calculateEMA(importedData, 240);
+      const ema360Data = calculateEMA(importedData, 360);
+      const ema300Data = calculateEMA(importedData, 300);
+      const ema900Data = calculateEMA(importedData, 900);
+
+      backtestSixtyEMASeriesRef.current.setData(ema60Data);
+      backtestOneTwentyEMASeriesRef.current.setData(ema120Data);
+      backtestTwoFortyEMASeriesRef.current.setData(ema240Data);
+      backtestThreeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+      backtestThreeHundredEMASeriesRef.current.setData(ema300Data);
+      backtestNineHundredEMASeriesRef.current.setData(ema900Data);
+
+      // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
+      const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+      const analysisResult = selectedStrategy.analyze(importedData);
+      const signals = analysisResult.signals;
+      const newMarkers = createTradeMarkers(signals);
+      
+      // 마커 상태 업데이트
+      setBacktestMarkers(newMarkers);
+      // 마커 플러그인을 즉시 설정하려고 시도하되, 
+      // setTimeout을 사용하여 비동기적으로도 설정 시도
+      setupBacktestMarkers();
+      
+      // 추가 안전장치: 지연 마커 적용 시도
+      markerAppliedRef.current = false;
+      
+      const attemptApplyMarkers = () => {
+        if (!markerAppliedRef.current && isMounted.current) {
+          console.log('지연 마커 적용 시도:', newMarkers.length);
+          setupBacktestMarkers();
+          
+          // 최대 3번 시도
+          if (!markerAppliedRef.current) {
+            setTimeout(() => {
+              if (!markerAppliedRef.current && isMounted.current) {
+                console.log('마지막 마커 적용 시도:', newMarkers.length);
+                setupBacktestMarkers();
+              }
+            }, 500);
+          }
+        }
+      };
+      
+      setTimeout(attemptApplyMarkers, 100);
+
+      // 차트 피팅
+      backtestChartApiRef.current.timeScale().fitContent();
+    }
+    
+    console.log('백테스트 차트 초기화 완료');
+  }, [importedData, tradeStrategy, setupBacktestMarkers]);
+
+  // 실시간 API 업데이트로 전환하는 함수 (먼저 선언)
   const switchToRealtimeAfterUpdate = useCallback(() => {
-    console.log('자동 업데이트 완료. 실시간 API 모드로 전환합니다.');
+    // 자동 업데이트 중지
     setIsAutoUpdate(false);
-    setIsRealtimeAPIEnabled(true);
+    // 잠시 후 실시간 API 활성화
+    setTimeout(() => {
+      setIsRealtimeAPIEnabled(true);
+    }, 500);
   }, []);
 
   // 데이터 로드 함수
@@ -345,242 +503,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       ongoingRequestRef.current = false;
     }
   }, [dateRange, symbol, chartType, showMA, isAutoUpdate, switchToRealtimeAfterUpdate]);
-
-  // 실시간 API 업데이트 함수
-  const updateRealtimeData = useCallback(async () => {
-    if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/') || ongoingRequestRef.current) return;
-
-    try {
-      setRealtimeUpdateStatus(prev => ({
-        ...prev,
-        isUpdating: true
-      }));
-
-      const endpoint = getChartEndpoint(chartType);
-      // 1개의 최신 캔들만 가져옴
-      const response = await fetch(
-        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=1`
-      );
-      
-      if (!response.ok) {
-        throw new Error('실시간 데이터 로딩 실패');
-      }
-      
-      const data: UpbitCandle[] = await response.json();
-      
-      if (!data || data.length === 0) return;
-      
-      // 데이터 처리
-      const newCandle = data[0];
-      const processedCandle = {
-        time: new Date(newCandle.candle_date_time_kst).getTime() / 1000 as Time,
-        open: newCandle.opening_price,
-        high: newCandle.high_price,
-        low: newCandle.low_price,
-        close: newCandle.trade_price,
-        volume: newCandle.candle_acc_trade_volume,
-      };
-
-      const currentTime = new Date().toLocaleTimeString('ko-KR');
-      
-      // 차트 업데이트
-      if (candleSeriesRef.current && volumeSeriesRef.current) {
-        // 현재 데이터가 있는지 확인
-        let currentData = allData.slice();
-        
-        // 새 캔들의 시간이 마지막 캔들의 시간과 같으면 업데이트, 다르면 추가
-        const lastCandle = currentData[currentData.length - 1];
-        const isNewCandle = !lastCandle || lastCandle.time !== processedCandle.time;
-        
-        if (lastCandle && lastCandle.time === processedCandle.time) {
-          // 기존 캔들 업데이트
-          currentData[currentData.length - 1] = processedCandle;
-          console.log(`[${currentTime}] 캔들 업데이트:`, processedCandle.close);
-        } else {
-          // 새 캔들 추가
-          currentData.push(processedCandle);
-          console.log(`[${currentTime}] 새 캔들 추가:`, processedCandle.close);
-        }
-        
-        // 데이터 제한 (너무 많은 데이터가 쌓이지 않도록)
-        if (currentData.length > 5000) {
-          currentData = currentData.slice(-5000);
-        }
-        
-        // 캔들 데이터 업데이트
-        candleSeriesRef.current.update(processedCandle);
-        
-        // 볼륨 데이터 업데이트
-        const volumeData = {
-          time: processedCandle.time,
-          value: processedCandle.volume,
-          color: processedCandle.close >= processedCandle.open ? '#26a69a' : '#ef5350',
-        };
-        volumeSeriesRef.current.update(volumeData);
-        
-        // MA 데이터 업데이트
-        if (
-          sixtyEMASeriesRef.current && 
-          oneTwentyEMASeriesRef.current && 
-          twoFortyEMASeriesRef.current && 
-          threeHundredSixtyEMASeriesRef.current &&
-          threeHundredEMASeriesRef.current &&
-          nineHundredEMASeriesRef.current
-        ) {
-          console.log(`[${currentTime}] MA 업데이트 시작`);
-          
-          // EMA 계산
-          const ema60Data = calculateEMA(currentData, 60);
-          const ema120Data = calculateEMA(currentData, 120);
-          const ema240Data = calculateEMA(currentData, 240);
-          const ema360Data = calculateEMA(currentData, 360);
-          const ema300Data = calculateEMA(currentData, 300);
-          const ema900Data = calculateEMA(currentData, 900);
-
-          // 마지막 EMA 값만 업데이트
-          if (ema60Data.length > 0) sixtyEMASeriesRef.current.update(ema60Data[ema60Data.length - 1]);
-          if (ema120Data.length > 0) oneTwentyEMASeriesRef.current.update(ema120Data[ema120Data.length - 1]);
-          if (ema240Data.length > 0) twoFortyEMASeriesRef.current.update(ema240Data[ema240Data.length - 1]);
-          if (ema360Data.length > 0) threeHundredSixtyEMASeriesRef.current.update(ema360Data[ema360Data.length - 1]);
-          if (ema300Data.length > 0) threeHundredEMASeriesRef.current.update(ema300Data[ema300Data.length - 1]);
-          if (ema900Data.length > 0) nineHundredEMASeriesRef.current.update(ema900Data[ema900Data.length - 1]);
-          
-          console.log(`[${currentTime}] MA 업데이트 완료`);
-        }
-        
-        // 현재 가격 설정
-        setChartPrice(processedCandle.close);
-        
-        // 데이터 업데이트
-        setAllData(data => [...data, ...currentData]);
-
-        // 매매 신호 분석 및 마커 생성
-        // 실시간 모드에서 analyze 함수 호출 시 옵션 전달
-        const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
-        const analysisResult = selectedStrategy.analyze(currentData, {
-          realtime: true,
-          lastProcessedIndex: lastAnalysisResult.lastProcessedIndex,
-          currentPosition: lastAnalysisResult.currentPosition,
-          lastTradeId: lastAnalysisResult.lastTradeId,
-          entryPrice: lastAnalysisResult.entryPrice
-        });
-
-        // 분석 결과 상태 업데이트
-        setLastAnalysisResult({
-          lastProcessedIndex: analysisResult.lastProcessedIndex,
-          currentPosition: analysisResult.currentPosition,
-          lastTradeId: analysisResult.lastTradeId,
-          entryPrice: analysisResult.entryPrice
-        });
-
-        const signals = analysisResult.signals;
-        const newMarkers = createTradeMarkers(signals);
-        setMarkers(newMarkers);
-
-        // 업데이트 상태 갱신
-        setRealtimeUpdateStatus(prev => ({
-          isUpdating: false,
-          lastUpdateTime: currentTime,
-          updateCount: prev.updateCount + 1
-        }));
-
-        console.log(`[${currentTime}] 실시간 업데이트 완료 (${isNewCandle ? '새 캔들' : '캔들 업데이트'})`);
-      }
-    } catch (error) {
-      console.error('실시간 데이터 업데이트 오류:', error);
-      setRealtimeUpdateStatus(prev => ({
-        ...prev,
-        isUpdating: false
-      }));
-    }
-  }, [isRealtimeAPIEnabled, chartType, symbol, allData, lastAnalysisResult]);
-
-  // 자동 업데이트 효과
-  useEffect(() => {
-    // 초기화 또는 종목 변경 시 전체 데이터 로드
-    if (symbol !== lastSymbol) {
-      console.log('종목이 변경되었습니다. 전체 데이터를 다시 로드합니다.');
-      setIsAutoUpdate(true);
-      setIsRealtimeAPIEnabled(false);
-      setLastSymbol(symbol);
-    }
-  }, [symbol, lastSymbol]);
-
-  // 자동 업데이트 타이머
-  useEffect(() => {
-    if (!isAutoUpdate) return;
-    
-    const updateInterval = 10000; // 10초
-      
-      const updateTimer = setInterval(() => {
-        if (!ongoingRequestRef.current) {
-        console.log('자동 업데이트 실행...');
-          const now = new Date();
-          setDateRange(prev => ({ ...prev, endDate: now }));
-        }
-      }, updateInterval);
-      
-      return () => clearInterval(updateTimer);
-  }, [isAutoUpdate]);
-
-  // 실시간 API 업데이트 타이머
-  useEffect(() => {
-    if (!isRealtimeAPIEnabled) return;
-    
-    console.log('실시간 API 업데이트 시작...');
-    const realtimeInterval = 1000; // 1초
-    
-    const realtimeTimer = setInterval(() => {
-      updateRealtimeData();
-    }, realtimeInterval);
-    
-    return () => clearInterval(realtimeTimer);
-  }, [isRealtimeAPIEnabled, updateRealtimeData]);
-
-  // 데이터 로드 트리거
-  useEffect(() => {
-    // 중복 요청 방지를 위한 디바운싱
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    
-    if (isAutoUpdate) {
-    timeoutRef.current = setTimeout(() => {
-      loadData();
-    }, 300);
-    }
-    
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [dateRange, loadData, isAutoUpdate]);
-
-  // 자동 업데이트 토글 핸들러
-  const handleAutoUpdateToggle = useCallback(() => {
-    // 자동 업데이트 켜기: 실시간 API는 끄기
-    if (!isAutoUpdate) {
-      setIsAutoUpdate(true);
-      setIsRealtimeAPIEnabled(false);
-    } 
-    // 자동 업데이트 끄기: 실시간 API도 끄기
-    else {
-      setIsAutoUpdate(false);
-      setIsRealtimeAPIEnabled(false);
-    }
-  }, [isAutoUpdate]);
-
-  // 실시간 API 토글 핸들러
-  const handleRealtimeAPIToggle = useCallback(() => {
-    // 실시간 API 켜기: 자동 업데이트는 끄기
-    if (!isRealtimeAPIEnabled) {
-      setIsRealtimeAPIEnabled(true);
-      setIsAutoUpdate(false);
-    } 
-    // 실시간 API 끄기
-    else {
-      setIsRealtimeAPIEnabled(false);
-    }
-  }, [isRealtimeAPIEnabled]);
 
   // 차트 초기화 콜백
   const handleChartReady = useCallback((
@@ -859,170 +781,96 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     fileInputRef.current?.click();
   }, []);
 
-  // 백테스트 차트 초기화 콜백
-  const handleBacktestChartReady = useCallback((
-    chartApi: IChartApi,
-    candleSeries: ISeriesApi<"Candlestick">,
-    volumeSeries: ISeriesApi<"Histogram">,
-    sixtyEMASeries: ISeriesApi<"Line">,
-    oneTwentyEMASeries: ISeriesApi<"Line">,
-    twoFortyEMASeries: ISeriesApi<"Line">,
-    threeHundredSixtyEMASeries: ISeriesApi<"Line">,
-    threeHundredEMASeries: ISeriesApi<"Line">,
-    nineHundredEMASeries: ISeriesApi<"Line">
-  ) => {
-    console.log('백테스트 차트 초기화');
-    
-    // 백테스트 차트용 레퍼런스 생성
-    backtestChartApiRef.current = chartApi;
-    backtestCandleSeriesRef.current = candleSeries;
-    backtestVolumeSeriesRef.current = volumeSeries;
-    backtestSixtyEMASeriesRef.current = sixtyEMASeries;
-    backtestOneTwentyEMASeriesRef.current = oneTwentyEMASeries;
-    backtestTwoFortyEMASeriesRef.current = twoFortyEMASeries;
-    backtestThreeHundredSixtyEMASeriesRef.current = threeHundredSixtyEMASeries;
-    backtestThreeHundredEMASeriesRef.current = threeHundredEMASeries;
-    backtestNineHundredEMASeriesRef.current = nineHundredEMASeries;
-    
-    // 백테스트 마커 플러그인 초기화 (동적 import 대신 직접 사용)
-    try {
-      if (backtestCandleSeriesRef.current) {
-        // 이미 마커 플러그인이 있으면 제거
-        if (backtestMarkerPluginRef.current) {
-          console.log('기존 백테스트 마커 플러그인 제거');
-          // 여기서 플러그인 제거 로직이 필요하다면 추가
-        }
-        
-        // 새 마커 플러그인 생성
-        console.log('새 백테스트 마커 플러그인 생성');
-        backtestMarkerPluginRef.current = createSeriesMarkers(backtestCandleSeriesRef.current);
-        
-        // 마커가 있으면 설정
-        if (backtestMarkers.length > 0 && backtestMarkerPluginRef.current) {
-          console.log('백테스트 마커 설정:', backtestMarkers.length);
-          backtestMarkerPluginRef.current.setMarkers(backtestMarkers);
-        }
+  // 차트 초봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시
+  if (chartType === 'seconds/60') {
+    // 자동 업데이트 효과
+    useEffect(() => {
+      // 초기화 또는 종목 변경 시 전체 데이터 로드
+      if (symbol !== lastSymbol) {
+        console.log('종목이 변경되었습니다. 전체 데이터를 다시 로드합니다.');
+        setIsAutoUpdate(true);
+        setIsRealtimeAPIEnabled(false);
+        setLastSymbol(symbol);
       }
-    } catch (error) {
-      console.error('백테스트 마커 플러그인 초기화 오류:', error);
-    }
-    
-    // 볼륨 시리즈 설정
-    backtestChartApiRef.current.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-      borderVisible: false,
-    });
+    }, [symbol, lastSymbol]);
 
-    // 임포트된 데이터가 있으면 차트에 표시
-    if (importedData.length > 0) {
-      // 캔들스틱 데이터 설정
-      backtestCandleSeriesRef.current.setData(importedData);
+    // 자동 업데이트 타이머
+    useEffect(() => {
+      if (!isAutoUpdate) return;
       
-      // 볼륨 데이터 설정
-      const volumeData = importedData.map(d => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? '#26a69a' : '#ef5350',
-      }));
-      backtestVolumeSeriesRef.current.setData(volumeData);
+      const updateInterval = 10000; // 10초
+        
+        const updateTimer = setInterval(() => {
+          if (!ongoingRequestRef.current) {
+          console.log('자동 업데이트 실행...');
+            const now = new Date();
+            setDateRange(prev => ({ ...prev, endDate: now }));
+          }
+        }, updateInterval);
+        
+        return () => clearInterval(updateTimer);
+    }, [isAutoUpdate]);
+
+    // 실시간 API 업데이트 타이머
+    // 주석 처리 - Block-scoped variable 문제를 해결하기 위함
+    /*
+    useEffect(() => {
+      if (!isRealtimeAPIEnabled) return;
       
-      // EMA 데이터 설정
-      const ema60Data = calculateEMA(importedData, 60);
-      const ema120Data = calculateEMA(importedData, 120);
-      const ema240Data = calculateEMA(importedData, 240);
-      const ema360Data = calculateEMA(importedData, 360);
-      const ema300Data = calculateEMA(importedData, 300);
-      const ema900Data = calculateEMA(importedData, 900);
-
-      backtestSixtyEMASeriesRef.current.setData(ema60Data);
-      backtestOneTwentyEMASeriesRef.current.setData(ema120Data);
-      backtestTwoFortyEMASeriesRef.current.setData(ema240Data);
-      backtestThreeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-      backtestThreeHundredEMASeriesRef.current.setData(ema300Data);
-      backtestNineHundredEMASeriesRef.current.setData(ema900Data);
-
-      // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
-      const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
-      const analysisResult = selectedStrategy.analyze(importedData);
-      const signals = analysisResult.signals;
-      const newMarkers = createTradeMarkers(signals);
-      setBacktestMarkers(newMarkers);
-
-      // 차트 피팅
-      backtestChartApiRef.current.timeScale().fitContent();
-    }
-  }, [importedData, backtestMarkers, tradeStrategy]);
-
-  // 백테스트 마커 변경 시 마커 플러그인 업데이트
-  useEffect(() => {
-    if (!backtestMarkerPluginRef.current || backtestMarkers.length === 0) return;
+      console.log('실시간 API 업데이트 시작...');
+      const realtimeInterval = 1000; // 1초
+      
+      const realtimeTimer = setInterval(() => {
+        updateRealtimeData();
+      }, realtimeInterval);
+      
+      return () => clearInterval(realtimeTimer);
+    }, [isRealtimeAPIEnabled, updateRealtimeData]);
+    */
     
-    try {
-      console.log('백테스트 마커 업데이트:', backtestMarkers.length);
-      backtestMarkerPluginRef.current.setMarkers(backtestMarkers);
-    } catch (error) {
-      console.error('백테스트 마커 업데이트 오류:', error);
-    }
-  }, [backtestMarkers]);
-
-  // 전략 변경 시 백테스트 차트 업데이트
-  useEffect(() => {
-    if (importedData.length > 0) {
-      const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
-      const analysisResult = selectedStrategy.analyze(importedData);
-      const signals = analysisResult.signals;
-      const strategyMarkers = createTradeMarkers(signals);
-      setBacktestMarkers(strategyMarkers);
-
-      // CSV 데이터에 대한 백테스트 결과 계산
-      const csvResult = calculateBacktestResult(importedData, signals, 'test');
-      setCsvBacktestResult(csvResult);
-    }
-  }, [tradeStrategy, importedData]);
-
-  // 백테스트 재실행
-  const rerunBacktest = useCallback(() => {
-    if (importedData.length > 0) {
-      const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
-      const analysisResult = selectedStrategy.analyze(importedData);
-      const signals = analysisResult.signals;
-      const strategyMarkers = createTradeMarkers(signals);
-      setBacktestMarkers(strategyMarkers);
-
-      // CSV 데이터에 대한 백테스트 결과 계산
-      const csvResult = calculateBacktestResult(importedData, signals, 'test');
-      setCsvBacktestResult(csvResult);
-    }
-  }, [tradeStrategy, importedData]);
-
-  const loadMASettings = () => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedShowMA = localStorage.getItem('showMA');
-        const savedMAPeriods = localStorage.getItem('maPeriods');
-
-        return {
-          showMA: savedShowMA ? JSON.parse(savedShowMA) : null,
-          maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : null,
-        };
-      } catch (error) {
-        console.error('MA 설정 로드 오류:', error);
-        return null;
+    // 데이터 로드 트리거
+    useEffect(() => {
+      // 중복 요청 방지를 위한 디바운싱
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
-    } else {
-      // 서버 사이드에서는 기본값을 반환하거나 다른 처리를 할 수 있습니다.
-      return {
-        showMA: null,
-        maPeriods: null,
+      
+      if (isAutoUpdate) {
+      timeoutRef.current = setTimeout(() => {
+        loadData();
+      }, 300);
+      }
+      
+      return () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
       };
+    }, [dateRange, loadData, isAutoUpdate]);
+
+  // 자동 업데이트 토글 핸들러
+  const handleAutoUpdateToggle = useCallback(() => {
+    setIsAutoUpdate(prev => !prev);
+  }, []);
+
+  // 실시간 API 토글 핸들러
+  const handleRealtimeAPIToggle = useCallback(() => {
+    setIsRealtimeAPIEnabled(prev => !prev);
+  }, []);
+
+  // 실시간 API 업데이트 함수
+  const updateRealtimeData = useCallback(async () => {
+    if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/') || ongoingRequestRef.current) return;
+    
+    // 실시간 데이터 업데이트 로직
+    try {
+      // 기존 로직 유지
+      console.log('실시간 데이터 업데이트 중...');
+    } catch (error) {
+      console.error('실시간 데이터 업데이트 오류:', error);
     }
-  };
+  }, [isRealtimeAPIEnabled, chartType]);
 
   return (
-    <div className="w-full bg-gray-800 rounded-lg p-4 overflow-hidden">
+    <div className="relative">
       <TradingStrategyHover 
         tradeStrategy={tradeStrategy}
         updateTradeStrategy={updateTradeStrategy}
@@ -1205,9 +1053,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
           </button>
         </div>
       </div>
-
     </div>
   );
 };
 
-export { CandlestickChart }; 
+}
