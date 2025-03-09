@@ -66,7 +66,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     setCsvBacktestResult,
     saveToCSV,
     handleFileImport,
-    triggerFileInput
+    triggerFileInput,
+    setImportedData,
+    setIsDataImported,
+    isImporting,
+    importError,
+    setImportError
   } = useCsvFunctions(symbol);
   
   // 백테스트 차트 훅
@@ -281,11 +286,47 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
         </div>
 
         {/* CSV 임포트 진행률 표시 */}
-        <div>
-          <div className="text-white">CSV 임포트 진행률: {importProgress}%</div>
+        <div className="mb-4 space-y-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={onFileImport}
+            accept=".csv"
+            className="hidden"
+          />
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={triggerFileInput}
+              className={`px-4 py-2 rounded-lg ${
+                isImporting 
+                  ? 'bg-gray-600 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              } text-white`}
+              disabled={isImporting}
+            >
+              {isImporting ? '임포트 중...' : 'CSV 데이터 임포트'}
+            </button>
+            {isImporting && (
+              <div className="flex items-center">
+                <div className="w-32 bg-gray-700 rounded-full h-2 mr-2">
+                  <div 
+                    className="bg-blue-600 rounded-full h-2 transition-all duration-300"
+                    style={{ width: `${importProgress}%` }}
+                  />
+                </div>
+                <span className="text-white text-sm">{importProgress}%</span>
+              </div>
+            )}
+          </div>
+          {importError && (
+            <div className="text-red-500 bg-red-100 border border-red-400 rounded p-2">
+              {importError}
+            </div>
+          )}
         </div>
 
-        {isDataImported && (    
+        {/* 백테스트 차트 섹션 */}
+        {isDataImported && importedData.length > 0 && (
           <div>
             <div className="relative w-full mt-4">
               <div className="text-white text-lg font-bold mb-2">백테스트 차트</div>
@@ -304,23 +345,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
             </div>
           </div>
         )}
-        
-        {/* CSV 임포트 버튼 */}
-        <div className="mb-4">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={onFileImport}
-            accept=".csv"
-            className="hidden"
-          />
-          <button
-            onClick={triggerFileInput}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-          >
-            CSV 데이터 임포트
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { CandlestickData, Time } from 'lightweight-charts';
 export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
 // 포지션 유형 정의
-export type PositionType = 'buy' | 'sell' | null;
+export type PositionType = 'buy' | 'sell' | 'waiting_buy' | 'waiting_sell' | null;
 
 // 이동평균선 타입 정의
 export interface MAType {
@@ -129,7 +129,7 @@ export interface IndicatorSettings {
 export interface AnalysisResult {
   signals: TradeSignal[];
   lastProcessedIndex: number;
-  currentPosition: 'buy' | null;
+  currentPosition: PositionType;
   lastTradeId: string | null;
   entryPrice?: number;
 }
@@ -138,7 +138,7 @@ export interface AnalysisResult {
 export interface AnalyzeOptions {
   realtime?: boolean;
   lastProcessedIndex?: number;
-  currentPosition?: 'buy' | null;
+  currentPosition?: PositionType;
   lastTradeId?: string | null;
   entryPrice?: number;
 }

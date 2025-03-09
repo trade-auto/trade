@@ -1,5 +1,5 @@
 import { CandlestickData, Time } from 'lightweight-charts';
-import { BollingerStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult } from './types';
+import { BollingerStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult, PositionType } from './types';
 import { calculateStandardDeviation } from './utils';
 
 // 볼린저 밴드 전략
@@ -347,7 +347,7 @@ const bollingerStrategy: BollingerStrategy = {
   // 기존 분석 함수는 새로운 함수들을 활용
   analyze(data, options?: AnalyzeOptions): AnalysisResult {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'buy' | null = options?.currentPosition || null;
+    let currentPosition: PositionType = options?.currentPosition || 'waiting_buy';
     let lastTradeId: string | null = options?.lastTradeId || null;
     
     // 실시간 모드에서는 1시간(3600초)의 데이터가 있어야 하며,
@@ -404,8 +404,8 @@ const bollingerStrategy: BollingerStrategy = {
         console.log(`캔들 ${i}/${data.length - 1} 분석 중...`);
       }
       
-      // 현재 포지션이 없는 경우에만 매수 신호 확인
-      if (currentPosition === null) {
+      // 현재 포지션이 매수 대기인 경우에만 매수 신호 확인
+      if (currentPosition === 'waiting_buy') {
         const entrySignal = self.analyzeEntry?.(data, i);
         
         if (entrySignal === 'buy') {
@@ -421,7 +421,7 @@ const bollingerStrategy: BollingerStrategy = {
           });
           
           lastTradeId = tradeId;
-          currentPosition = 'buy';
+          currentPosition = 'waiting_sell';
           
           console.log('\n=== ✅ 매수 마커 생성 완료 ===');
           console.log({
@@ -434,8 +434,8 @@ const bollingerStrategy: BollingerStrategy = {
           continue; // 매수 신호가 발생하면 매도 조건을 확인하지 않고 다음 캔들로 이동
         }
       } 
-      // 현재 롱 포지션인 경우에만 매도 신호 확인
-      else if (currentPosition === 'buy' && lastTradeId) {
+      // 현재 매도 대기 포지션인 경우에만 매도 신호 확인
+      else if (currentPosition === 'waiting_sell' && lastTradeId) {
         const entrySignalIndex = signals.findIndex(signal => signal.id === lastTradeId);
         let entryPrice;
         
@@ -477,7 +477,7 @@ const bollingerStrategy: BollingerStrategy = {
           });
           
           // 매도 신호 생성 후 즉시 포지션과 거래 ID 초기화
-          currentPosition = null;
+          currentPosition = 'waiting_buy';
           lastTradeId = null;
           
           console.log('✅ 매도 후 상태 초기화 완료:', {

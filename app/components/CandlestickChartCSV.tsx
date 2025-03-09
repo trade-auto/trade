@@ -3,7 +3,8 @@ import axios from 'axios';
 import { ExtendedCandlestickData, DateRange, Time, UpbitCandle } from './CandlestickChartTypes';
 import { formatDate, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
-import { TradeStrategy, TradeSignal } from '../types/trading';
+import { TradeStrategy } from '../strategies/types';
+import { TradeSignal } from '../types/trading';
 
 export const useCsvFunctions = (symbol: string) => {
   // CSV 상태
@@ -20,6 +21,8 @@ export const useCsvFunctions = (symbol: string) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importProgress, setImportProgress] = useState(0);
   const [csvBacktestResult, setCsvBacktestResult] = useState<any>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   // CSV 저장 함수
   const saveToCSV = useCallback(async () => {
@@ -172,64 +175,142 @@ export const useCsvFunctions = (symbol: string) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    setIsImporting(true);
+    setImportError(null);
+    setImportProgress(0);
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const text = e.target?.result as string;
+        if (!text) {
+          throw new Error('파일이 비어있습니다.');
+        }
+
         const rows = text.split('\n');
+        if (rows.length < 2) {
+          throw new Error('데이터가 충분하지 않습니다.');
+        }
+
         const totalRows = rows.length;
         
         // CSV 데이터 파싱
-        const parsedData: ExtendedCandlestickData[] = rows.slice(1)
-          .filter(row => row.trim())
-          .map((row, index) => {
-            const columns = row.split(',');
-            // 진행률 업데이트
-            setImportProgress(Math.round((index / totalRows) * 100));
-            return {
+        const parsedData: ExtendedCandlestickData[] = [];
+        
+        // 헤더 검증
+        const headers = rows[0].toLowerCase().split(',');
+        const requiredHeaders = [
+          'timestamp',
+          'date_time',
+          'open_price',
+          'high_price',
+          'low_price',
+          'trade_price',
+          'volume'
+        ];
+        
+        const hasValidHeaders = requiredHeaders.every(header => 
+          headers.includes(header)
+        );
+        
+        if (!hasValidHeaders) {
+          throw new Error(`CSV 파일 형식이 올바르지 않습니다.\n필요한 컬럼: ${requiredHeaders.join(', ')}\n현재 컬럼: ${headers.join(', ')}`);
+        }
+
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i].trim();
+          if (!row) continue;
+
+          const columns = row.split(',');
+          if (columns.length < 7) continue;  // 필수 컬럼 수 변경
+
+          try {
+            const data = {
               time: parseInt(columns[0]) / 1000 as Time,
-              open: parseFloat(columns[2]),
-              high: parseFloat(columns[3]),
-              low: parseFloat(columns[4]),
-              close: parseFloat(columns[5]),
-              volume: parseFloat(columns[6])
+              open: parseFloat(columns[2]),    // open_price
+              high: parseFloat(columns[3]),    // high_price
+              low: parseFloat(columns[4]),     // low_price
+              close: parseFloat(columns[5]),   // trade_price
+              volume: parseFloat(columns[6])   // volume
             };
-          })
-          .sort((a, b) => (a.time as number) - (b.time as number));
+
+            // 데이터 유효성 검사
+            if (isNaN(data.time as number) || isNaN(data.open) || isNaN(data.high) || 
+                isNaN(data.low) || isNaN(data.close) || isNaN(data.volume)) {
+              continue;
+            }
+
+            parsedData.push(data);
+          } catch (err) {
+            console.warn('행 파싱 오류:', err, '행:', row);
+            continue;
+          }
+
+          // 진행률 업데이트
+          setImportProgress(Math.round((i / totalRows) * 100));
+        }
+
+        if (parsedData.length === 0) {
+          throw new Error('유효한 데이터를 찾을 수 없습니다.');
+        }
+
+        // 시간순 정렬
+        parsedData.sort((a, b) => (a.time as number) - (b.time as number));
 
         setImportedData(parsedData);
         setIsDataImported(true);
         
-        // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
+        // 매매 신호 분석 및 마커 생성
         const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
         const analysisResult = selectedStrategy.analyze(parsedData);
         const signals = analysisResult.signals;
         
-        // signals의 time 속성을 Time 타입으로 변환
-        const convertedSignals = signals.map(signal => ({
-          id: signal.id,
-          time: signal.time as unknown as Time,
-          position: signal.position,
-          price: signal.price,
-          strategy: signal.strategy,
-          reason: signal.reason,
-          metadata: signal.metadata,
-          relatedTradeId: signal.relatedTradeId
-        })) as unknown as TradeSignal[];
+        const convertedSignals = signals
+          .filter(signal => signal.position === 'buy' || signal.position === 'sell')
+          .map(signal => ({
+            id: signal.id,
+            time: signal.time as Time,
+            position: signal.position as 'buy' | 'sell',
+            price: signal.price,
+            strategy: signal.strategy,
+            reason: signal.reason,
+            metadata: signal.metadata as any,
+            relatedTradeId: signal.relatedTradeId
+          })) as unknown as TradeSignal[];
         
         const strategyMarkers = createTradeMarkers(convertedSignals);
         
-        // CSV 데이터에 대한 백테스트 결과 계산
-        const csvResult = calculateBacktestResult(parsedData, convertedSignals, 'test');
+        // 백테스트 결과 계산
+        const csvResult = useUpbitStore.getState().calculateBacktestResult(
+          parsedData,
+          convertedSignals as unknown as import('../strategies/types').TradeSignal[],
+          'test'
+        );
         setCsvBacktestResult(csvResult);
 
+        setImportError(null);
         return { markers: strategyMarkers, result: csvResult };
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
         console.error('CSV 파일 파싱 오류:', error);
-        alert('CSV 파일 처리 중 오류가 발생했습니다.');
+        setImportError(errorMessage);
+        setIsDataImported(false);
+        setImportedData([]);
+        setCsvBacktestResult(null);
         return null;
+      } finally {
+        setIsImporting(false);
       }
     };
+
+    reader.onerror = () => {
+      setImportError('파일 읽기 중 오류가 발생했습니다.');
+      setIsImporting(false);
+      setIsDataImported(false);
+      setImportedData([]);
+      setCsvBacktestResult(null);
+    };
+
     reader.readAsText(file);
   }, []);
 
@@ -253,6 +334,9 @@ export const useCsvFunctions = (symbol: string) => {
     handleFileImport,
     triggerFileInput,
     setImportedData,
-    setIsDataImported
+    setIsDataImported,
+    isImporting,
+    importError,
+    setImportError
   };
 }; 
