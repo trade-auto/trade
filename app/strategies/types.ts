@@ -164,7 +164,7 @@ export interface TradingStrategy {
   analyze: (data: CandlestickData<Time>[], options?: AnalyzeOptions) => AnalysisResult;
   
   // 새로운 분석 함수 (개별 컴포넌트별로 분리)
-  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | 'short' | null;
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | 'short' | 'standbytolong' | null;
   analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'long' | 'short', entryPrice: number) => boolean;
   
   // 포지션 크기 계산
@@ -180,6 +180,6 @@ export interface TradingStrategy {
 
 // 볼린저 전략 인터페이스 (롱 포지션만 사용)
 export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'analyzeExit'> {
-  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | null;
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | 'standbytolong' | null;
   analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'long', entryPrice: number) => boolean;
 } 

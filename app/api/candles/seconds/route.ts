@@ -19,6 +19,15 @@ export async function GET(request: Request) {
     }
 
     const data = await response.json();
+    
+    // 시간 순서대로 정렬 (오름차순)
+    // 업비트 API는 최신 데이터가 먼저 오는 내림차순으로 데이터를 반환함
+    data.sort((a: any, b: any) => {
+      const timeA = new Date(a.candle_date_time_kst).getTime();
+      const timeB = new Date(b.candle_date_time_kst).getTime();
+      return timeA - timeB;
+    });
+    
     return NextResponse.json(data);
   } catch (error: any) {
     return NextResponse.json(

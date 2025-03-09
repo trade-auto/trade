@@ -226,6 +226,7 @@ export const CreateOrder = forwardRef<
     const updatePrices = async () => {
       try {
         // 현재 가격 가져오기
+        console.log(`${market} 현재가 업데이트 시도...`);
         const price = await getCurrentPrice(market);
         setCurrentPrice(price);
         
@@ -241,13 +242,25 @@ export const CreateOrder = forwardRef<
         });
         
         // 3초 이동평균 가져오기
-        const ma3 = await get3SecMA(market);
-        setMa3Price(ma3);
+        try {
+          const ma3 = await get3SecMA(market);
+          setMa3Price(ma3);
+        } catch (ma3Error) {
+          console.warn('3초 이동평균 가져오기 실패:', ma3Error);
+          // 3초 이동평균 실패는 치명적이지 않으므로 무시하고 계속 진행
+        }
         
         setPriceUpdateError(null);
+        console.log(`${market} 현재가 업데이트 성공: ${price}`);
       } catch (error) {
         console.error('가격 업데이트 오류:', error);
         setPriceUpdateError('가격 정보를 가져오는 중 오류가 발생했습니다.');
+        
+        // 오류가 발생해도 앱이 계속 작동할 수 있도록 함
+        // 이전 가격을 유지하거나 기본값 설정
+        if (!currentPrice) {
+          setCurrentPrice(10000000); // 기본값 설정 (개발 환경용)
+        }
       }
     };
     

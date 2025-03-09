@@ -49,7 +49,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     handleAutoUpdateToggle,
     handleRealtimeAPIToggle,
     handleChartReady,
-    loadData
+    loadData,
+    updateRealtimeData
   } = useChartData(symbol, chartType, initialAutoUpdate, mode);
   
   // CSV 관련 기능 훅
@@ -105,6 +106,30 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       loadData();
     }
   }, [dateRange, loadData, isAutoUpdate, chartType]);
+  
+  // 실시간 업데이트 효과
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    
+    if (isRealtimeAPIEnabled) {
+      // 초기 데이터 로드
+      updateRealtimeData();
+      
+      // 10초마다 데이터 업데이트
+      intervalId = setInterval(() => {
+        updateRealtimeData();
+      }, 10000);
+      
+      console.log('실시간 업데이트 시작됨');
+    }
+    
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        console.log('실시간 업데이트 중지됨');
+      }
+    };
+  }, [isRealtimeAPIEnabled, updateRealtimeData]);
   
   // 백테스트 차트 초기화 핸들러
   const handleBacktestChartInit = (
@@ -217,6 +242,13 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
                 <div className="text-gray-400">
                   총 업데이트 횟수: {realtimeUpdateStatus.updateCount}
                 </div>
+              </div>
+            )}
+            {isRealtimeAPIEnabled && realtimeUpdateStatus.lastError && (
+              <div className="w-full text-sm px-2 mt-1">
+                <span className="text-red-500">
+                  오류: {realtimeUpdateStatus.lastError}
+                </span>
               </div>
             )}
             {isAutoUpdate && (

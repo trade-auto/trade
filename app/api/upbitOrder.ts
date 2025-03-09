@@ -301,16 +301,48 @@ export const cancelAndNewOrder = async (params: CancelAndNewOrderParams): Promis
 // 현재가 조회 함수
 export const getCurrentPrice = async (market: string): Promise<number> => {
   try {
+    console.log(`현재가 조회 요청: ${market}`);
     const response = await fetch(`/api/ticker?market=${market}`);
     
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`현재가 조회 응답 오류: ${response.status} ${response.statusText}`);
+      console.error(`응답 내용: ${errorText}`);
+      
+      // 오류 발생 시 임시 가격 반환 (테스트 환경에서만 사용)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('개발 환경에서 임시 가격 사용: 10000000');
+        return 10000000; // 개발 환경에서 임시 가격 (1천만원)
+      }
+      
       throw new Error('현재가 조회 실패');
     }
 
     const data = await response.json();
+    
+    if (!data || !data.trade_price) {
+      console.error('현재가 데이터 형식 오류:', data);
+      
+      // 오류 발생 시 임시 가격 반환 (테스트 환경에서만 사용)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('개발 환경에서 임시 가격 사용: 10000000');
+        return 10000000; // 개발 환경에서 임시 가격 (1천만원)
+      }
+      
+      throw new Error('현재가 데이터 형식 오류');
+    }
+    
+    console.log(`현재가 조회 성공: ${market}, 가격: ${data.trade_price}`);
     return data.trade_price;
   } catch (error: any) {
     console.error('현재가 조회 중 오류:', error);
+    
+    // 오류 발생 시 임시 가격 반환 (테스트 환경에서만 사용)
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('개발 환경에서 임시 가격 사용: 10000000');
+      return 10000000; // 개발 환경에서 임시 가격 (1천만원)
+    }
+    
     throw error;
   }
 };
@@ -318,28 +350,53 @@ export const getCurrentPrice = async (market: string): Promise<number> => {
 // 3초 중간값 조회 함수 수정
 export const get3SecMA = async (market: string): Promise<number> => {
   try {
+    console.log(`3초 이동평균 조회 요청: ${market}`);
     const response = await fetch(`/api/trades?market=${market}&count=3`);
     
     if (!response.ok) {
-      throw new Error('3초 중간값 조회 실패');
+      const errorText = await response.text();
+      console.error(`3초 이동평균 응답 오류: ${response.status} ${response.statusText}`);
+      console.error(`응답 내용: ${errorText}`);
+      
+      // 오류 발생 시 임시 가격 반환 (테스트 환경에서만 사용)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('개발 환경에서 임시 3초 이동평균 사용: 10000000');
+        return 10000000; // 개발 환경에서 임시 가격 (1천만원)
+      }
+      
+      throw new Error('3초 이동평균 조회 실패');
     }
 
     const data = await response.json();
     
-    // 가격들을 배열로 추출하고 정렬
-    const prices = data
-      .map((trade: any) => Number(trade.trade_price))
-      .sort((a: number, b: number) => a - b);
-    
-    if (prices.length < 3) {
-      return prices[0] || 0;
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.error('3초 이동평균 데이터 형식 오류:', data);
+      
+      // 오류 발생 시 임시 가격 반환 (테스트 환경에서만 사용)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('개발 환경에서 임시 3초 이동평균 사용: 10000000');
+        return 10000000; // 개발 환경에서 임시 가격 (1천만원)
+      }
+      
+      throw new Error('3초 이동평균 데이터 형식 오류');
     }
-
-    // 정렬된 배열에서 중간 인덱스(1)의 값을 반환
-    return prices[1];
-
+    
+    // 중간값 계산
+    const prices = data.map((trade: any) => trade.trade_price);
+    const sum = prices.reduce((a: number, b: number) => a + b, 0);
+    const average = sum / prices.length;
+    
+    console.log(`3초 이동평균 조회 성공: ${market}, 가격: ${average}`);
+    return average;
   } catch (error: any) {
-    console.error('3초 중간값 조회 중 오류:', error);
+    console.error('3초 이동평균 조회 중 오류:', error);
+    
+    // 오류 발생 시 임시 가격 반환 (테스트 환경에서만 사용)
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('개발 환경에서 임시 3초 이동평균 사용: 10000000');
+      return 10000000; // 개발 환경에서 임시 가격 (1천만원)
+    }
+    
     throw error;
   }
 }; 

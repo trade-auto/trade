@@ -25,6 +25,7 @@ export interface RealtimeUpdateStatus {
   isUpdating: boolean;
   lastUpdateTime: string | null;
   updateCount: number;
+  lastError?: string;
 }
 
 export interface AnalysisResult {

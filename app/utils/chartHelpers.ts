@@ -135,16 +135,34 @@ export const calculateEMA = (data: ExtendedCandlestickData[], period: number): L
 // 차트 타입에 따른 API 엔드포인트 결정
 export const getChartEndpoint = (type: string) => {
   if (type.startsWith('seconds/')) {
-    return 'seconds'; // 초봉 API 엔드포인트
+    // 초봉은 seconds API를 사용
+    return '/api/candles/seconds';
   }
-  const minutes = parseInt(type);
-  if (minutes <= 240) { // 1분봉, 3분봉, 일봉(240분)
-    return `minutes/${type}`;
-  } else if (minutes === 7200) { // 월봉
-    return 'months';
-  } else { // 년봉
-    return 'years';
+  
+  // minutes 타입 처리
+  if (type.startsWith('minutes/')) {
+    const minutes = parseInt(type.split('/')[1]);
+    if (minutes === 3) {
+      return '/api/candles/minutes/3';
+    } else if (minutes === 30) {
+      return '/api/candles/minutes/30';
+    } else {
+      // 지원하지 않는 분봉은 가장 가까운 3분봉으로 대체
+      return '/api/candles/minutes/3';
+    }
   }
+  
+  // 기타 타입 처리
+  if (type === 'days') {
+    return '/api/candles/days';
+  } else if (type === 'weeks') {
+    return '/api/candles/weeks';
+  } else if (type === 'months') {
+    return '/api/candles/months';
+  }
+  
+  // 기본값은 3분봉
+  return '/api/candles/minutes/3';
 };
 
 // 백테스트 결과 계산 함수

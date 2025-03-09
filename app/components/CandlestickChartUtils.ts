@@ -27,7 +27,7 @@ export function createTradeMarkers(signals: TradeSignal[]): SeriesMarker<Time>[]
     }
     
     return {
-      time: signal.time,
+      time: signal.time as Time,
       position,
       shape,
       color,

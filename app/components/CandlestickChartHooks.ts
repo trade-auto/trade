@@ -57,6 +57,7 @@ export const useChartData = (
     isUpdating: boolean;
     lastUpdateTime: string | null;
     updateCount: number;
+    lastError?: string;
   }>({
     isUpdating: false,
     lastUpdateTime: null,
@@ -339,14 +340,141 @@ export const useChartData = (
   const updateRealtimeData = useCallback(async () => {
     if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/') || ongoingRequestRef.current) return;
     
-    // 실시간 데이터 업데이트 로직
+    ongoingRequestRef.current = true;
+    
     try {
-      // 기존 로직 유지
-      console.log('실시간 데이터 업데이트 중...');
+      setRealtimeUpdateStatus(prev => ({
+        ...prev,
+        isUpdating: true
+      }));
+      
+      // 엔드포인트 가져오기
+      const endpoint = getChartEndpoint(chartType);
+      const to = new Date();
+      const from = new Date(to.getTime() - 60 * 60 * 1000); // 1시간 전 데이터부터
+      
+      // API 요청 파라미터
+      const params = {
+        market: symbol,
+        count: 200,
+        to: to.toISOString()
+      };
+      
+      // API 호출
+      const response = await fetch(`${endpoint}?${new URLSearchParams(params as any).toString()}`);
+      
+      // 응답이 성공적이지 않은 경우 처리
+      if (!response.ok) {
+        console.error(`실시간 데이터 업데이트 오류: ${response.status} ${response.statusText}`);
+        console.log(`요청 URL: ${endpoint}?${new URLSearchParams(params as any).toString()}`);
+        setRealtimeUpdateStatus(prev => ({
+          ...prev,
+          isUpdating: false,
+          lastError: `API 오류: ${response.status} ${response.statusText}`
+        }));
+        ongoingRequestRef.current = false;
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (!data || data.length === 0) {
+        console.warn('실시간 데이터가 없습니다.');
+        setRealtimeUpdateStatus(prev => ({
+          ...prev,
+          isUpdating: false,
+          lastError: '데이터가 없습니다'
+        }));
+        ongoingRequestRef.current = false;
+        return;
+      }
+      
+      // 데이터 처리
+      const newCandles = data.map((item: any) => ({
+        time: new Date(item.candle_date_time_kst).getTime() / 1000 as Time,
+        open: item.opening_price,
+        high: item.high_price,
+        low: item.low_price,
+        close: item.trade_price,
+        volume: item.candle_acc_trade_volume
+      }));
+      
+      // 시간 순서대로 정렬 (오름차순)
+      newCandles.sort((a, b) => {
+        return (a.time as number) - (b.time as number);
+      });
+      
+      console.log('정렬된 캔들 데이터:', newCandles.map(c => ({
+        time: new Date((c.time as number) * 1000).toLocaleString('ko-KR'),
+        close: c.close
+      })));
+      
+      // 차트 업데이트
+      if (candleSeriesRef.current && volumeSeriesRef.current) {
+        // 캔들스틱 데이터 업데이트
+        candleSeriesRef.current.setData(newCandles);
+        
+        // 볼륨 데이터 업데이트
+        const volumeData = newCandles.map(candle => ({
+          time: candle.time,
+          value: candle.volume,
+          color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+        }));
+        volumeSeriesRef.current.setData(volumeData);
+        
+        // 이동평균선 업데이트
+        if (sixtyEMASeriesRef.current && newCandles.length >= 60) {
+          const ema60 = calculateEMA(newCandles, 60);
+          sixtyEMASeriesRef.current.setData(ema60);
+        }
+        
+        if (oneTwentyEMASeriesRef.current && newCandles.length >= 120) {
+          const ema120 = calculateEMA(newCandles, 120);
+          oneTwentyEMASeriesRef.current.setData(ema120);
+        }
+        
+        if (twoFortyEMASeriesRef.current && newCandles.length >= 240) {
+          const ema240 = calculateEMA(newCandles, 240);
+          twoFortyEMASeriesRef.current.setData(ema240);
+        }
+        
+        // 마지막 가격 업데이트
+        if (newCandles.length > 0) {
+          const lastCandle = newCandles[0];
+          setChartPrice(lastCandle.close);
+        }
+      }
+      
+      // 업데이트 상태 갱신
+      setRealtimeUpdateStatus(prev => ({
+        isUpdating: false,
+        lastUpdateTime: new Date().toLocaleTimeString(),
+        updateCount: prev.updateCount + 1
+      }));
+      
+      console.log('실시간 데이터 업데이트 완료');
     } catch (error) {
       console.error('실시간 데이터 업데이트 오류:', error);
+      
+      // 오류 메시지 생성
+      let errorMessage = '알 수 없는 오류';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object') {
+        errorMessage = JSON.stringify(error);
+      }
+      
+      setRealtimeUpdateStatus(prev => ({
+        ...prev,
+        isUpdating: false,
+        lastError: errorMessage
+      }));
+    } finally {
+      ongoingRequestRef.current = false;
     }
-  }, [isRealtimeAPIEnabled, chartType]);
+  }, [isRealtimeAPIEnabled, chartType, symbol]);
 
   return {
     // 상태
