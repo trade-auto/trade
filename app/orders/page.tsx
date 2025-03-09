@@ -10,6 +10,7 @@ import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
 import { CandlestickChart } from '../components/CandlestickChart';
+import type { OrderParams } from '../components/CandlestickChart';
 import { getAccountBalance } from '../api/upbitAccount';
 
 const SYMBOLS = [
@@ -288,7 +289,7 @@ export default function OrdersPage() {
             chartType="seconds/60"
             initialAutoUpdate={true}
             mode={mode}
-            handleOrder={async (params) => {
+            handleOrder={async (params: OrderParams) => {
               try {
                 if (createOrderRef.current) {
                   await createOrderRef.current.handleAutomaticTrade(params);

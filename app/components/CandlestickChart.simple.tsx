@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-export interface OrderParams {
+interface OrderParams {
   market: string;
   side: 'bid' | 'ask';
   volume: string;
@@ -20,14 +20,12 @@ interface CandlestickChartProps {
   onOrder?: (price: number, isMarketOrder: boolean) => void;
 }
 
-// CandlestickChart 컴포넌트 정의
 export function CandlestickChart(props: CandlestickChartProps) {
   const { symbol, chartType } = props;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   
-  // 컴포넌트 마운트 시 현재 가격 데이터 로드
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
@@ -37,7 +35,6 @@ export function CandlestickChart(props: CandlestickChartProps) {
       setError(null);
       
       try {
-        // Promise 타임아웃 로직 추가
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
         const response = await fetch(`https://api.upbit.com/v1/ticker?markets=${symbol}`, {
@@ -69,7 +66,6 @@ export function CandlestickChart(props: CandlestickChartProps) {
     
     fetchCurrentPrice();
     
-    // 컴포넌트 언마운트 시 cleanup
     return () => {
       isMounted = false;
       controller.abort();
@@ -93,5 +89,3 @@ export function CandlestickChart(props: CandlestickChartProps) {
     </div>
   );
 }
-
-export default CandlestickChart;

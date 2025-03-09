@@ -267,10 +267,17 @@ const calculateOrderVolume = (currentPrice: number): string => {
   return (investmentAmount / currentPrice).toFixed(4);
 };
 
-export const CreateOrder = forwardRef<
-  { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
-  CreateOrderProps
->(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate, onBacktestStart }, ref) => {
+export const CreateOrder = forwardRef<{
+  handleAutomaticTrade: (params: OrderParams) => Promise<any>;
+}, CreateOrderProps>(({
+  market,
+  mode,
+  onOrderCreated,
+  onPriceUpdate,
+  onQuantityUpdate,
+  onBacktestStart,
+  onBacktestEnd
+}, ref) => {
   const {
     tradeState,
     updateTradeState,
@@ -764,9 +771,9 @@ export const CreateOrder = forwardRef<
     }
   };
 
-  // ref로 handleAutomaticTrade 함수 노출
+  // 자동 트레이딩을 위한 API 노출
   useImperativeHandle(ref, () => ({
-    handleAutomaticTrade: handleAutomaticTrade
+    handleAutomaticTrade
   }));
 
   // 총 수익률 계산 함수 추가
