@@ -4,8 +4,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'Upbit 실시간 모니터링',
-  description: '업비트 실시간 차트 모니터링',
+  title: '트레이딩 계정 관리',
+  description: '트레이딩 계정 정보 및 주문 관리',
 };
 
 export default function RootLayout({
