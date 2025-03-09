@@ -6,7 +6,7 @@ import slopeFilterStrategy from './slopeFilterStrategy';
 
 // 모든 전략을 하나의 객체로 내보냅니다
 const strategies: Record<string, TradingStrategy> = {
-  BOLLINGER: bollingerStrategy,
+  BOLLINGER: bollingerStrategy as TradingStrategy,
   MA_CROSS: maCrossStrategy,
   MA_CROSS_DEVIATION: maCrossDeviationStrategy,
   SLOPE_FILTER: slopeFilterStrategy

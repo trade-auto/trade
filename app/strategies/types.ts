@@ -125,6 +125,24 @@ export interface IndicatorSettings {
   customIndicators?: Record<string, any>;  // 사용자 정의 지표
 }
 
+// 분석 결과 인터페이스 추가
+export interface AnalysisResult {
+  signals: TradeSignal[];
+  lastProcessedIndex: number;
+  currentPosition: 'long' | null;
+  lastTradeId: string | null;
+  entryPrice?: number;
+}
+
+// 분석 옵션 인터페이스 추가
+export interface AnalyzeOptions {
+  realtime: boolean;
+  lastProcessedIndex: number;
+  currentPosition?: 'long' | null;
+  lastTradeId?: string | null;
+  entryPrice?: number;
+}
+
 // 트레이딩 전략 인터페이스
 export interface TradingStrategy {
   name: TradeStrategy;
@@ -143,7 +161,7 @@ export interface TradingStrategy {
   exitRules?: ExitRules;                // 청산 규칙
   
   // 기존 분석 함수
-  analyze: (data: CandlestickData<Time>[]) => TradeSignal[];
+  analyze: (data: CandlestickData<Time>[], options?: AnalyzeOptions) => AnalysisResult;
   
   // 새로운 분석 함수 (개별 컴포넌트별로 분리)
   analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | 'short' | null;
@@ -158,4 +176,10 @@ export interface TradingStrategy {
   // 백테스트 결과 분석 및 시각화 메서드
   analyzeBacktestResults?: (trades: Trade[]) => Record<string, any>;
   visualizeStrategy?: (data: CandlestickData<Time>[], trades: Trade[]) => Record<string, any[]>;
+}
+
+// 볼린저 전략 인터페이스 (롱 포지션만 사용)
+export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'analyzeExit'> {
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | null;
+  analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'long', entryPrice: number) => boolean;
 } 

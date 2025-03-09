@@ -395,7 +395,8 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
     analyzeStrategy: (data) => {
       const { tradeStrategy } = get();
       const strategy = strategies[tradeStrategy];
-      return strategy.analyze(data);
+      const result = strategy.analyze(data);
+      return result.signals;
     },
     
     // 거래 내역 관련
