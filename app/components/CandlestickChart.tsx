@@ -347,8 +347,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     
     // 데이터가 충분한지 확인
     if (allData.length < 900) {
-      console.log('데이터가 충분하지 않습니다. 실시간 API로 전환하지 않습니다.');
-      return;
+      console.log('데이터가 충분하지 않습니다. 현재 데이터 개수:', allData.length);
+      console.log('실시간 모드에서는 데이터 길이 검증을 건너뛰고 계속 진행합니다.');
     }
     
     // 마지막 분석 결과 초기화
@@ -361,12 +361,54 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     // 자동 업데이트 중지
     setIsAutoUpdate(false);
     
+    // 이평선 초기화
+    if (
+      sixtyEMASeriesRef.current && 
+      oneTwentyEMASeriesRef.current && 
+      twoFortyEMASeriesRef.current && 
+      threeHundredSixtyEMASeriesRef.current &&
+      threeHundredEMASeriesRef.current &&
+      nineHundredEMASeriesRef.current
+    ) {
+      try {
+        console.log('실시간 API 전환 시 이평선 초기화 중...');
+        
+        // EMA 계산
+        const ema60Data = calculateEMA(allData, 60);
+        const ema120Data = calculateEMA(allData, 120);
+        const ema240Data = calculateEMA(allData, 240);
+        const ema360Data = calculateEMA(allData, 360);
+        const ema300Data = calculateEMA(allData, 300);
+        const ema900Data = calculateEMA(allData, 900);
+        
+        // EMA 데이터 설정
+        sixtyEMASeriesRef.current.setData(ema60Data);
+        oneTwentyEMASeriesRef.current.setData(ema120Data);
+        twoFortyEMASeriesRef.current.setData(ema240Data);
+        threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+        threeHundredEMASeriesRef.current.setData(ema300Data);
+        nineHundredEMASeriesRef.current.setData(ema900Data);
+        
+        // 시리즈 가시성 설정 확인
+        sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+        oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+        twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+        threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+        threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
+        nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+        
+        console.log('이평선 초기화 완료');
+      } catch (error) {
+        console.error('이평선 초기화 중 오류 발생:', error);
+      }
+    }
+    
     // 잠시 후 실시간 API 활성화
     setTimeout(() => {
       console.log('실시간 API 활성화 중...');
       setIsRealtimeAPIEnabled(true);
     }, 500);
-  }, [allData]);
+  }, [allData, showMA]);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -546,6 +588,31 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
         // 매수/매도 포인트 계산
         setMarkers(strategyMarkers);
         
+        // 마커 플러그인 초기화 및 적용
+        if (candleSeriesRef.current) {
+          console.log('마커 플러그인 초기화 및 적용 시도:', strategyMarkers.length, '개');
+          
+          // 마커 플러그인이 없으면 생성
+          if (!markerPluginRef.current) {
+            console.log('마커 플러그인 생성');
+            markerPluginRef.current = createSeriesMarkers(candleSeriesRef.current);
+          }
+          
+          // 마커 적용
+          if (markerPluginRef.current && strategyMarkers.length > 0) {
+            console.log('마커 적용:', strategyMarkers.length, '개');
+            markerPluginRef.current.setMarkers(strategyMarkers);
+            
+            // 안전장치: 지연 마커 적용
+            setTimeout(() => {
+              if (markerPluginRef.current) {
+                console.log('지연 마커 적용:', strategyMarkers.length, '개');
+                markerPluginRef.current.setMarkers(strategyMarkers);
+              }
+            }, 300);
+          }
+        }
+        
         // 백테스트 결과 계산
         const backtestResult = calculateBacktestResult(allProcessedData, signals, mode || 'test');
         setBacktestResult(backtestResult);
@@ -569,13 +636,16 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       if (isAutoUpdate && chartType === 'seconds/60') {
         console.log('자동 업데이트 후 데이터 개수:', allProcessedData.length);
         
-        // 데이터가 충분한 경우에만 실시간 API로 전환
+        // 데이터가 충분한 경우 실시간 API로 전환
         if (allProcessedData.length >= 900) {
           console.log('충분한 데이터가 로드되었습니다. 실시간 API로 전환합니다.');
           // 자동 업데이트에서 실시간 업데이트로 전환
           switchToRealtimeAfterUpdate();
         } else {
-          console.log('데이터가 충분하지 않습니다. 자동 업데이트를 계속합니다.');
+          console.log('데이터가 충분하지 않습니다. 현재 데이터 개수:', allProcessedData.length);
+          console.log('실시간 모드에서는 데이터 길이 검증을 건너뛰고 계속 진행합니다.');
+          // 데이터가 부족해도 실시간 API로 전환
+          switchToRealtimeAfterUpdate();
         }
       }
       
@@ -609,6 +679,18 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     threeHundredEMASeriesRef.current = threeHundredEMASeries;
     nineHundredEMASeriesRef.current = nineHundredEMASeries;
     
+    // 마커 플러그인 초기화
+    if (candleSeriesRef.current && !markerPluginRef.current) {
+      console.log('차트 초기화 시 마커 플러그인 생성');
+      markerPluginRef.current = createSeriesMarkers(candleSeriesRef.current);
+      
+      // 기존 마커가 있으면 적용
+      if (markers.length > 0 && markerPluginRef.current) {
+        console.log('기존 마커 적용:', markers.length, '개');
+        markerPluginRef.current.setMarkers(markers);
+      }
+    }
+    
     // 볼륨 시리즈 설정
     chartApi.priceScale('volume').applyOptions({
       scaleMargins: {
@@ -620,7 +702,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     
     // 차트 준비 후 데이터 로드
     loadData();
-  }, [loadData]);
+  }, [loadData, markers]);
 
   // 전체화면 토글
   const toggleFullscreen = useCallback(() => {
@@ -880,8 +962,18 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       
       if (allData.length < 900) {
         console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
-        alert('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.\n자동 업데이트를 통해 충분한 데이터를 로드한 후 다시 시도해주세요.');
-        return;
+        const proceed = window.confirm(
+          '데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.\n' +
+          '현재 데이터 개수: ' + allData.length + '\n\n' +
+          '데이터가 부족한 상태에서 실시간 API를 활성화하면 일부 기능이 제한될 수 있습니다.\n' +
+          '그래도 계속 진행하시겠습니까?'
+        );
+        
+        if (!proceed) {
+          return;
+        }
+        
+        console.log('사용자가 데이터 부족 상태에서 실시간 API 활성화를 확인했습니다.');
       }
       
       // 마지막 분석 결과 초기화
@@ -893,10 +985,52 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       
       // 실시간 API 활성화 시 자동 업데이트는 비활성화
       setIsAutoUpdate(false);
+      
+      // 실시간 API 활성화 시 이평선 초기화
+      if (
+        sixtyEMASeriesRef.current && 
+        oneTwentyEMASeriesRef.current && 
+        twoFortyEMASeriesRef.current && 
+        threeHundredSixtyEMASeriesRef.current &&
+        threeHundredEMASeriesRef.current &&
+        nineHundredEMASeriesRef.current
+      ) {
+        try {
+          console.log('실시간 API 활성화 시 이평선 초기화 중...');
+          
+          // EMA 계산
+          const ema60Data = calculateEMA(allData, 60);
+          const ema120Data = calculateEMA(allData, 120);
+          const ema240Data = calculateEMA(allData, 240);
+          const ema360Data = calculateEMA(allData, 360);
+          const ema300Data = calculateEMA(allData, 300);
+          const ema900Data = calculateEMA(allData, 900);
+          
+          // EMA 데이터 설정
+          sixtyEMASeriesRef.current.setData(ema60Data);
+          oneTwentyEMASeriesRef.current.setData(ema120Data);
+          twoFortyEMASeriesRef.current.setData(ema240Data);
+          threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+          threeHundredEMASeriesRef.current.setData(ema300Data);
+          nineHundredEMASeriesRef.current.setData(ema900Data);
+          
+          // 시리즈 가시성 설정 확인
+          sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+          oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+          twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+          threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+          threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
+          nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+          
+          console.log('이평선 초기화 완료');
+        } catch (error) {
+          console.error('이평선 초기화 중 오류 발생:', error);
+        }
+      }
     }
     
     setIsRealtimeAPIEnabled(newValue);
-  }, [isRealtimeAPIEnabled, allData]);
+  }, [isRealtimeAPIEnabled, allData, showMA]);
 
   // 실시간 API 업데이트 함수
   const updateRealtimeData = useCallback(async () => {
@@ -976,33 +1110,62 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
             updateCount: prev.updateCount + 1
           }));
           
-          // 이평선 업데이트 (10회마다 한 번씩)
-          if (realtimeUpdateStatus.updateCount % 10 === 0) {
-            console.log('이평선 업데이트 중...');
-            
-            // EMA 계산 및 설정
-            if (
-              sixtyEMASeriesRef.current && 
-              oneTwentyEMASeriesRef.current && 
-              twoFortyEMASeriesRef.current && 
-              threeHundredSixtyEMASeriesRef.current &&
-              threeHundredEMASeriesRef.current &&
-              nineHundredEMASeriesRef.current
-            ) {
-              const ema60Data = calculateEMA(updatedData, 60);
-              const ema120Data = calculateEMA(updatedData, 120);
-              const ema240Data = calculateEMA(updatedData, 240);
-              const ema360Data = calculateEMA(updatedData, 360);
-              const ema300Data = calculateEMA(updatedData, 300);
-              const ema900Data = calculateEMA(updatedData, 900);
-              
-              // EMA 데이터 설정
-              sixtyEMASeriesRef.current.setData(ema60Data);
-              oneTwentyEMASeriesRef.current.setData(ema120Data);
-              twoFortyEMASeriesRef.current.setData(ema240Data);
-              threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-              threeHundredEMASeriesRef.current.setData(ema300Data);
-              nineHundredEMASeriesRef.current.setData(ema900Data);
+          // 이평선 업데이트 (매번 업데이트)
+          console.log('이평선 업데이트 중...');
+          
+          // EMA 계산 및 설정
+          if (
+            sixtyEMASeriesRef.current && 
+            oneTwentyEMASeriesRef.current && 
+            twoFortyEMASeriesRef.current && 
+            threeHundredSixtyEMASeriesRef.current &&
+            threeHundredEMASeriesRef.current &&
+            nineHundredEMASeriesRef.current
+          ) {
+            try {
+              // 데이터가 충분한지 확인
+              if (updatedData.length < 60) {
+                console.log('이평선 계산을 위한 데이터가 부족합니다. 최소 60개 필요, 현재:', updatedData.length);
+              } else {
+                console.log('이평선 데이터 계산 중... 데이터 개수:', updatedData.length);
+                
+                // EMA 계산
+                const ema60Data = calculateEMA(updatedData, 60);
+                const ema120Data = calculateEMA(updatedData, 120);
+                const ema240Data = calculateEMA(updatedData, 240);
+                const ema360Data = calculateEMA(updatedData, 360);
+                const ema300Data = calculateEMA(updatedData, 300);
+                const ema900Data = calculateEMA(updatedData, 900);
+                
+                console.log('이평선 데이터 계산 완료:', {
+                  'EMA60': ema60Data.length,
+                  'EMA120': ema120Data.length,
+                  'EMA240': ema240Data.length,
+                  'EMA360': ema360Data.length,
+                  'EMA300': ema300Data.length,
+                  'EMA900': ema900Data.length
+                });
+                
+                // EMA 데이터 설정
+                sixtyEMASeriesRef.current.setData(ema60Data);
+                oneTwentyEMASeriesRef.current.setData(ema120Data);
+                twoFortyEMASeriesRef.current.setData(ema240Data);
+                threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+                threeHundredEMASeriesRef.current.setData(ema300Data);
+                nineHundredEMASeriesRef.current.setData(ema900Data);
+                
+                // 시리즈 가시성 설정 확인
+                sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+                oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+                twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+                threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+                threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
+                nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+                
+                console.log('이평선 업데이트 완료');
+              }
+            } catch (error) {
+              console.error('이평선 업데이트 중 오류 발생:', error);
             }
           }
           
@@ -1023,7 +1186,19 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
             
             // 마커 적용
             if (markerPluginRef.current) {
-              markerPluginRef.current.setMarkers([...markers, ...newMarkers]);
+              console.log('실시간 마커 업데이트:', newMarkers.length, '개');
+              
+              // 모든 마커 적용 (기존 마커 + 새 마커)
+              const allMarkers = [...markers, ...newMarkers];
+              markerPluginRef.current.setMarkers(allMarkers);
+              
+              // 안전장치: 지연 마커 적용
+              setTimeout(() => {
+                if (markerPluginRef.current) {
+                  console.log('지연 실시간 마커 적용:', allMarkers.length, '개');
+                  markerPluginRef.current.setMarkers(allMarkers);
+                }
+              }, 300);
             }
           }
           
@@ -1042,7 +1217,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       // API 호출 완료
       ongoingRequestRef.current = false;
     }
-  }, [isRealtimeAPIEnabled, chartType, symbol, allData, markers, tradeStrategy, lastAnalysisResult, realtimeUpdateStatus.updateCount]);
+  }, [isRealtimeAPIEnabled, chartType, symbol, allData, markers, tradeStrategy, lastAnalysisResult, realtimeUpdateStatus.updateCount, showMA]);
 
   // 자동 업데이트 효과 (조건부 코드 블록 밖으로 이동)
   useEffect(() => {

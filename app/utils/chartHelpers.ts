@@ -24,24 +24,24 @@ export const getInitialDateRange = (type: string): DateRange => {
   let startDate: Date;
   
   if (type.startsWith('seconds/')) {
-    // 초봉: 최근 15시간 데이터 (900개 이상의 캔들을 확보하기 위해)
-    startDate = new Date(now.getTime() - 15 * 60 * 60 * 1000);
+    // 초봉: 최근 24시간 데이터 (900개 이상의 캔들을 확보하기 위해 시간 증가)
+    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   } else if (type.startsWith('minutes/')) {
-    // 1분봉: 최근 24시간 데이터 (900개 이상의 캔들을 확보하기 위해)
+    // 1분봉: 최근 48시간 데이터 (900개 이상의 캔들을 확보하기 위해 시간 증가)
     const minutes = parseInt(type.split('/')[1]);
-    const hoursNeeded = Math.ceil(900 * minutes / 60);
+    const hoursNeeded = Math.ceil(1200 * minutes / 60); // 여유있게 1200개로 설정
     startDate = new Date(now.getTime() - hoursNeeded * 60 * 60 * 1000);
   } else if (type === 'days') {
-    // 일봉: 최근 900일 데이터
-    startDate = new Date(now.getTime() - 900 * 24 * 60 * 60 * 1000);
+    // 일봉: 최근 1000일 데이터 (여유있게 1000개로 설정)
+    startDate = new Date(now.getTime() - 1000 * 24 * 60 * 60 * 1000);
   } else if (type === 'weeks') {
-    // 주봉: 최근 900주 데이터
-    startDate = new Date(now.getTime() - 900 * 7 * 24 * 60 * 60 * 1000);
+    // 주봉: 최근 1000주 데이터 (여유있게 1000개로 설정)
+    startDate = new Date(now.getTime() - 1000 * 7 * 24 * 60 * 60 * 1000);
   } else {
-    // 월봉: 최근 900개월 데이터 (약 75년)
+    // 월봉: 최근 1000개월 데이터 (약 83년)
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
-    startDate = new Date(currentYear - 75, currentMonth, 1);
+    startDate = new Date(currentYear - 83, currentMonth, 1);
   }
   
   return {
@@ -53,11 +53,14 @@ export const getInitialDateRange = (type: string): DateRange => {
 
 /// 마커 생성 함수
 export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[] => {
-  if (!signals || signals.length === 0) return [];
+  if (!signals || signals.length === 0) {
+    console.log('마커 생성: 신호가 없습니다.');
+    return [];
+  }
   
   console.log(`마커 생성 중: ${signals.length}개 신호`);
   
-  return signals.map(signal => {
+  const markers = signals.map(signal => {
     if (!signal || !signal.time) {
       console.warn('유효하지 않은 신호 스킵:', signal);
       return null;
@@ -88,7 +91,11 @@ export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[]
     }
     
     const markerTime = signal.time as Time;
-    console.log(`마커 생성: ${text}, 시간: ${new Date(signal.time * 1000).toLocaleString('ko-KR')}`);
+    const dateStr = typeof markerTime === 'number' 
+      ? new Date(markerTime * 1000).toLocaleString('ko-KR')
+      : 'Invalid Date';
+    
+    console.log(`마커 생성: ${text}, 시간: ${dateStr}, 가격: ${signal.price.toLocaleString()}, ID: ${signal.id}`);
     
     return {
       time: markerTime,
@@ -99,7 +106,11 @@ export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[]
       size: 3, // 크기 증가
       id: signal.id // 고유 ID 추가
     };
-  }).filter(Boolean) as SeriesMarker<Time>[];
+  }).filter(marker => marker !== null) as SeriesMarker<Time>[];
+  
+  console.log(`마커 생성 완료: ${markers.length}개 (유효하지 않은 마커 ${signals.length - markers.length}개 제외)`);
+  
+  return markers;
 };
 
 // EMA 계산 함수
@@ -112,6 +123,12 @@ export const calculateEMA = (data: ExtendedCandlestickData[], period: number): L
   
   const validData = data.filter(item => item && item.close !== undefined);
   if (validData.length === 0) return [];
+  
+  // 데이터가 부족한 경우 경고 로그 출력
+  if (validData.length < period) {
+    console.log(`경고: EMA${period} 계산을 위한 데이터가 부족합니다. 필요: ${period}, 현재: ${validData.length}`);
+    // 그래도 계속 진행 (가능한 한 많은 데이터로 계산)
+  }
   
   // 초기 SMA 계산
   for (let i = 0; i < Math.min(period, validData.length); i++) {

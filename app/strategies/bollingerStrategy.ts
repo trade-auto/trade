@@ -355,12 +355,19 @@ const bollingerStrategy: BollingerStrategy = {
     // 실시간 모드가 아닐 때만 데이터 길이 검증
     if (!options?.realtime && data.length < 900) {
       console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
+      console.log('현재 데이터 개수:', data.length);
       return {
         signals,
         lastProcessedIndex: data.length - 1,
         currentPosition,
         lastTradeId
       };
+    }
+    
+    // 실시간 모드에서 데이터가 부족한 경우 경고만 출력
+    if (options?.realtime && data.length < 900) {
+      console.log('실시간 모드: 데이터가 900개 미만입니다. 현재 데이터 개수:', data.length);
+      console.log('실시간 모드에서는 데이터 길이 검증을 건너뛰고 계속 진행합니다.');
     }
     
     const self = this;
