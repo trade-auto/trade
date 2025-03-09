@@ -23,7 +23,24 @@ const bollingerStrategy: BollingerStrategy = {
   
   // 진입 조건 분석
   analyzeEntry(data, index) {
-    if (index < 360) return null;
+    const entryDateTime = new Date(data[index].time as number * 1000);
+    console.log('\n=== 📊 analyzeEntry 함수 진입 ===');
+    console.log('분석 시작 시간:', entryDateTime.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }));
+    console.log('캔들 인덱스:', index);
+
+    // 15분(900초) 데이터가 쌓일 때까지 대기
+    if (index < 900) {
+      console.log('초기 데이터 수집 중... (필요: 900초 = 15분)');
+      return null;
+    }
 
     // 이미 매수 포지션이 있거나 거래 중인 경우 매수 신호를 발생시키지 않음
     // 실제 구현에서는 store에서 상태를 가져와야 함
@@ -119,11 +136,11 @@ const bollingerStrategy: BollingerStrategy = {
       '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
       '조건 4 (MA900 상향 10봉)': isMA900Upward ? '✅' : '❌',
       '조건 5 (MA60 < MA900)': isBelow900 ? '✅' : '❌',
-      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
 
     // 매수 시그널 생성 - 기본 조건
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) {
+    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
@@ -247,7 +264,7 @@ const bollingerStrategy: BollingerStrategy = {
           second: '2-digit',
           hour12: false
         }),
-        'MA120/240 하향(10봉)': isMA120240Downward ? '✅' : '❌',
+        'MA240 하향 5봉 이상': ma240DownCount >= 5 ? '✅' : '❌',
         'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
         'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
         'MA900 상향': isMA900Upward ? '✅' : '❌',
