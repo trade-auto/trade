@@ -77,6 +77,9 @@ const bollingerStrategy: BollingerStrategy = {
     // 60MA가 120MA와 240MA보다 위에 있는지 확인
     const isAbove120 = ma60 > ma120;
     const isAbove240 = ma60 > ma240;
+    
+    // 60MA가 900MA보다 아래에 있는지 확인
+    const isBelow900 = ma60 < ma900;
 
     // 현재 가격
     const currentPrice = data[index].close;
@@ -105,7 +108,8 @@ const bollingerStrategy: BollingerStrategy = {
       '1. MA240 상향 지속 봉수': ma240UpCount + '봉 (필요: 5봉 이상)',
       '2. MA60이 MA120 위': isAbove120 ? '✅' : '❌',
       '3. MA60이 MA240 위': isAbove240 ? '✅' : '❌',
-      '4. MA900 상향(10봉)': isMA900Upward ? '✅' : '❌'
+      '4. MA900 상향(10봉)': isMA900Upward ? '✅' : '❌',
+      '5. MA60이 MA900 아래': isBelow900 ? '✅' : '❌'
     });
     
     console.log('\n매수 조건 충족 여부:');
@@ -114,28 +118,24 @@ const bollingerStrategy: BollingerStrategy = {
       '조건 2 (MA60 > MA120)': isAbove120 ? '✅' : '❌',
       '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
       '조건 4 (MA900 상향 10봉)': isMA900Upward ? '✅' : '❌',
-      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '조건 5 (MA60 < MA900)': isBelow900 ? '✅' : '❌',
+      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward  ) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
 
     // 매수 시그널 생성 - 기본 조건
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) {
+    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward  ) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
       return 'long';
     }
     
-    // 완화된 매수 조건 추가 (MA900 상향 조건 제외)
-    if (ma240UpCount >= 3 && isAbove120 && isAbove240) {
-      console.log('\n=== ✅ 완화된 매수 조건 충족! ===');
-      console.log('완화된 조건: MA900 상향 조건 제외, MA240 상향 3봉 이상');
-      return 'long';
-    }
+
     
-    // 추가 완화된 매수 조건 (MA60이 상승 추세이고 MA120보다 위에 있는 경우)
-    if (ma60Slope > 0 && isAbove120 && ma60Above120Count >= 5) {
-      console.log('\n=== ✅ 추가 완화된 매수 조건 충족! ===');
-      console.log('추가 완화된 조건: MA60 상승 추세, MA60 > MA120 (5봉 이상)');
-      return 'long';
-    }
+    // // 추가 완화된 매수 조건 (MA60이 상승 추세이고 MA120보다 위에 있는 경우)
+    // if (ma60Slope > 0 && isAbove120 && ma60Above120Count >= 5 && isBelow900) {
+    //   console.log('\n=== ✅ 추가 완화된 매수 조건 충족! ===');
+    //   console.log('추가 완화된 조건: MA60 상승 추세, MA60 > MA120 (5봉 이상), MA60 < MA900');
+    //   return 'long';
+    // }
     
     console.log('\n=== ❌ 매수 조건 불충족 ===');
     return null;
