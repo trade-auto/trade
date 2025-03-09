@@ -36,7 +36,7 @@ import axios from 'axios';
 import { TradeSignal } from '../types/candlestick';
 import { CandlestickData as TVCandlestickData, UTCTimestamp, BusinessDay } from 'lightweight-charts';
 export { CandlestickChart };
-interface OrderParams {
+export interface OrderParams {
   market: string;
   side: 'bid' | 'ask';
   volume: string;
