@@ -63,12 +63,14 @@ const bollingerStrategy: BollingerStrategy = {
     const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
     const ma900Slope = ((ma900 - prevMa900) / prevMa900) * 100;
 
+    // MA900 상승 여부를 기울기로 판단 (0.001% 이상이면 상승으로 판단)
+    const isMA900Upward = ma900Slope >= 0.001;
+
     // MA120/240 상향 지속 기간 체크 (10봉 기준)
     let ma120UpCount = 0;
     let ma240UpCount = 0;
     let ma60Above120Count = 0;
     let ma60Above240Count = 0;
-    let ma900UpCount = 0;
 
     for (let i = 0; i < 10; i++) {
       const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
@@ -84,12 +86,7 @@ const bollingerStrategy: BollingerStrategy = {
       if (currentMa240 > prevMa240Check) ma240UpCount++;
       if (currentMa60 > currentMa120) ma60Above120Count++;
       if (currentMa60 > currentMa240) ma60Above240Count++;
-      if (currentMa900 > prevMa900Check) ma900UpCount++;
     }
-
-    // MA 기울기 상향 조건 (10봉 연속 상향인 경우)
-    const isMA120240Upward = ma120UpCount >= 10 && ma240UpCount >= 10;
-    const isMA900Upward = ma900UpCount >= 10;
 
     // 60MA가 120MA와 240MA보다 위에 있는지 확인
     const isAbove120 = ma60 > ma120;
@@ -125,7 +122,7 @@ const bollingerStrategy: BollingerStrategy = {
       '1. MA240 상향 지속 봉수': ma240UpCount + '봉 (필요: 5봉 이상)',
       '2. MA60이 MA120 위': isAbove120 ? '✅' : '❌',
       '3. MA60이 MA240 위': isAbove240 ? '✅' : '❌',
-      '4. MA900 상향(10봉)': isMA900Upward ? '✅' : '❌',
+      '4. MA900 상승세': isMA900Upward ? `✅ (${ma900Slope.toFixed(4)}%)` : `❌ (${ma900Slope.toFixed(4)}%)`,
       '5. MA60이 MA900 아래': isBelow900 ? '✅' : '❌'
     });
     
@@ -134,19 +131,23 @@ const bollingerStrategy: BollingerStrategy = {
       '조건 1 (MA240 상향 5봉 이상)': ma240UpCount >= 5 ? '✅' : '❌',
       '조건 2 (MA60 > MA120)': isAbove120 ? '✅' : '❌',
       '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
-      '조건 4 (MA900 상향 10봉)': isMA900Upward ? '✅' : '❌',
+      '조건 4 (MA900 상승세)': isMA900Upward ? '✅' : '❌',
       '조건 5 (MA60 < MA900)': isBelow900 ? '✅' : '❌',
       '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
 
     // 매수 시그널 생성 - 기본 조건
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) {
+    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900  ) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
     }
 
+    // 매수 조건 불충족 사유 상세 출력
     console.log('\n=== ❌ 매수 조건 불충족 ===');
+    if (ma900Slope < 0) {
+      console.log('MA900 하락 중 (기울기:', ma900Slope.toFixed(4) + '%)');
+    }
     console.log('상태 유지: waiting_buy (매수 대기)');
     return null;  // 매수 대기 상태 유지 (waiting_buy)
   },
@@ -349,8 +350,11 @@ const bollingerStrategy: BollingerStrategy = {
     let currentPosition: 'buy' | null = options?.currentPosition || null;
     let lastTradeId: string | null = options?.lastTradeId || null;
     
-    if (data.length < 900) {
-      console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
+    // 실시간 모드에서는 1시간(3600초)의 데이터가 있어야 하며,
+    // 그 중 첫 15분(900초)은 MA900 계산을 위한 데이터로 사용됨
+    if (data.length < 3600) {
+      console.log('데이터가 충분하지 않습니다. 최소 3600개의 캔들이 필요합니다. (1시간)');
+      console.log('현재 데이터 길이:', data.length, '초');
       return {
         signals,
         lastProcessedIndex: data.length - 1,
@@ -362,32 +366,36 @@ const bollingerStrategy: BollingerStrategy = {
     const self = this;
     
     console.log('\n=== 볼린저 전략 분석 시작 ===');
-    console.log('데이터 길이:', data.length);
+    console.log('데이터 길이:', data.length, '초');
     console.log('분석 시작 시간:', new Date().toLocaleString('ko-KR'));
     console.log('실시간 모드:', options?.realtime ? '✅' : '❌');
     
     // 실시간 모드인 경우 마지막 캔들만 분석
+    // MA900 계산을 위해 시작 인덱스를 900으로 설정
     let startIndex = 900;
     let endIndex = data.length;
     
-    if (options?.realtime && options?.lastProcessedIndex !== undefined && options.lastProcessedIndex >= 900) {
-      // 마지막으로 처리된 인덱스 이후의 데이터만 분석
-      startIndex = options.lastProcessedIndex + 1;
-      console.log(`실시간 모드: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
-      
-      // 현재 포지션 상태 가져오기 (실제 구현에서는 store에서 가져와야 함)
-      // 여기서는 예시로 마지막 신호의 포지션을 사용
-      if (options.currentPosition) {
-        currentPosition = options.currentPosition;
-        console.log(`현재 포지션: ${currentPosition}`);
-      }
-      
-      if (options.lastTradeId) {
-        lastTradeId = options.lastTradeId;
-        console.log(`마지막 거래 ID: ${lastTradeId}`);
+    if (options?.realtime) {
+      if (options?.lastProcessedIndex !== undefined && options.lastProcessedIndex >= 900) {
+        // 마지막으로 처리된 인덱스 이후의 데이터만 분석
+        startIndex = options.lastProcessedIndex + 1;
+        console.log(`실시간 모드: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
+        console.log('MA900 계산 가능 여부:', startIndex >= 900 ? '✅' : '❌');
+        
+        // 현재 포지션 상태 설정
+        if (options.currentPosition) {
+          currentPosition = options.currentPosition;
+          console.log(`현재 포지션: ${currentPosition}`);
+        }
+        
+        if (options.lastTradeId) {
+          lastTradeId = options.lastTradeId;
+          console.log(`마지막 거래 ID: ${lastTradeId}`);
+        }
       }
     } else {
       console.log(`전체 데이터 분석: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
+      console.log('MA900 계산에 필요한 초기 데이터:', startIndex, '초');
     }
 
     for (let i = startIndex; i < endIndex; i++) {
