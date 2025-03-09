@@ -352,7 +352,8 @@ const bollingerStrategy: BollingerStrategy = {
     let currentPosition: 'long' | null = null;
     let lastTradeId: string | null = null;
     
-    if (data.length < 900) {
+    // 실시간 모드가 아닐 때만 데이터 길이 검증
+    if (!options?.realtime && data.length < 900) {
       console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
       return {
         signals,

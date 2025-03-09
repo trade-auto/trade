@@ -35,7 +35,9 @@ import TradingStrategyHover from './TradingStrategyHover';
 import axios from 'axios';
 import { TradeSignal } from '../types/candlestick';
 import { CandlestickData as TVCandlestickData, UTCTimestamp, BusinessDay } from 'lightweight-charts';
+
 export { CandlestickChart };
+
 export interface OrderParams {
   market: string;
   side: 'bid' | 'ask';
@@ -54,6 +56,23 @@ interface CandlestickChartProps {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onOrder?: (price: number, isMarketOrder: boolean) => void;
 }
+
+// 날짜 포맷 함수
+const formatDateForAPI = (date: Date): string => {
+  return date.toISOString();
+};
+
+// 캔들 데이터 처리 함수
+const processCandle = (candle: any, chartType: string): ExtendedCandlestickData => {
+  return {
+    time: candle.timestamp || candle.candle_date_time_kst,
+    open: candle.opening_price,
+    high: candle.high_price,
+    low: candle.low_price,
+    close: candle.trade_price,
+    volume: candle.candle_acc_trade_volume,
+  };
+};
 
 const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   const {
@@ -323,13 +342,31 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
 
   // 실시간 API 업데이트로 전환하는 함수 (먼저 선언)
   const switchToRealtimeAfterUpdate = useCallback(() => {
+    console.log('자동 업데이트 완료 후 실시간 API로 전환 시도...');
+    console.log('현재 데이터 개수:', allData.length);
+    
+    // 데이터가 충분한지 확인
+    if (allData.length < 900) {
+      console.log('데이터가 충분하지 않습니다. 실시간 API로 전환하지 않습니다.');
+      return;
+    }
+    
+    // 마지막 분석 결과 초기화
+    setLastAnalysisResult({
+      lastProcessedIndex: allData.length - 1,
+      currentPosition: null,
+      lastTradeId: null
+    });
+    
     // 자동 업데이트 중지
     setIsAutoUpdate(false);
+    
     // 잠시 후 실시간 API 활성화
     setTimeout(() => {
+      console.log('실시간 API 활성화 중...');
       setIsRealtimeAPIEnabled(true);
     }, 500);
-  }, []);
+  }, [allData]);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -343,6 +380,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       let currentTo = dateRange.endDate ? dateRange.endDate : new Date();
       const startDate = dateRange.startDate;
       
+      console.log('데이터 로드 시작:', {
+        시작일: startDate.toLocaleString('ko-KR'),
+        종료일: currentTo.toLocaleString('ko-KR'),
+        차트타입: chartType
+      });
+      
       // 필요한 데이터 개수 계산
       const totalDays = Math.ceil((currentTo.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
       const estimatedCandles = chartType.startsWith('minutes/') ? totalDays * 24 * 60 / parseInt(chartType.split('/')[1]) :
@@ -350,7 +393,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
                              chartType === 'weeks' ? Math.ceil(totalDays / 7) :
                              Math.ceil(totalDays / 30);
       
-      const batchSize = 200;
+      console.log('예상 캔들 수:', estimatedCandles);
+      
+      const batchSize = 200; // 업비트 API 최대 요청 개수
       const expectedBatches = Math.ceil(estimatedCandles / batchSize);
       let currentBatch = 0;
       
@@ -362,44 +407,74 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
         currentBatch++;
         setProgress(Math.min(30, (currentBatch / expectedBatches) * 30));
         
-        const response = await fetch(
-          `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${batchSize}`
-        );
-        
-        if (!response.ok) {
-          throw new Error('데이터 로딩 실패');
-        }
-        
-        const data: UpbitCandle[] = await response.json();
-        
-        if (!data || data.length === 0) break;
-        
-        // 데이터 처리
-        const processedData = data.map((candle: UpbitCandle) => ({
-          time: new Date(candle.candle_date_time_kst).getTime() / 1000 as Time,
-          open: candle.opening_price,
-          high: candle.high_price,
-          low: candle.low_price,
-          close: candle.trade_price,
-          volume: candle.candle_acc_trade_volume,
-        }));
-        
-        // 시작 날짜보다 이전 데이터는 필터링
-        const filteredData = processedData.filter(
+        try {
+          console.log(`데이터 요청 URL: https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${batchSize}`);
+          
+          const response = await fetch(
+            `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${batchSize}`
+          );
+          
+          if (!response.ok) {
+            console.error('API 응답 오류:', response.status, response.statusText);
+            throw new Error(`데이터 로딩 실패: ${response.status} ${response.statusText}`);
+          }
+          
+          const data: UpbitCandle[] = await response.json();
+          
+          if (!data || data.length === 0) {
+            console.log('더 이상 데이터가 없습니다.');
+            break;
+          }
+          
+          console.log(`${currentBatch}번째 배치 데이터 수신: ${data.length}개`);
+          
+          // 데이터 처리
+          const processedData = data.map((candle: UpbitCandle) => ({
+            time: new Date(candle.candle_date_time_kst).getTime() / 1000 as Time,
+            open: candle.opening_price,
+            high: candle.high_price,
+            low: candle.low_price,
+            close: candle.trade_price,
+            volume: candle.candle_acc_trade_volume
+          }));
+          
+          // 시작 날짜보다 이전 데이터는 필터링
+          const filteredData = processedData.filter(
             candle => new Date((candle.time as number) * 1000) >= startDate
-        );
-        
-        allProcessedData.push(...filteredData);
-        
-        // 마지막 캔들의 시간으로 다음 요청의 기준 시간 설정
-        const lastCandle = data[data.length - 1];
-        currentTo = new Date(lastCandle.candle_date_time_kst);
-        
-        // 시작 날짜에 도달했거나 지났으면 중단
-        if (currentTo <= startDate) break;
-        
-        // API 호출 제한을 위한 딜레이
-        await new Promise(resolve => setTimeout(resolve, 100));
+          );
+          
+          // 데이터 추가
+          allProcessedData.push(...filteredData);
+          
+          console.log(`현재까지 누적 데이터: ${allProcessedData.length}개`);
+          
+          // 최소 필요 캔들 수에 도달했는지 확인
+          if (allProcessedData.length >= 900) {
+            console.log('최소 필요 캔들 수(900개)에 도달했습니다.');
+          }
+          
+          // 마지막 캔들의 시간으로 다음 요청의 기준 시간 설정
+          if (data.length < batchSize) {
+            console.log('마지막 배치 데이터가 최대 크기보다 작습니다. 데이터 로드를 종료합니다.');
+            break;
+          }
+          
+          const lastCandle = data[data.length - 1];
+          currentTo = new Date(lastCandle.candle_date_time_kst);
+          
+          // 시작 날짜에 도달하면 종료
+          if (currentTo <= startDate) {
+            console.log('시작 날짜에 도달했습니다. 데이터 로드를 종료합니다.');
+            break;
+          }
+          
+          // API 호출 제한을 위한 딜레이
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error('데이터 요청 중 오류 발생:', error);
+          // 오류가 발생해도 계속 진행
+          break;
+        }
       }
       
       // 한 번만 정렬
@@ -492,8 +567,16 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       
       // 전체 데이터 로드 후 실시간 API로 전환 (자동 업데이트 모드일 경우)
       if (isAutoUpdate && chartType === 'seconds/60') {
-        // 자동 업데이트에서 실시간 업데이트로 전환
-        switchToRealtimeAfterUpdate();
+        console.log('자동 업데이트 후 데이터 개수:', allProcessedData.length);
+        
+        // 데이터가 충분한 경우에만 실시간 API로 전환
+        if (allProcessedData.length >= 900) {
+          console.log('충분한 데이터가 로드되었습니다. 실시간 API로 전환합니다.');
+          // 자동 업데이트에서 실시간 업데이트로 전환
+          switchToRealtimeAfterUpdate();
+        } else {
+          console.log('데이터가 충분하지 않습니다. 자동 업데이트를 계속합니다.');
+        }
       }
       
     } catch (error) {
@@ -781,71 +864,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     fileInputRef.current?.click();
   }, []);
 
-  // 차트 초봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시
-  if (chartType === 'seconds/60') {
-    // 자동 업데이트 효과
-    useEffect(() => {
-      // 초기화 또는 종목 변경 시 전체 데이터 로드
-      if (symbol !== lastSymbol) {
-        console.log('종목이 변경되었습니다. 전체 데이터를 다시 로드합니다.');
-        setIsAutoUpdate(true);
-        setIsRealtimeAPIEnabled(false);
-        setLastSymbol(symbol);
-      }
-    }, [symbol, lastSymbol]);
-
-    // 자동 업데이트 타이머
-    useEffect(() => {
-      if (!isAutoUpdate) return;
-      
-      const updateInterval = 10000; // 10초
-        
-        const updateTimer = setInterval(() => {
-          if (!ongoingRequestRef.current) {
-          console.log('자동 업데이트 실행...');
-            const now = new Date();
-            setDateRange(prev => ({ ...prev, endDate: now }));
-          }
-        }, updateInterval);
-        
-        return () => clearInterval(updateTimer);
-    }, [isAutoUpdate]);
-
-    // 실시간 API 업데이트 타이머
-    // 주석 처리 - Block-scoped variable 문제를 해결하기 위함
-    /*
-    useEffect(() => {
-      if (!isRealtimeAPIEnabled) return;
-      
-      console.log('실시간 API 업데이트 시작...');
-      const realtimeInterval = 1000; // 1초
-      
-      const realtimeTimer = setInterval(() => {
-        updateRealtimeData();
-      }, realtimeInterval);
-      
-      return () => clearInterval(realtimeTimer);
-    }, [isRealtimeAPIEnabled, updateRealtimeData]);
-    */
-    
-    // 데이터 로드 트리거
-    useEffect(() => {
-      // 중복 요청 방지를 위한 디바운싱
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      
-      if (isAutoUpdate) {
-      timeoutRef.current = setTimeout(() => {
-        loadData();
-      }, 300);
-      }
-      
-      return () => {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      };
-    }, [dateRange, loadData, isAutoUpdate]);
-
   // 자동 업데이트 토글 핸들러
   const handleAutoUpdateToggle = useCallback(() => {
     setIsAutoUpdate(prev => !prev);
@@ -853,8 +871,32 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
 
   // 실시간 API 토글 핸들러
   const handleRealtimeAPIToggle = useCallback(() => {
-    setIsRealtimeAPIEnabled(prev => !prev);
-  }, []);
+    const newValue = !isRealtimeAPIEnabled;
+    console.log(`실시간 API ${newValue ? '활성화' : '비활성화'} 됨`);
+    
+    // 활성화하려는 경우 데이터가 충분한지 확인
+    if (newValue) {
+      console.log('현재 데이터 개수:', allData.length);
+      
+      if (allData.length < 900) {
+        console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
+        alert('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.\n자동 업데이트를 통해 충분한 데이터를 로드한 후 다시 시도해주세요.');
+        return;
+      }
+      
+      // 마지막 분석 결과 초기화
+      setLastAnalysisResult({
+        lastProcessedIndex: allData.length - 1,
+        currentPosition: null,
+        lastTradeId: null
+      });
+      
+      // 실시간 API 활성화 시 자동 업데이트는 비활성화
+      setIsAutoUpdate(false);
+    }
+    
+    setIsRealtimeAPIEnabled(newValue);
+  }, [isRealtimeAPIEnabled, allData]);
 
   // 실시간 API 업데이트 함수
   const updateRealtimeData = useCallback(async () => {
@@ -864,10 +906,213 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     try {
       // 기존 로직 유지
       console.log('실시간 데이터 업데이트 중...');
+      
+      // 실시간 데이터 가져오기
+      const now = new Date();
+      const endpoint = getChartEndpoint(chartType);
+      
+      // API 호출 시작
+      ongoingRequestRef.current = true;
+      
+      // API URL 구성
+      const to = formatDateForAPI(now);
+      const count = 1; // 최신 캔들 1개만 가져옴
+      const url = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&count=${count}&to=${to}`;
+      
+      console.log('실시간 데이터 요청 URL:', url);
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log('실시간 데이터 응답:', data);
+      
+      if (data && data.length > 0) {
+        // 새 캔들 데이터 처리
+        const newCandle = processCandle(data[0], chartType);
+        
+        // 마지막 캔들 업데이트 또는 새 캔들 추가
+        if (allData.length > 0) {
+          const lastCandle = allData[allData.length - 1];
+          let updatedData: ExtendedCandlestickData[] = [];
+          
+          // 같은 시간의 캔들이면 업데이트, 아니면 새로 추가
+          if (lastCandle.time === newCandle.time) {
+            // 기존 캔들 업데이트
+            updatedData = [...allData];
+            updatedData[updatedData.length - 1] = newCandle;
+            setAllData(updatedData);
+            
+            // 차트 시리즈 업데이트
+            if (candleSeriesRef.current) {
+              candleSeriesRef.current.update(newCandle);
+            }
+          } else {
+            // 새 캔들 추가
+            updatedData = [...allData, newCandle];
+            setAllData(updatedData);
+            
+            // 차트 시리즈에 추가
+            if (candleSeriesRef.current) {
+              candleSeriesRef.current.update(newCandle);
+            }
+            
+            // 볼륨 데이터 업데이트
+            if (volumeSeriesRef.current) {
+              volumeSeriesRef.current.update({
+                time: newCandle.time,
+                value: newCandle.volume,
+                color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
+              });
+            }
+          }
+          
+          // 현재 가격 업데이트
+          setChartPrice(newCandle.close);
+          
+          // 실시간 업데이트 상태 업데이트
+          setRealtimeUpdateStatus(prev => ({
+            isUpdating: true,
+            lastUpdateTime: new Date().toLocaleString('ko-KR'),
+            updateCount: prev.updateCount + 1
+          }));
+          
+          // 이평선 업데이트 (10회마다 한 번씩)
+          if (realtimeUpdateStatus.updateCount % 10 === 0) {
+            console.log('이평선 업데이트 중...');
+            
+            // EMA 계산 및 설정
+            if (
+              sixtyEMASeriesRef.current && 
+              oneTwentyEMASeriesRef.current && 
+              twoFortyEMASeriesRef.current && 
+              threeHundredSixtyEMASeriesRef.current &&
+              threeHundredEMASeriesRef.current &&
+              nineHundredEMASeriesRef.current
+            ) {
+              const ema60Data = calculateEMA(updatedData, 60);
+              const ema120Data = calculateEMA(updatedData, 120);
+              const ema240Data = calculateEMA(updatedData, 240);
+              const ema360Data = calculateEMA(updatedData, 360);
+              const ema300Data = calculateEMA(updatedData, 300);
+              const ema900Data = calculateEMA(updatedData, 900);
+              
+              // EMA 데이터 설정
+              sixtyEMASeriesRef.current.setData(ema60Data);
+              oneTwentyEMASeriesRef.current.setData(ema120Data);
+              twoFortyEMASeriesRef.current.setData(ema240Data);
+              threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+              threeHundredEMASeriesRef.current.setData(ema300Data);
+              nineHundredEMASeriesRef.current.setData(ema900Data);
+            }
+          }
+          
+          // 전략 분석 실행
+          const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+          const analysisResult = selectedStrategy.analyze(updatedData, {
+            realtime: true,
+            lastProcessedIndex: lastAnalysisResult.lastProcessedIndex,
+            currentPosition: lastAnalysisResult.currentPosition,
+            lastTradeId: lastAnalysisResult.lastTradeId,
+            entryPrice: lastAnalysisResult.entryPrice
+          });
+          
+          // 새로운 신호가 있으면 마커 업데이트
+          if (analysisResult.signals.length > 0) {
+            const newMarkers = createTradeMarkers(analysisResult.signals);
+            setMarkers(prev => [...prev, ...newMarkers]);
+            
+            // 마커 적용
+            if (markerPluginRef.current) {
+              markerPluginRef.current.setMarkers([...markers, ...newMarkers]);
+            }
+          }
+          
+          // 분석 결과 저장
+          setLastAnalysisResult({
+            lastProcessedIndex: analysisResult.lastProcessedIndex,
+            currentPosition: analysisResult.currentPosition,
+            lastTradeId: analysisResult.lastTradeId,
+            entryPrice: analysisResult.entryPrice
+          });
+        }
+      }
     } catch (error) {
       console.error('실시간 데이터 업데이트 오류:', error);
+    } finally {
+      // API 호출 완료
+      ongoingRequestRef.current = false;
     }
-  }, [isRealtimeAPIEnabled, chartType]);
+  }, [isRealtimeAPIEnabled, chartType, symbol, allData, markers, tradeStrategy, lastAnalysisResult, realtimeUpdateStatus.updateCount]);
+
+  // 자동 업데이트 효과 (조건부 코드 블록 밖으로 이동)
+  useEffect(() => {
+    // 초봉 차트가 아니면 실행하지 않음
+    if (chartType !== 'seconds/60') return;
+    
+    // 초기화 또는 종목 변경 시 전체 데이터 로드
+    if (symbol !== lastSymbol) {
+      console.log('종목이 변경되었습니다. 전체 데이터를 다시 로드합니다.');
+      setIsAutoUpdate(true);
+      setIsRealtimeAPIEnabled(false);
+      setLastSymbol(symbol);
+    }
+  }, [symbol, lastSymbol, chartType]);
+
+  // 자동 업데이트 타이머 (조건부 코드 블록 밖으로 이동)
+  useEffect(() => {
+    // 초봉 차트가 아니면 실행하지 않음
+    if (chartType !== 'seconds/60' || !isAutoUpdate) return;
+    
+    const updateInterval = 10000; // 10초
+      
+    const updateTimer = setInterval(() => {
+      if (!ongoingRequestRef.current) {
+        console.log('자동 업데이트 실행...');
+        const now = new Date();
+        setDateRange(prev => ({ ...prev, endDate: now }));
+      }
+    }, updateInterval);
+      
+    return () => clearInterval(updateTimer);
+  }, [isAutoUpdate, chartType]);
+
+  // 실시간 API 업데이트 타이머 (조건부 코드 블록 밖으로 이동)
+  useEffect(() => {
+    // 초봉 차트가 아니면 실행하지 않음
+    if (chartType !== 'seconds/60' || !isRealtimeAPIEnabled) return;
+    
+    console.log('실시간 API 업데이트 시작...');
+    const realtimeInterval = 3000; // 3초로 변경 (1초 -> 3초)
+    
+    const realtimeTimer = setInterval(() => {
+      console.log('실시간 업데이트 타이머 실행:', new Date().toLocaleString('ko-KR'));
+      updateRealtimeData();
+    }, realtimeInterval);
+    
+    return () => clearInterval(realtimeTimer);
+  }, [isRealtimeAPIEnabled, updateRealtimeData, chartType]);
+  
+  // 데이터 로드 트리거 (조건부 코드 블록 밖으로 이동)
+  useEffect(() => {
+    // 초봉 차트가 아니면 실행하지 않음
+    if (chartType !== 'seconds/60' || !isAutoUpdate) return;
+    
+    // 중복 요청 방지를 위한 디바운싱
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    
+    timeoutRef.current = setTimeout(() => {
+      loadData();
+    }, 300);
+    
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [dateRange, loadData, isAutoUpdate, chartType]);
+
+  // 차트 초봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시
+  const showRealtimeControls = chartType === 'seconds/60';
 
   return (
     <div className="relative">
@@ -898,61 +1143,39 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
         </div>
         
         {/* 초봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시 */}
-        {chartType === 'seconds/60' && (
+        {showRealtimeControls && (
           <div className="flex flex-wrap gap-2 mb-2">
             <div className="p-2 bg-gray-700 rounded-lg flex items-center justify-between w-full">
-              <div className="text-white font-bold">업데이트 모드</div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <button
+                  className={`px-3 py-1 rounded-md ${isAutoUpdate ? 'bg-blue-500 text-white' : 'bg-gray-600 text-gray-300'}`}
                   onClick={handleAutoUpdateToggle}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    isAutoUpdate 
-                      ? 'bg-green-600 hover:bg-green-700' 
-                      : 'bg-gray-600 hover:bg-gray-700'
-                  } text-white flex items-center`}
                 >
-                  {isAutoUpdate 
-                    ? <><span className="mr-1">✓</span> 자동 업데이트 중...</> 
-                    : '자동 업데이트'
-                  }
+                  자동 업데이트 {isAutoUpdate ? '켜짐' : '꺼짐'}
                 </button>
-                
                 <button
+                  className={`px-3 py-1 rounded-md ${isRealtimeAPIEnabled ? 'bg-green-500 text-white' : 'bg-gray-600 text-gray-300'}`}
                   onClick={handleRealtimeAPIToggle}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    isRealtimeAPIEnabled 
-                      ? 'bg-blue-600 hover:bg-blue-700' 
-                      : 'bg-gray-600 hover:bg-gray-700'
-                  } text-white flex items-center`}
                 >
-                  {isRealtimeAPIEnabled 
-                    ? <><span className="mr-1">✓</span> 실시간 업데이트 중...</> 
-                    : '실시간 업데이트'
-                  }
+                  실시간 API {isRealtimeAPIEnabled ? '켜짐' : '꺼짐'}
                 </button>
               </div>
-            </div>
-            {isRealtimeAPIEnabled && (
-              <div className="w-full flex justify-between items-center text-sm px-2">
-                <div className="text-gray-400">
-                  {realtimeUpdateStatus.isUpdating ? (
-                    <span className="text-blue-400">업데이트 중...</span>
-                  ) : (
-                    <span className="text-green-400">
-                      마지막 업데이트: {realtimeUpdateStatus.lastUpdateTime || '없음'}
-                    </span>
+              
+              {/* 실시간 업데이트 상태 표시 추가 */}
+              {isRealtimeAPIEnabled && (
+                <div className="text-xs text-gray-300">
+                  <div className="flex items-center gap-1">
+                    <div className={`w-2 h-2 rounded-full ${realtimeUpdateStatus.isUpdating ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                    <span>업데이트: {realtimeUpdateStatus.updateCount}회</span>
+                  </div>
+                  {realtimeUpdateStatus.lastUpdateTime && (
+                    <div className="text-gray-400">
+                      마지막 업데이트: {realtimeUpdateStatus.lastUpdateTime}
+                    </div>
                   )}
                 </div>
-                <div className="text-gray-400">
-                  총 업데이트 횟수: {realtimeUpdateStatus.updateCount}
-                </div>
-              </div>
-            )}
-            {isAutoUpdate && (
-              <div className="text-xs text-gray-400 px-2 w-full text-right">
-                자동 업데이트 완료 후 자동으로 실시간 업데이트로 전환됩니다
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
         
@@ -1056,5 +1279,3 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     </div>
   );
 };
-
-}

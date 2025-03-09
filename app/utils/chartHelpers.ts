@@ -24,15 +24,24 @@ export const getInitialDateRange = (type: string): DateRange => {
   let startDate: Date;
   
   if (type.startsWith('seconds/')) {
-    // 초봉: 최근 30분 데이터
-     // 초봉: 최근 1시간 데이터
-    startDate = new Date(now.getTime() - 60 * 60 * 1000); // 30분 -> 1시간
+    // 초봉: 최근 15시간 데이터 (900개 이상의 캔들을 확보하기 위해)
+    startDate = new Date(now.getTime() - 15 * 60 * 60 * 1000);
   } else if (type.startsWith('minutes/')) {
-    // 1분봉: 최근 2시간 데이터
-    startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    // 1분봉: 최근 24시간 데이터 (900개 이상의 캔들을 확보하기 위해)
+    const minutes = parseInt(type.split('/')[1]);
+    const hoursNeeded = Math.ceil(900 * minutes / 60);
+    startDate = new Date(now.getTime() - hoursNeeded * 60 * 60 * 1000);
+  } else if (type === 'days') {
+    // 일봉: 최근 900일 데이터
+    startDate = new Date(now.getTime() - 900 * 24 * 60 * 60 * 1000);
+  } else if (type === 'weeks') {
+    // 주봉: 최근 900주 데이터
+    startDate = new Date(now.getTime() - 900 * 7 * 24 * 60 * 60 * 1000);
   } else {
-    // 일봉: 최근 1일 데이터
-    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    // 월봉: 최근 900개월 데이터 (약 75년)
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    startDate = new Date(currentYear - 75, currentMonth, 1);
   }
   
   return {
@@ -135,7 +144,9 @@ export const calculateEMA = (data: ExtendedCandlestickData[], period: number): L
 // 차트 타입에 따른 API 엔드포인트 결정
 export const getChartEndpoint = (type: string) => {
   if (type.startsWith('seconds/')) {
-    return 'seconds'; // 초봉 API 엔드포인트
+    // 초봉 API 엔드포인트 수정
+    // 업비트 API는 초 단위 캔들을 지원하지 않으므로 1분봉으로 대체
+    return `minutes/1`;
   }
   const minutes = parseInt(type);
   if (minutes <= 240) { // 1분봉, 3분봉, 일봉(240분)
