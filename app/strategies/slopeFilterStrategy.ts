@@ -1,5 +1,5 @@
 import { CandlestickData, Time } from 'lightweight-charts';
-import { TradingStrategy, TradeSignal, ExtendedMetadata } from './types';
+import { TradingStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult } from './types';
 import { calculateEMA, createTempCandleData, calculateRSI } from './utils';
 
 // 기울기 필터 전략
@@ -97,7 +97,7 @@ const slopeFilterStrategy: TradingStrategy = {
       data[index].close < lowerBand; // 현재 가격이 볼린저 밴드 하단 아래
     
     if (isLongCondition) {
-      return 'long';
+      return 'buy';
     }
     
     return null;
@@ -105,7 +105,7 @@ const slopeFilterStrategy: TradingStrategy = {
   
   // 청산 조건 분석
   analyzeExit(data, index, position, entryPrice) {
-    if (index < 900 || position !== 'long') return false;
+    if (index < 900 || position !== 'buy') return false;
     
     const ma60Period = 60;
     const ma120Period = 120;
@@ -186,15 +186,20 @@ const slopeFilterStrategy: TradingStrategy = {
   },
   
   // 기존 분석 함수
-  analyze(data) {
+  analyze(data, options?: AnalyzeOptions): AnalysisResult {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'long' | null = null;
+    let currentPosition: 'buy' | null = null;
     let lastTradeId: string | null = null;
     
     // 충분한 데이터가 있는지 확인
     const minDataPoints = 900;
     if (data.length < minDataPoints) {
-      return signals;
+      return {
+        signals,
+        lastProcessedIndex: data.length - 1,
+        currentPosition,
+        lastTradeId
+      };
     }
     
     const self = this; // this 컨텍스트 저장
@@ -205,18 +210,18 @@ const slopeFilterStrategy: TradingStrategy = {
       if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
-        if (entrySignal === 'long') {
+        if (entrySignal === 'buy') {
           const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           signals.push({
             id: tradeId,
             time: data[i].time as number,
-            position: 'long',
+            position: 'buy',
             price: data[i].close,
             strategy: 'SLOPE_FILTER',
             reason: '이동평균선 정렬 및 지표 조건 충족',
             metadata: self.calculateIndicators?.(data, i)
           });
-          currentPosition = 'long';
+          currentPosition = 'buy';
           lastTradeId = tradeId;
           console.log('✅ 매수 신호 생성 (SLOPE_FILTER):', {
             시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
@@ -227,21 +232,21 @@ const slopeFilterStrategy: TradingStrategy = {
         }
       } 
       // 현재 롱 포지션인 경우, 청산 조건 확인
-      else if (currentPosition === 'long') {
+      else if (currentPosition === 'buy') {
         // 마지막 롱 진입 신호의 인덱스 찾기
         const entrySignalIndex = signals.findIndex(signal => 
-          signal.id === lastTradeId && signal.position === 'long');
+          signal.id === lastTradeId && signal.position === 'buy');
         
         if (entrySignalIndex >= 0) {
           const entryPrice = signals[entrySignalIndex].price;
-          const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
+          const shouldExit = self.analyzeExit?.(data, i, 'buy', entryPrice);
           
           if (shouldExit) {
             const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             signals.push({
               id: exitTradeId,
               time: data[i].time as number,
-              position: 'close',
+              position: 'sell',
               price: data[i].close,
               strategy: 'SLOPE_FILTER',
               reason: '기술적 조건 붕괴 또는 한계 도달',
@@ -253,7 +258,7 @@ const slopeFilterStrategy: TradingStrategy = {
             console.log('✅ 매도 신호 생성 (SLOPE_FILTER):', {
               시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
               가격: data[i].close.toLocaleString('ko-KR') + '원',
-              '이전 포지션': 'long',
+              '이전 포지션': 'buy',
               '매수가': entryPrice.toLocaleString('ko-KR') + '원',
               '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
               '거래 ID': exitTradeId,
@@ -265,7 +270,12 @@ const slopeFilterStrategy: TradingStrategy = {
       }
     }
     
-    return signals;
+    return {
+      signals,
+      lastProcessedIndex: data.length - 1,
+      currentPosition,
+      lastTradeId
+    };
   }
 };
 

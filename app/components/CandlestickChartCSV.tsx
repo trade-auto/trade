@@ -3,7 +3,7 @@ import axios from 'axios';
 import { ExtendedCandlestickData, DateRange, Time, UpbitCandle } from './CandlestickChartTypes';
 import { formatDate, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
-import { TradeStrategy } from '../strategies/types';
+import { TradeStrategy, TradeSignal } from '../types/trading';
 
 export const useCsvFunctions = (symbol: string) => {
   // CSV 상태
@@ -206,10 +206,18 @@ export const useCsvFunctions = (symbol: string) => {
         const signals = analysisResult.signals;
         
         // signals의 time 속성을 Time 타입으로 변환
-        const convertedSignals = signals.map(signal => ({
-          ...signal,
-          time: signal.time as unknown as Time
-        }));
+        const convertedSignals = signals
+          .filter(signal => signal.position === 'buy' || signal.position === 'sell')
+          .map(signal => ({
+            id: signal.id,
+            time: signal.time as unknown as Time,
+            position: signal.position,
+            price: signal.price,
+            strategy: signal.strategy,
+            reason: signal.reason,
+            metadata: signal.metadata,
+            relatedTradeId: signal.relatedTradeId
+          })) as unknown as TradeSignal[];
         
         const strategyMarkers = createTradeMarkers(convertedSignals);
         

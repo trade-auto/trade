@@ -41,17 +41,19 @@ export interface ExtendedMetadata {
   ma60: number;
   ma120: number;
   ma240: number;
+  ma360?: number;
   ma900: number;
   upperBand: number;
   lowerBand: number;
   deviation: number;
+  isAbove360MA?: boolean;
   isAbove900MA: boolean;
 }
 
 export interface AnalyzeOptions {
   realtime?: boolean;
   lastProcessedIndex?: number;
-  currentPosition?: 'long' | null;
+  currentPosition?: 'buy' | null;
   lastTradeId?: string | null;
   entryPrice?: number;
 }
@@ -59,18 +61,36 @@ export interface AnalyzeOptions {
 export interface AnalysisResult {
   signals: TradeSignal[];
   lastProcessedIndex: number;
-  currentPosition: 'long' | null;
+  currentPosition: 'buy' | null;
   lastTradeId: string | null;
   entryPrice?: number;
 }
 
 export interface TradeSignal {
   id: string;
-  time: number;
-  position: 'long' | 'close';
+  time: Time;
+  position: 'buy' | 'sell';
   price: number;
-  strategy: string;
-  reason: string;
+  amount?: number;
+  strategy: TradeStrategy;
+  reason?: string;
   metadata?: ExtendedMetadata;
   relatedTradeId?: string;
+}
+
+export interface TradingStrategy {
+  name: TradeStrategy;
+  timeframe?: string;
+  description: string;
+  author?: string;
+  version?: string;
+  tags?: string[];
+  
+  indicators?: IndicatorSettings;
+  riskManagement?: RiskManagement;
+  
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'buy' | null;
+  analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number) => boolean;
+  
+  analyze: (data: CandlestickData<Time>[], options?: AnalyzeOptions) => AnalysisResult;
 } 

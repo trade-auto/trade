@@ -1,5 +1,6 @@
 import { Time } from 'lightweight-charts';
 import { TradeStrategy } from '../strategies/types';
+import { TradeSignal } from './trading';
 
 export interface CandlestickData {
   time: Time;
@@ -119,20 +120,4 @@ export interface MASettings {
   threeHundredSixty: boolean;
   threeHundred: boolean;
   nineHundred: boolean;
-}
-
-export interface TradeSignal {
-  id?: string;
-  time: Time;
-  position: 'long' | 'short' | 'close';
-  price: number;
-  strategy: TradeStrategy;
-  metadata?: {
-    deviation?: number;
-    slope?: number;
-    ma360?: number;
-    ma120?: number;
-    isAbove360MA?: boolean;
-  };
-  relatedTradeId?: string;
 }

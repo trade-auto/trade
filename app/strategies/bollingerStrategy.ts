@@ -125,17 +125,19 @@ const bollingerStrategy: BollingerStrategy = {
     // 매수 시그널 생성 - 기본 조건
     if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
-      return 'long';
+      console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
+      return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
     }
 
     console.log('\n=== ❌ 매수 조건 불충족 ===');
-    return null;
+    console.log('상태 유지: waiting_buy (매수 대기)');
+    return null;  // 매수 대기 상태 유지 (waiting_buy)
   },
   
   // 청산 조건 분석
-  analyzeExit(data: CandlestickData<Time>[], index: number, position: 'long', entryPrice: number): boolean {
-    // position이 'long'이 아니면 매도 신호를 발생시키지 않음
-    if (index < 360 || position !== 'long') return false;
+  analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
+    // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
+    if (index < 360 || position !== 'buy') return false;
 
     let ma900UpCount = 0; 
     
@@ -197,7 +199,7 @@ const bollingerStrategy: BollingerStrategy = {
 
     console.log('\n=== 매도 신호 분석 ===');
     console.log('현재 거래 상태:', {
-      '매도 가능 여부': position === 'long',
+      '매도 가능 여부': position === 'buy',
       '마지막 매수 시간': new Date().toLocaleString('ko-KR', {
         year: 'numeric',
         month: '2-digit',
@@ -234,6 +236,7 @@ const bollingerStrategy: BollingerStrategy = {
     // 매도 시그널 생성 - 기본 조건
     if (ma240DownCount >= 5 && isBelow120 && isBelow240 && isMA900Upward) {
       console.log('\n=== 매도 조건 충족 여부 ===');
+      console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({
         '체크 시간': new Date().toLocaleString('ko-KR', {
           year: 'numeric',
@@ -250,12 +253,13 @@ const bollingerStrategy: BollingerStrategy = {
         'MA900 상향': isMA900Upward ? '✅' : '❌',
         '최종 판정': '✅ 매도 신호 발생!'
       });
-      return true;
+      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
 
     // 추가 매도 조건 - MA60 하락 추세이고 MA120 아래로 내려간 경우
     if (ma60Slope < 0 && isBelow120 && ma60Below120Count >= 5) {
       console.log('\n=== 추가 매도 조건 충족 여부 ===');
+      console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({
         '체크 시간': new Date().toLocaleString('ko-KR'),
         'MA60 하락 추세': ma60Slope < 0 ? '✅' : '❌',
@@ -263,40 +267,25 @@ const bollingerStrategy: BollingerStrategy = {
         'MA60이 MA120 아래 지속 봉수': ma60Below120Count + '봉',
         '최종 판정': '✅ 추가 매도 신호 발생!'
       });
-      return true;
+      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
 
     // 손절 조건 - 수익률이 -1.5% 이하인 경우
     if (profitPercent <= -1.5) {
       console.log('\n=== 손절 조건 충족 여부 ===');
+      console.log('상태 변경: waiting_sell → sell (손절 매도 실행)');
       console.log({
         '체크 시간': new Date().toLocaleString('ko-KR'),
         '현재 수익률': profitPercent.toFixed(2) + '%',
         '손절 기준': '-1.5%',
         '최종 판정': '✅ 손절 신호 발생!'
       });
-      return true;
+      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
 
     console.log('\n=== 매도 조건 충족 여부 ===');
-    console.log({
-      '체크 시간': new Date().toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }),
-      'MA120/240 하향(10봉)': isMA120240Downward ? '✅' : '❌',
-      'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
-      'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
-      'MA900 상향': isMA900Upward ? '✅' : '❌',
-      '최종 판정': '❌ 매도 조건 불충족'
-    });
-    
-    return false;
+    console.log('상태 유지: waiting_sell (매도 대기)');
+    return false;  // 매도 대기 상태 유지 (waiting_sell)
   },
   
   // 지표 계산 함수
@@ -340,8 +329,8 @@ const bollingerStrategy: BollingerStrategy = {
   // 기존 분석 함수는 새로운 함수들을 활용
   analyze(data, options?: AnalyzeOptions): AnalysisResult {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'long' | null = null;
-    let lastTradeId: string | null = null;
+    let currentPosition: 'buy' | null = options?.currentPosition || null;
+    let lastTradeId: string | null = options?.lastTradeId || null;
     
     if (data.length < 900) {
       console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
@@ -364,7 +353,7 @@ const bollingerStrategy: BollingerStrategy = {
     let startIndex = 900;
     let endIndex = data.length;
     
-    if (options?.realtime && options.lastProcessedIndex >= 900) {
+    if (options?.realtime && options?.lastProcessedIndex !== undefined && options.lastProcessedIndex >= 900) {
       // 마지막으로 처리된 인덱스 이후의 데이터만 분석
       startIndex = options.lastProcessedIndex + 1;
       console.log(`실시간 모드: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
@@ -394,12 +383,12 @@ const bollingerStrategy: BollingerStrategy = {
       if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
-        if (entrySignal === 'long') {
+        if (entrySignal === 'buy') {
           const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           signals.push({
             id: tradeId,
             time: data[i].time as number,
-            position: 'long',
+            position: 'buy',
             price: data[i].close,
             strategy: 'BOLLINGER',
             reason: '매수 조건 충족',
@@ -407,7 +396,7 @@ const bollingerStrategy: BollingerStrategy = {
           });
           
           lastTradeId = tradeId;
-          currentPosition = 'long';
+          currentPosition = 'buy';
           
           console.log('\n=== ✅ 매수 마커 생성 완료 ===');
           console.log({
@@ -421,7 +410,7 @@ const bollingerStrategy: BollingerStrategy = {
         }
       } 
       // 현재 롱 포지션인 경우에만 매도 신호 확인
-      else if (currentPosition === 'long' && lastTradeId) {
+      else if (currentPosition === 'buy' && lastTradeId) {
         const entrySignalIndex = signals.findIndex(signal => signal.id === lastTradeId);
         let entryPrice;
         
@@ -435,14 +424,14 @@ const bollingerStrategy: BollingerStrategy = {
           continue;
         }
         
-        const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
+        const shouldExit = self.analyzeExit?.(data, i, 'buy', entryPrice);
         
         if (shouldExit) {
           const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           signals.push({
             id: exitTradeId,
             time: data[i].time as number,
-            position: 'close',
+            position: 'sell',
             price: data[i].close,
             strategy: 'BOLLINGER',
             reason: '매도 조건 충족',
@@ -486,7 +475,7 @@ const bollingerStrategy: BollingerStrategy = {
       lastProcessedIndex: endIndex - 1,
       currentPosition,
       lastTradeId,
-      entryPrice: currentPosition === 'long' && signals.length > 0 ? 
+      entryPrice: currentPosition === 'buy' && signals.length > 0 ? 
         signals.find(s => s.id === lastTradeId)?.price : undefined
     };
   }

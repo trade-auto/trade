@@ -65,7 +65,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
     
     if (crossAbove120 && crossAbove240 && isBelow900MA) {
       console.log('✅ 매수 시그널 발생: 60MA가 900MA 아래에서 120MA와 240MA를 동시에 상향돌파');
-      return 'long';
+      return 'buy';
     }
     
     return null;
@@ -73,7 +73,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
   
   // 청산 조건 분석 - 단순화
   analyzeExit(data, index, position, entryPrice) {
-    if (index < 900 || position !== 'long') return false;
+    if (index < 900 || position !== 'buy') return false;
     
     // 현재 및 이전 MAs 계산
     const ma60 = data.slice(index - 60, index).reduce((sum, d) => sum + d.close, 0) / 60;
@@ -142,7 +142,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
   // 기존 분석 함수
   analyze(data: CandlestickData<Time>[], options?: AnalyzeOptions): AnalysisResult {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'long' | null = null;
+    let currentPosition: 'buy' | null = null;
     let lastTradeId: string | null = null;
     let isFirstTrade = true; // 첫 번째 거래 여부 추적
     
@@ -164,18 +164,18 @@ const maCrossDeviationStrategy: TradingStrategy = {
       if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
-        if (entrySignal === 'long') {
+        if (entrySignal === 'buy') {
           const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           signals.push({
             id: tradeId,
             time: data[i].time as number,
-            position: 'long',
+            position: 'buy',
             price: data[i].close,
             strategy: 'MA_CROSS_DEVIATION',
             reason: '60MA가 120MA와 240MA를 상향돌파',
             metadata: self.calculateIndicators?.(data, i)
           });
-          currentPosition = 'long';
+          currentPosition = 'buy';
           lastTradeId = tradeId;
           console.log('✅ 매수 신호 생성 (MA_CROSS_DEVIATION):', {
             시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
@@ -186,10 +186,10 @@ const maCrossDeviationStrategy: TradingStrategy = {
         }
       } 
       // 현재 롱 포지션인 경우, 청산 조건 확인
-      else if (currentPosition === 'long') {
+      else if (currentPosition === 'buy') {
         // 마지막 롱 진입 신호의 인덱스 찾기
         const entrySignalIndex = signals.findIndex(signal => 
-          signal.id === lastTradeId && signal.position === 'long');
+          signal.id === lastTradeId && signal.position === 'buy');
         
         if (entrySignalIndex >= 0) {
           const entryPrice = signals[entrySignalIndex].price;
@@ -228,7 +228,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
             signals.push({
               id: exitTradeId,
               time: data[i].time as number,
-              position: 'close',
+              position: 'sell',
               price: data[i].close,
               strategy: 'MA_CROSS_DEVIATION',
               reason: isFirstTrade ? '60MA가 300MA를 하향돌파' : '60MA가 360MA를 하향돌파',
@@ -246,7 +246,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
             console.log('✅ 매도 신호 생성 (MA_CROSS_DEVIATION):', {
               시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
               가격: data[i].close.toLocaleString('ko-KR') + '원',
-              '이전 포지션': 'long',
+              '이전 포지션': 'buy',
               '매수가': entryPrice.toLocaleString('ko-KR') + '원',
               '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
               '거래 ID': exitTradeId,

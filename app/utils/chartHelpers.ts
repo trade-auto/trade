@@ -11,9 +11,9 @@ import {
   ExtendedCandlestickData, 
   DateRange,
   BacktestResult,
-  Trade,
-  TradeSignal
+  Trade
 } from '../types/candlestick';
+import { TradeStrategy, TradeSignal } from '../types/trading';
 
 /**
  * chartType에 따라 초기 날짜 범위를 반환한다.
@@ -60,12 +60,12 @@ export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[]
     let shape: SeriesMarkerShape;
     let text: string;
     
-    if (signal.position === 'long') {
+    if (signal.position === 'buy') {
       position = 'belowBar' as SeriesMarkerPosition;
       color = '#26a69a'; // 녹색
       shape = 'arrowUp' as SeriesMarkerShape;
       text = '매수';
-    } else if (signal.position === 'short' || signal.position === 'close') {
+    } else if (signal.position === 'sell') {
       position = 'aboveBar' as SeriesMarkerPosition;
       color = '#ef5350'; // 빨간색
       shape = 'arrowDown' as SeriesMarkerShape;
@@ -160,10 +160,10 @@ export const calculateBacktestResult = (
   for (let i = 0; i < signals.length; i++) {
     const signal = signals[i];
     
-    if (signal.position === 'long') {
+    if (signal.position === 'buy') {
       buyPoint = signal;
       console.log(`Backtest: BUY signal detected at ${formatTime(signal.time)} - price: ${signal.price}`);
-    } else if ((signal.position === 'close' || signal.position === 'short') && buyPoint) {
+    } else if ((signal.position === 'sell') && buyPoint) {
       // 360MA 위에 있으면 매도 신호 무시 (백테스트에서도 적용)
       if (signal.metadata?.isAbove360MA) {
         console.log(`Backtest: SELL signal ignored at ${new Date((signal.time as number) * 1000).toLocaleTimeString()} - price is above 360MA`);

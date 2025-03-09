@@ -1,5 +1,6 @@
 import { Time, SeriesMarker, SeriesMarkerPosition, SeriesMarkerShape } from 'lightweight-charts';
-import { ExtendedCandlestickData, TradeSignal } from '../types/candlestick';
+import { ExtendedCandlestickData } from '../types/candlestick';
+import { TradeSignal } from '../types/trading';
 import { getInitialDateRange, formatDate, calculateEMA, getChartEndpoint, calculateBacktestResult } from '../utils/chartHelpers';
 
 /**
@@ -12,18 +13,18 @@ export function createTradeMarkers(signals: TradeSignal[]): SeriesMarker<Time>[]
     let shape: SeriesMarkerShape;
     let color: string;
     
-    if (signal.position === 'long') {
+    if (signal.position === 'buy') {
       position = 'belowBar';
       shape = 'arrowUp';
-      color = '#26a69a'; // 매수(롱) - 초록색
-    } else if (signal.position === 'short') {
+      color = '#26a69a'; // 매수 - 초록색
+    } else if (signal.position === 'sell') {
       position = 'aboveBar';
       shape = 'arrowDown';
-      color = '#ef5350'; // 매도(숏) - 빨간색
-    } else { // 'close'
+      color = '#ef5350'; // 매도 - 빨간색
+    } else {
       position = 'inBar';
       shape = 'circle';
-      color = '#ffeb3b'; // 포지션 종료 - 노란색
+      color = '#ffeb3b'; // 기타 - 노란색
     }
     
     return {

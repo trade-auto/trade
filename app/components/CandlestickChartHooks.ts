@@ -209,7 +209,24 @@ export const useChartData = (
         // 매매 신호 분석 및 마커 생성
         const selectedStrategy = useUpbitStore.getState().strategies[useUpbitStore.getState().tradeStrategy];
         const analysisResult = selectedStrategy.analyze(allProcessedData);
-        const signals = analysisResult.signals;
+        const signals = analysisResult.signals
+          .filter(signal => signal.position !== null)
+          .map(signal => ({
+            ...signal,
+            time: signal.time as unknown as Time,
+            position: signal.position as 'buy' | 'sell',
+            metadata: signal.metadata ? {
+              ...signal.metadata,
+              ma60: signal.metadata.ma60 || 0,
+              ma120: signal.metadata.ma120 || 0,
+              ma240: signal.metadata.ma240 || 0,
+              ma900: signal.metadata.ma900 || 0,
+              upperBand: signal.metadata.upperBand || 0,
+              lowerBand: signal.metadata.lowerBand || 0,
+              deviation: signal.metadata.deviation || 0,
+              isAbove900MA: signal.metadata.isAbove900MA || false
+            } : undefined
+          }));
         const strategyMarkers = createTradeMarkers(signals);  
         // 매수/매도 포인트 계산
         setMarkers(strategyMarkers);

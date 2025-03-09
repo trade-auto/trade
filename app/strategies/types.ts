@@ -4,7 +4,7 @@ import { CandlestickData, Time } from 'lightweight-charts';
 export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
 // 포지션 유형 정의
-export type PositionType = 'long' | 'short' | 'close';
+export type PositionType = 'buy' | 'sell' | null;
 
 // 이동평균선 타입 정의
 export interface MAType {
@@ -129,16 +129,16 @@ export interface IndicatorSettings {
 export interface AnalysisResult {
   signals: TradeSignal[];
   lastProcessedIndex: number;
-  currentPosition: 'long' | null;
+  currentPosition: 'buy' | null;
   lastTradeId: string | null;
   entryPrice?: number;
 }
 
 // 분석 옵션 인터페이스 추가
 export interface AnalyzeOptions {
-  realtime: boolean;
-  lastProcessedIndex: number;
-  currentPosition?: 'long' | null;
+  realtime?: boolean;
+  lastProcessedIndex?: number;
+  currentPosition?: 'buy' | null;
   lastTradeId?: string | null;
   entryPrice?: number;
 }
@@ -164,8 +164,8 @@ export interface TradingStrategy {
   analyze: (data: CandlestickData<Time>[], options?: AnalyzeOptions) => AnalysisResult;
   
   // 새로운 분석 함수 (개별 컴포넌트별로 분리)
-  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | 'short' | null;
-  analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'long' | 'short', entryPrice: number) => boolean;
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'buy' | null;
+  analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number) => boolean;
   
   // 포지션 크기 계산
   calculatePositionSize?: (data: CandlestickData<Time>[], index: number, availableBalance: number) => number;
@@ -180,6 +180,6 @@ export interface TradingStrategy {
 
 // 볼린저 전략 인터페이스 (롱 포지션만 사용)
 export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'analyzeExit'> {
-  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'long' | null;
-  analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'long', entryPrice: number) => boolean;
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'buy' | null;
+  analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number) => boolean;
 } 
