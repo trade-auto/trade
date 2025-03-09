@@ -23,7 +23,7 @@ export function createTradeMarkers(signals: TradeSignal[]): SeriesMarker<Time>[]
     } else { // 'close'
       position = 'inBar';
       shape = 'circle';
-      color = '#ffeb3b'; // 포지션 종료 - 노란색
+      color = '#ef5350'; // 포지션 종료 - 빨간색으로 변경
     }
     
     return {
