@@ -53,64 +53,34 @@ export const getInitialDateRange = (type: string): DateRange => {
 
 /// 마커 생성 함수
 export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[] => {
-  if (!signals || signals.length === 0) {
-    console.log('마커 생성: 신호가 없습니다.');
-    return [];
-  }
-  
-  console.log(`마커 생성 중: ${signals.length}개 신호`);
-  
-  const markers = signals.map(signal => {
-    if (!signal || !signal.time) {
-      console.warn('유효하지 않은 신호 스킵:', signal);
-      return null;
-    }
-    
-    // 포지션에 따른 마커 설정
-    let position: SeriesMarkerPosition;
-    let color: string;
-    let shape: SeriesMarkerShape;
-    let text: string;
+  return signals.filter(signal => signal && signal.time).map(signal => {
+    let position: SeriesMarkerPosition = 'belowBar';
+    let shape: SeriesMarkerShape = 'circle';
+    let color = 'rgba(0, 0, 0, 0)';
+    let text = '';
     
     if (signal.position === 'long') {
-      position = 'belowBar' as SeriesMarkerPosition;
-      color = '#26a69a'; // 녹색
-      shape = 'arrowUp' as SeriesMarkerShape;
+      position = 'belowBar';
+      shape = 'arrowUp';
+      color = 'rgba(38, 166, 154, 0.7)';
       text = '매수';
-    } else if (signal.position === 'short' || signal.position === 'close') {
-      position = 'aboveBar' as SeriesMarkerPosition;
-      color = '#ef5350'; // 빨간색
-      shape = 'arrowDown' as SeriesMarkerShape;
-      text = '매도';
-    } else {
-      // 기본값 설정
-      position = 'belowBar' as SeriesMarkerPosition;
-      color = '#888888'; // 회색
-      shape = 'circle' as SeriesMarkerShape;
-      text = signal.position || '알 수 없음';
+    } else if (signal.position === 'short' || signal.position === 'exit') {
+      position = 'aboveBar';
+      shape = 'arrowDown';
+      color = 'rgba(239, 83, 80, 0.7)';
+      text = signal.position === 'short' ? '매도' : '청산';
     }
     
-    const markerTime = signal.time as Time;
-    const dateStr = typeof markerTime === 'number' 
-      ? new Date(markerTime * 1000).toLocaleString('ko-KR')
-      : 'Invalid Date';
-    
-    console.log(`마커 생성: ${text}, 시간: ${dateStr}, 가격: ${signal.price.toLocaleString()}, ID: ${signal.id}`);
-    
     return {
-      time: markerTime,
+      time: signal.time,
       position,
-      color,
       shape,
+      color,
       text: `${text} @ ${signal.price.toLocaleString()}`,
-      size: 3, // 크기 증가
-      id: signal.id // 고유 ID 추가
+      size: 1.5,
+      id: signal.id
     };
-  }).filter(marker => marker !== null) as SeriesMarker<Time>[];
-  
-  console.log(`마커 생성 완료: ${markers.length}개 (유효하지 않은 마커 ${signals.length - markers.length}개 제외)`);
-  
-  return markers;
+  });
 };
 
 // EMA 계산 함수
@@ -126,7 +96,7 @@ export const calculateEMA = (data: ExtendedCandlestickData[], period: number): L
   
   // 데이터가 부족한 경우 경고 로그 출력
   if (validData.length < period) {
-    console.log(`경고: EMA${period} 계산을 위한 데이터가 부족합니다. 필요: ${period}, 현재: ${validData.length}`);
+    console.warn(`경고: EMA${period} 계산을 위한 데이터가 부족합니다. 필요: ${period}, 현재: ${validData.length}`);
     // 그래도 계속 진행 (가능한 한 많은 데이터로 계산)
   }
   
@@ -163,11 +133,12 @@ export const getChartEndpoint = (type: string) => {
   if (type.startsWith('seconds/')) {
     // 초봉 API 엔드포인트 수정
     // 업비트 API는 초 단위 캔들을 지원하지 않으므로 1분봉으로 대체
+    // 하지만 실시간성을 높이기 위해 1분봉 사용
     return `minutes/1`;
   }
-  const minutes = parseInt(type);
+  const minutes = parseInt(type.split('/')[1] || type);
   if (minutes <= 240) { // 1분봉, 3분봉, 일봉(240분)
-    return `minutes/${type}`;
+    return `minutes/${minutes}`;
   } else if (minutes === 7200) { // 월봉
     return 'months';
   } else { // 년봉
@@ -175,10 +146,10 @@ export const getChartEndpoint = (type: string) => {
   }
 };
 
-// 백테스트 결과 계산 함수
+// 백테스트 결과 계산
 export const calculateBacktestResult = (
-  candleData: ExtendedCandlestickData[], 
-  signals: TradeSignal[], 
+  data: ExtendedCandlestickData[],
+  signals: TradeSignal[],
   mode: 'live' | 'test'
 ): BacktestResult => {
   const trades: Trade[] = [];
@@ -191,7 +162,7 @@ export const calculateBacktestResult = (
     if (signal.position === 'long') {
       buyPoint = signal;
       console.log(`Backtest: BUY signal detected at ${formatTime(signal.time)} - price: ${signal.price}`);
-    } else if ((signal.position === 'close' || signal.position === 'short') && buyPoint) {
+    } else if ((signal.position === 'exit' || signal.position === 'short') && buyPoint) {
       // 360MA 위에 있으면 매도 신호 무시 (백테스트에서도 적용)
       if (signal.metadata?.isAbove360MA) {
         console.log(`Backtest: SELL signal ignored at ${new Date((signal.time as number) * 1000).toLocaleTimeString()} - price is above 360MA`);
@@ -201,8 +172,8 @@ export const calculateBacktestResult = (
       console.log(`Backtest: SELL signal detected at ${formatTime(signal.time)} - price: ${signal.price}`);
       
       // buyPoint는 이미 null 체크를 했으므로 안전합니다
-      const entryCandle = candleData.find(candle => candle.time === buyPoint!.time);
-      const exitCandle = candleData.find(candle => candle.time === signal.time);
+      const entryCandle = data.find(candle => candle.time === buyPoint!.time);
+      const exitCandle = data.find(candle => candle.time === signal.time);
       
       if (!entryCandle || !exitCandle) {
         console.warn('Cannot find matching candle data for signal');
@@ -245,15 +216,35 @@ export const calculateBacktestResult = (
   // 수수료 포함 순수익률 계산 (각 거래마다 매수+매도 수수료 차감)
   const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - (feeRate * 2)), 0);
   
+  const winningTrades = successfulTrades;
+  const losingTrades = totalTrades - successfulTrades;
+  const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+  const totalProfit = totalReturn;
+  const totalLoss = -totalNetReturn;
+  const netProfit = totalNetReturn;
+  const profitFactor = totalProfit / Math.abs(totalLoss);
+  const maxDrawdown = 0; // 최대 손절 폭 계산 필요
+  const averageProfit = totalTrades > 0 ? totalReturn / totalTrades : 0;
+  const averageLoss = totalTrades > 0 ? totalNetReturn / totalTrades : 0;
+  const initialBalance = 0; // 초기 자본금 계산 필요
+  const finalBalance = 0; // 최종 자본금 계산 필요
+  const roi = 0; // 순이익 대비 투자 수익률 계산 필요
+  
   return {
     totalTrades,
-    successfulTrades,
-    totalReturn,
-    totalNetReturn,
-    successRate: totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0,
-    averageReturn: totalTrades > 0 ? totalReturn / totalTrades : 0,
-    averageNetReturn: totalTrades > 0 ? totalNetReturn / totalTrades : 0,
-    trades
+    winningTrades,
+    losingTrades,
+    winRate,
+    totalProfit,
+    totalLoss,
+    netProfit,
+    profitFactor,
+    maxDrawdown: maxDrawdown * 100, // 백분율로 변환
+    averageProfit,
+    averageLoss,
+    initialBalance,
+    finalBalance,
+    roi
   };
 };
 
@@ -344,4 +335,51 @@ export const formatDate = (date: Date): string => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+// 날짜 포맷 함수
+export const formatDateForAPI = (date: Date): string => {
+  // 현재 시간에서 1초를 더해 가장 최신 데이터를 가져오도록 함
+  const adjustedDate = new Date(date.getTime() + 1000);
+  return adjustedDate.toISOString();
+};
+
+// 캔들 데이터 처리 함수
+export const processCandle = (candle: any, chartType: string): ExtendedCandlestickData => {
+  // 시간 처리 개선
+  let timeValue: Time;
+  
+  if (candle.timestamp) {
+    // timestamp가 있는 경우 (밀리초 단위)
+    timeValue = Math.floor(candle.timestamp / 1000) as Time;
+  } else if (candle.candle_date_time_kst) {
+    // KST 시간이 있는 경우
+    // 업비트 API는 KST(한국 시간)로 시간을 반환함
+    // 형식: "2023-01-01T12:00:00"
+    const kstDateStr = candle.candle_date_time_kst;
+    
+    // 방법 3: 로컬 시간대로 해석 (가장 간단하고 일관된 방법)
+    // 브라우저가 자동으로 로컬 시간대로 해석하도록 함
+    const localDate = new Date(kstDateStr);
+    timeValue = Math.floor(localDate.getTime() / 1000) as Time;
+    
+    console.warn('시간 처리:', {
+      원본: kstDateStr,
+      변환결과: localDate.toLocaleString('ko-KR'),
+      타임스탬프: timeValue
+    });
+  } else {
+    // 둘 다 없는 경우 현재 시간 사용
+    timeValue = Math.floor(Date.now() / 1000) as Time;
+    console.warn('캔들 데이터에 시간 정보가 없습니다. 현재 시간을 사용합니다.');
+  }
+  
+  return {
+    time: timeValue,
+    open: candle.opening_price,
+    high: candle.high_price,
+    low: candle.low_price,
+    close: candle.trade_price,
+    volume: candle.candle_acc_trade_volume,
+  };
 }; 

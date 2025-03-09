@@ -8,8 +8,9 @@ import { OrderDetail } from '../components/OrderDetail';
 import { OrderListById } from '../components/OrderListById';
 import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
-import { CreateOrder } from '../components/CreateOrder';
-import { CandlestickChart, OrderParams } from '../components/CandlestickChart';
+import { CreateOrder } from '../components/order/CreateOrder';
+import { OrderParams } from '../components/order/types';
+import CandlestickChart from '../components/CandlestickChart';
 import { getAccountBalance } from '../api/upbitAccount';
 
 const SYMBOLS = [

@@ -354,8 +354,8 @@ const bollingerStrategy: BollingerStrategy = {
     
     // 실시간 모드가 아닐 때만 데이터 길이 검증
     if (!options?.realtime && data.length < 900) {
-      console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
-      console.log('현재 데이터 개수:', data.length);
+      console.warn('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다.');
+      console.warn('현재 데이터 개수:', data.length);
       return {
         signals,
         lastProcessedIndex: data.length - 1,
@@ -366,16 +366,16 @@ const bollingerStrategy: BollingerStrategy = {
     
     // 실시간 모드에서 데이터가 부족한 경우 경고만 출력
     if (options?.realtime && data.length < 900) {
-      console.log('실시간 모드: 데이터가 900개 미만입니다. 현재 데이터 개수:', data.length);
-      console.log('실시간 모드에서는 데이터 길이 검증을 건너뛰고 계속 진행합니다.');
+      console.warn('실시간 모드: 데이터가 900개 미만입니다. 현재 데이터 개수:', data.length);
+      console.warn('실시간 모드에서는 데이터 길이 검증을 건너뛰고 계속 진행합니다.');
     }
     
     const self = this;
     
-    console.log('\n=== 볼린저 전략 분석 시작 ===');
-    console.log('데이터 길이:', data.length);
-    console.log('분석 시작 시간:', new Date().toLocaleString('ko-KR'));
-    console.log('실시간 모드:', options?.realtime ? '✅' : '❌');
+    console.warn('\n=== 볼린저 전략 분석 시작 ===');
+    console.warn('데이터 길이:', data.length);
+    console.warn('분석 시작 시간:', new Date().toLocaleString('ko-KR'));
+    console.warn('실시간 모드:', options?.realtime ? '✅' : '❌');
     
     // 실시간 모드인 경우 마지막 캔들만 분석
     let startIndex = 900;
@@ -384,27 +384,27 @@ const bollingerStrategy: BollingerStrategy = {
     if (options?.realtime && options.lastProcessedIndex >= 900) {
       // 마지막으로 처리된 인덱스 이후의 데이터만 분석
       startIndex = options.lastProcessedIndex + 1;
-      console.log(`실시간 모드: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
+      console.warn(`실시간 모드: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
       
       // 현재 포지션 상태 가져오기 (실제 구현에서는 store에서 가져와야 함)
       // 여기서는 예시로 마지막 신호의 포지션을 사용
       if (options.currentPosition) {
         currentPosition = options.currentPosition;
-        console.log(`현재 포지션: ${currentPosition}`);
+        console.warn(`현재 포지션: ${currentPosition}`);
       }
       
       if (options.lastTradeId) {
         lastTradeId = options.lastTradeId;
-        console.log(`마지막 거래 ID: ${lastTradeId}`);
+        console.warn(`마지막 거래 ID: ${lastTradeId}`);
       }
     } else {
-      console.log(`전체 데이터 분석: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
+      console.warn(`전체 데이터 분석: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
     }
 
     for (let i = startIndex; i < endIndex; i++) {
       // 현재 캔들 정보 로깅
       if (i % 100 === 0 || options?.realtime) {
-        console.log(`캔들 ${i}/${data.length - 1} 분석 중...`);
+        console.warn(`캔들 ${i}/${data.length - 1} 분석 중...`);
       }
       
       // 현재 포지션이 없는 경우에만 매수 신호 확인
@@ -426,8 +426,8 @@ const bollingerStrategy: BollingerStrategy = {
           lastTradeId = tradeId;
           currentPosition = 'long';
           
-          console.log('\n=== ✅ 매수 마커 생성 완료 ===');
-          console.log({
+          console.warn('\n=== ✅ 매수 마커 생성 완료 ===');
+          console.warn({
             '체크 시간': new Date().toLocaleString('ko-KR'),
             '캔들 인덱스': i,
             '캔들 시간': new Date(data[i].time as number).toLocaleString('ko-KR'),
@@ -448,7 +448,7 @@ const bollingerStrategy: BollingerStrategy = {
           // 실시간 모드에서 이전 매수 신호가 signals 배열에 없는 경우 옵션에서 가져옴
           entryPrice = options.entryPrice;
         } else {
-          console.log('매수 가격을 찾을 수 없습니다. 매도 신호를 생성할 수 없습니다.');
+          console.warn('매수 가격을 찾을 수 없습니다. 매도 신호를 생성할 수 없습니다.');
           continue;
         }
         
@@ -467,8 +467,8 @@ const bollingerStrategy: BollingerStrategy = {
             relatedTradeId: lastTradeId
           });
           
-          console.log('\n=== ✅ 매도 신호 생성 ===');
-          console.log({
+          console.warn('\n=== ✅ 매도 신호 생성 ===');
+          console.warn({
             '체크 시간': new Date().toLocaleString('ko-KR'),
             '캔들 인덱스': i,
             '캔들 시간': new Date(data[i].time as number).toLocaleString('ko-KR'),
@@ -483,7 +483,7 @@ const bollingerStrategy: BollingerStrategy = {
           currentPosition = null;
           lastTradeId = null;
           
-          console.log('✅ 매도 후 상태 초기화 완료:', {
+          console.warn('✅ 매도 후 상태 초기화 완료:', {
             '현재 포지션': currentPosition,
             '다음 매수 준비': '완료'
           });
@@ -492,10 +492,10 @@ const bollingerStrategy: BollingerStrategy = {
       }
     }
     
-    console.log('\n=== 볼린저 전략 분석 완료 ===');
-    console.log('생성된 신호 수:', signals.length);
-    console.log('분석 완료 시간:', new Date().toLocaleString('ko-KR'));
-    console.log('마지막 처리된 인덱스:', endIndex - 1);
+    console.warn('\n=== 볼린저 전략 분석 완료 ===');
+    console.warn('생성된 신호 수:', signals.length);
+    console.warn('분석 완료 시간:', new Date().toLocaleString('ko-KR'));
+    console.warn('마지막 처리된 인덱스:', endIndex - 1);
     
     // 현재 상태 정보 반환 (실시간 모드에서 다음 호출 시 사용)
     return {

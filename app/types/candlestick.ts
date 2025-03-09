@@ -103,13 +103,19 @@ export interface SeriesMarker<T> {
 
 export interface BacktestResult {
   totalTrades: number;
-  successfulTrades: number;
-  totalReturn: number;
-  totalNetReturn: number;
-  successRate: number;
-  averageReturn: number;
-  averageNetReturn: number;
-  trades: Trade[];
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  totalProfit: number;
+  totalLoss: number;
+  netProfit: number;
+  profitFactor: number;
+  maxDrawdown: number;
+  averageProfit: number;
+  averageLoss: number;
+  initialBalance: number;
+  finalBalance: number;
+  roi: number;
 }
 
 export interface MASettings {
@@ -122,11 +128,10 @@ export interface MASettings {
 }
 
 export interface TradeSignal {
-  id?: string;
-  time: number;
-  position: 'long' | 'short' | 'close';
+  time: Time;
+  position: 'long' | 'short' | 'exit';
   price: number;
-  strategy: TradeStrategy;
+  id: string;
   metadata?: {
     deviation?: number;
     slope?: number;
@@ -135,4 +140,23 @@ export interface TradeSignal {
     isAbove360MA?: boolean;
   };
   relatedTradeId?: string;
+}
+
+export interface OrderParams {
+  market: string;
+  side: 'bid' | 'ask';
+  volume: string;
+  price: string;
+  ord_type: string;
+  mode: string;
+}
+
+export interface CandlestickChartProps {
+  symbol: string;
+  chartType: string;
+  initialAutoUpdate?: boolean;
+  mode?: 'live' | 'test';
+  handleOrder?: (params: OrderParams) => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onOrder?: (price: number, isMarketOrder: boolean) => void;
 }
