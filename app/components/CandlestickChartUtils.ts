@@ -33,6 +33,7 @@ export function createTradeMarkers(signals: TradeSignal[]): SeriesMarker<Time>[]
       color,
       text: `${signal.position.toUpperCase()} - ${signal.price.toFixed(0)}`,
       size: 1,
+      id: signal.id
     };
   });
 }

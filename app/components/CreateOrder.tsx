@@ -1,276 +1,20 @@
 'use client';
 
-import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { createOrder, getCurrentPrice, get3SecMA } from '../api/upbitOrder';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import useUpbitStore from '../store/useUpbitStore';
-
-interface CreateOrderProps {
-  market: string;
-  mode: 'live' | 'test';
-  onOrderCreated: () => void;
-  onPriceUpdate: (price: number) => void;
-  onQuantityUpdate: (quantity: number) => void;
-  onBacktestStart?: (startDate: Date, endDate: Date) => void;  // 백테스트 시작 시 호출될 콜백 추가
-  onBacktestEnd?: () => void;                                  // 백테스트 종료 시 호출될 콜백 추가
-}
-
-// 파라미터 타입 정의
-interface OrderParams {
-  market: string;
-  side: 'bid' | 'ask';
-  volume: string;
-  price: string;
-  ord_type: string;
-  mode: string;
-}
-
-// Define the type for a trade cycle entry
-interface TradeCycle {
-  cycle: string[];
-  times: string[];
-  time: string;
-  buyPrice: number | null;
-  sellPrice: number | null;
-  profit: string | null;
-  profitAmount: string | null;
-  slopes?: {  // 기울기 정보 추가
-    ma60: number;
-    ma300: number;
-    ma360: number;
-    ma900: number;
-  };
-}
-
-// 매매 전략 타입 정의 추가
-type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
-
-// // Trade 인터페이스 수정
-// interface Trade {
-//   entryTime: Time;
-//   exitTime: Time;
-//   entryPrice: number;
-//   exitPrice: number;
-//   return: number;
-//   isSuccess: boolean;
-//   isAutomatic?: boolean;
-//   mode: 'test' | 'test-auto' | 'live-auto';
-//   slopes?: {  // 기울기 정보 추가
-//     ma40: number;
-//     ma60: number;
-//     ma360: number;
-//   };
-// }
-
-// 컴포넌트 외부에 함수 선언
-const calculateRelativeSlope = (ma: number[]) => {
-  const current = ma[ma.length - 1];
-  const previous = ma[ma.length - 2];
-  return ((current - previous) / previous) * 100;
-};
-
-// ------------------------------
-// 보조 함수들 (SLOPE_FILTER 전략용)
-// ------------------------------
-const calculateMA = (priceData: number[], period: number): number[] => {
-  if (priceData.length < period) return [];
-  const result: number[] = [];
-  for (let i = 0; i <= priceData.length - period; i++) {
-    const sum = priceData.slice(i, i + period).reduce((a, b) => a + b, 0);
-    result.push(sum / period);
-  }
-  return result;
-};
-
-// RSI 계산 함수 추가
-const calculateRSI = (prices: number[], period: number = 14): number => {
-  if (prices.length < period + 1) return 50; // 충분한 데이터가 없으면 중립값 반환
-  
-  let gains = 0;
-  let losses = 0;
-  
-  // 가격 변화 계산
-  for (let i = 1; i <= period; i++) {
-    const change = prices[prices.length - i] - prices[prices.length - i - 1];
-    if (change >= 0) {
-      gains += change;
-    } else {
-      losses -= change; // 손실은 양수로 변환
-    }
-  }
-  
-  // 평균 이득과 손실 계산
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
-  
-  // 상대강도(RS) 계산
-  if (avgLoss === 0) return 100; // 손실이 없으면 RSI는 100
-  const rs = avgGain / avgLoss;
-  
-  // RSI 계산
-  return 100 - (100 / (1 + rs));
-};
-
-// MACD 계산 함수 추가
-const calculateMACD = (prices: number[], fastPeriod: number = 12, slowPeriod: number = 26, signalPeriod: number = 9): { macd: number, signal: number, histogram: number } => {
-  // EMA 계산 헬퍼 함수
-  const calculateEMA = (data: number[], period: number): number[] => {
-    const k = 2 / (period + 1);
-    const emaData: number[] = [];
-    let ema = data[0];
-    
-    for (let i = 0; i < data.length; i++) {
-      ema = data[i] * k + ema * (1 - k);
-      emaData.push(ema);
-    }
-    
-    return emaData;
-  };
-  
-  if (prices.length < slowPeriod + signalPeriod) {
-    return { macd: 0, signal: 0, histogram: 0 }; // 충분한 데이터가 없으면 기본값 반환
-  }
-  
-  // 빠른 EMA와 느린 EMA 계산
-  const fastEMA = calculateEMA(prices, fastPeriod);
-  const slowEMA = calculateEMA(prices, slowPeriod);
-  
-  // MACD 라인 계산 (빠른 EMA - 느린 EMA)
-  const macdLine: number[] = [];
-  for (let i = 0; i < slowEMA.length; i++) {
-    if (i >= slowEMA.length - fastEMA.length) {
-      const fastIndex = i - (slowEMA.length - fastEMA.length);
-      macdLine.push(fastEMA[fastIndex] - slowEMA[i]);
-    }
-  }
-  
-  // 시그널 라인 계산 (MACD의 EMA)
-  const signalLine = calculateEMA(macdLine, signalPeriod);
-  
-  // 히스토그램 계산 (MACD - 시그널)
-  const histogram = macdLine[macdLine.length - 1] - signalLine[signalLine.length - 1];
-  
-  return {
-    macd: macdLine[macdLine.length - 1],
-    signal: signalLine[signalLine.length - 1],
-    histogram: histogram
-  };
-};
-
-// 볼린저 밴드 계산 함수
-const calculateBollingerBands = (prices: number[], period: number = 20, multiplier: number = 2): { upper: number, middle: number, lower: number } | null => {
-  if (prices.length < period) return null;
-
-  const sma = prices.slice(-period).reduce((a, b) => a + b) / period;
-  const squaredDiffs = prices.slice(-period).map(p => Math.pow(p - sma, 2));
-  const standardDeviation = Math.sqrt(squaredDiffs.reduce((a, b) => a + b) / period);
-  
-  return {
-    upper: sma + (standardDeviation * multiplier),
-    lower: sma - (standardDeviation * multiplier),
-    middle: sma
-  };
-};
-
-// 볼린저 밴드 검사 함수 추가
-const isBollingerBandSignal = (prices: number[], period: number = 20, stdDev: number = 2): 'buy' | 'sell' | 'hold' => {
-  if (prices.length < period) return 'hold';
-  
-  const bands = calculateBollingerBands(prices, period, stdDev);
-  const currentPrice = prices[prices.length - 1];
-  
-  if (bands === null) return 'hold';
-  if (currentPrice < bands.lower) return 'buy'; // 하단 밴드 돌파 시 매수
-  if (currentPrice > bands.upper) return 'sell'; // 상단 밴드 돌파 시 매도
-  return 'hold';
-};
-
-// 상수 정의
-//const MIN_PROFIT_PCT = 0.3; // 최소 수익률 0.3%
-//const MIN_HOLD_PERIODS = 10 * 60; // 최소 보유 기간 (10분)
-//const MAX_HOLD_PERIODS = 600 * 60; // 최대 보유 기간 (600분)
-const MA900_UPTREND_WINDOW = 20;
-const MA900_UPTREND_MIN_SLOPE = 0.0001;
-
-// 기술적 지표 계산 함수들
-const detectPriceSurge = (prices: number[], window: number = 5, threshold: number = 0.003): boolean => {
-  if (prices.length < window + 1) return false;
-
-  const recentPrices = prices.slice(-window - 1);
-  const priceChange = (recentPrices[recentPrices.length - 1] - recentPrices[0]) / recentPrices[0];
-
-  return Math.abs(priceChange) >= threshold;
-};
-
-const isMATrendUp = (maSeries: number[], window: number = MA900_UPTREND_WINDOW, minSlope: number = MA900_UPTREND_MIN_SLOPE): boolean => {
-  if (maSeries.length < window + 1) return false;
-
-  const recentMA = maSeries.slice(-window - 1);
-  const slope = (recentMA[recentMA.length - 1] - recentMA[0]) / recentMA[0];
-
-  return slope >= minSlope;
-};
-
-// 매매 상태 및 행동 결정 함수
-const getState = (
-  currentRSI: number,
-  macdBullish: boolean,
-  uptrend6EA: boolean,
-  momentum: number,
-  surge: boolean
-): string => {
-  if (currentRSI < 30 && macdBullish && uptrend6EA) return 'STRONG_BUY';
-  if (currentRSI < 40 && macdBullish) return 'BUY';
-  if (currentRSI > 70 && !macdBullish && !uptrend6EA) return 'STRONG_SELL';
-  if (currentRSI > 60 && !macdBullish) return 'SELL';
-  if (surge && momentum > 0) return 'MOMENTUM_BUY';
-  if (surge && momentum < 0) return 'MOMENTUM_SELL';
-  return 'HOLD';
-};
-
-const chooseAction = (state: string): 'buy' | 'sell' | 'hold' => {
-  switch (state) {
-    case 'STRONG_BUY':
-    case 'BUY':
-    case 'MOMENTUM_BUY':
-      return 'buy';
-    case 'STRONG_SELL':
-    case 'SELL':
-    case 'MOMENTUM_SELL':
-      return 'sell';
-    default:
-      return 'hold';
-  }
-};
-
-// getTradeSignal 함수 수정
-const getTradeSignal = (priceData: number[], currentPrice: number): "buy" | "sell" | "hold" => {
-  const rsi = calculateRSI(priceData);
-  const macd = calculateMACD(priceData);
-  const surge = detectPriceSurge(priceData);
-  const ma900 = calculateMA(priceData, 900);
-  const isUptrend = isMATrendUp(ma900);
-  const bollingerSignal = isBollingerBandSignal(priceData);
-
-  const state = getState(
-    rsi,
-    macd.histogram > 0 && bollingerSignal === 'buy',
-    isUptrend,
-    currentPrice - priceData[priceData.length - 2],
-    surge
-  );
-
-  return chooseAction(state);
-};
-
-const calculateOrderVolume = (currentPrice: number): string => {
-  const investmentAmount = 1000000; // 예시 투자금 (1,000,000 단위)
-  return (investmentAmount / currentPrice).toFixed(4);
-};
+import { OrderForm } from './OrderForm';
+import { StrategySelector } from './StrategySelector';
+import { TradeHistory } from './TradeHistory';
+import { formatElapsedTime, calculateTotalProfit } from '../utils/formatters';
+import { getTradeSignal, calculateOrderVolume } from '../utils/strategies';
+import { calculateMA, calculateRelativeSlope, calculateBollingerBands } from '../utils/indicators';
+import { CreateOrderProps, OrderParams, TradeCycle } from '../types/trading';
 
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
   CreateOrderProps
->(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate, onBacktestStart }, ref) => {
+>(({ market, mode, onOrderCreated, onPriceUpdate, onQuantityUpdate, onBacktestStart, onBacktestEnd }, ref) => {
   const {
     tradeState,
     updateTradeState,
@@ -293,7 +37,7 @@ export const CreateOrder = forwardRef<
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
   const [autoTrading, setAutoTrading] = useState(false);
-  const [tradeCycles, setTradeCycles] = useState<{ cycle: string[], times: string[], time: string, buyPrice: number | null, sellPrice: number | null, profit: string | null, profitAmount: string | null }[]>([]);
+  const [tradeCycles, setTradeCycles] = useState<TradeCycle[]>([]);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [actionStartTime, setActionStartTime] = useState<Date | null>(null);
   const [showHistory, setShowHistory] = useState<boolean>(false);
@@ -302,6 +46,10 @@ export const CreateOrder = forwardRef<
   
   // 백테스트 관련 상태
   const [isBacktesting, setIsBacktesting] = useState(false);
+  
+  // 매매 전략 상태 표시 추가
+  const [currentStrategy] = useState<string>('');
+  const [lastSignal, setLastSignal] = useState<string>('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -353,39 +101,6 @@ export const CreateOrder = forwardRef<
     }
   };
 
-  // 활성화된 퍼센트 상태 추가
-  const [activePercent, setActivePercent] = useState(25);
-
-  // 25% 금액에 해당하는 수량 계산 함수
-  const calculatePercentVolume = useCallback(() => {
-    if (ma3Price && orderLimits.maxOrderPrice) {
-      const quarterAmount = orderLimits.maxOrderPrice * 0.25; // 최대 주문 금액의 25%
-      return (quarterAmount / ma3Price).toFixed(4);
-    }
-    return '0';
-  }, [ma3Price, orderLimits.maxOrderPrice]);
-
-  // 컴포넌트 마운트 시 25% 수량 자동 설정
-  useEffect(() => {
-    if (ma3Price) {
-      setVolume(calculatePercentVolume());
-    }
-  }, [ma3Price, orderLimits.maxOrderPrice, calculatePercentVolume]);
-
-  // 퍼센트 버튼 핸들러 수정
-  const handlePercentage = (percent: number) => {
-    setActivePercent(percent);
-    if (ma3Price && orderLimits.maxOrderPrice) {
-      const amount = orderLimits.maxOrderPrice * (percent / 100);
-      const calculatedVolume = (amount / ma3Price).toFixed(4);
-      setVolume(calculatedVolume);
-    }
-  };
-
-  const handleReset = () => {
-    setVolume('');
-  };
-
   // 주기적으로 가격 업데이트 (1초마다)
   useEffect(() => {
     // 가격 정보 업데이트 함수를 내부로 이동
@@ -425,21 +140,6 @@ export const CreateOrder = forwardRef<
     }
   }, [ordType, currentPrice]);
 
-  // 가격 변화 표시 함수
-  const getPriceChangeStyle = (currentPrice: number, prevPrice: number | null) => {
-    if (!prevPrice) return 'text-white';
-    return currentPrice > prevPrice ? 'text-green-500' : currentPrice < prevPrice ? 'text-red-500' : 'text-white';
-  };
-
-  // 실시간 주문 금액 계산을 위한 state 추가
-  const [orderAmount, setOrderAmount] = useState<number>(0);
-
-  // 가격이나 수량이 변경될 때마다 주문 금액 업데이트
-  useEffect(() => {
-    const calculatedAmount = Number(price) * Number(volume);
-    setOrderAmount(calculatedAmount);
-  }, [price, volume]);
-
   useEffect(() => {
     onPriceUpdate(currentPrice ?? 0);
   }, [currentPrice, onPriceUpdate]);
@@ -448,10 +148,6 @@ export const CreateOrder = forwardRef<
     // 수량 변경시 부모에게 전달
     onQuantityUpdate(Number(volume));
   }, [volume, onQuantityUpdate]);
-
-  // 매매 전략 상태 표시 추가
-  const [currentStrategy   ] = useState<string>('');
-  const [lastSignal, setLastSignal] = useState<string>('');
 
   // 매매 조건 체크 부분 수정
   useEffect(() => {
@@ -550,24 +246,7 @@ export const CreateOrder = forwardRef<
       setLastSignal(signal);
       console.log(signal);
     }
-  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred, market, mode]);
-
-  // 이동평균 계산 함수 추가
-  const calculateMA = (prices: number[], period: number) => {
-    const result: number[] = [];
-    for (let i = period - 1; i < prices.length; i++) {
-      const sum = prices.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
-      result.push(sum / period);
-    }
-    return result;
-  };
-
-  // 가격 히스토리 업데이트
-  useEffect(() => {
-    if (currentPrice) {
-      setPriceHistory(prev => [...prev, currentPrice].slice(-300)); // 최근 300개 가격만 유지
-    }
-  }, [currentPrice]);
+  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred, market, mode, createOrder]);
 
   // 경과 시간 업데이트를 위한 useEffect 수정
   useEffect(() => {
@@ -595,21 +274,6 @@ export const CreateOrder = forwardRef<
       }
     };
   }, [autoTrading, actionStartTime]);
-
-  // 경과 시간을 포맷하는 함수 추가
-  const formatElapsedTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}시간 ${minutes}분 ${remainingSeconds}초`;
-    } else if (minutes > 0) {
-      return `${minutes}분 ${remainingSeconds}초`;
-    } else {
-      return `${remainingSeconds}초`;
-    }
-  };
 
   // 자동 거래 실행 함수 수정
   const handleAutomaticTrade = async (params: OrderParams) => {
@@ -769,86 +433,14 @@ export const CreateOrder = forwardRef<
     handleAutomaticTrade: handleAutomaticTrade
   }));
 
-  // 총 수익률 계산 함수 추가
-  const calculateTotalProfit = (cycles: { profit: string | null }[] = []) => {
-    if (!cycles || cycles.length === 0) return '0.00';
-
-    const totalProfit = cycles.reduce((acc, cycle) => {
-      if (cycle.profit) {
-        return acc + parseFloat(cycle.profit);
-      }
-      return acc;
-    }, 0);
-
-    return totalProfit.toFixed(2);
-  };
-
   // 총 수익률 업데이트 useEffect 추가
   useEffect(() => {
     const profit = calculateTotalProfit(tradeCycles);
     setTotalProfit(profit);
   }, [tradeCycles]);
 
-  // 사이클 정보 표시 수정
-  const renderTradeHistory = (cycles: TradeCycle[]) => (
-    <div className="overflow-x-auto mt-2">
-      <table className="min-w-full text-white">
-        <thead>
-          <tr className="text-gray-400">
-            <th className="px-4 py-2">진입 시간</th>
-            <th className="px-4 py-2">청산 시간</th>
-            <th className="px-4 py-2">진입 가격 (3MA)</th>
-            <th className="px-4 py-2">매수 가격</th>
-            <th className="px-4 py-2">청산 가격 (3MA)</th>
-            <th className="px-4 py-2">매도 가격</th>
-            <th className="px-4 py-2">수익률</th>
-            <th className="px-4 py-2">100만원 투자시 수익</th>
-            <th className="px-4 py-2">체결 상태</th>
-            <th className="px-4 py-2">거래 모드</th>
-            <th className="px-4 py-2">360MA 기울기</th>
-          </tr>
-        </thead>
-        <tbody>
-          {cycles.map((entry, index) => {
-            const profitAmount = entry.profitAmount ? parseFloat(entry.profitAmount) * (1000000 / 10000) : 0;
-            
-            return (
-              <tr key={index} className="border-t border-gray-700">
-                <td className="px-4 py-2">{entry.times[0]}</td>
-                <td className="px-4 py-2">{entry.times[1] || '-'}</td>
-                <td className="px-4 py-2">{entry.buyPrice?.toFixed(3) || 'N/A'}</td>
-                <td className="px-4 py-2">{entry.buyPrice?.toFixed(3) || 'N/A'}</td>
-                <td className="px-4 py-2">{entry.sellPrice?.toFixed(3) || 'N/A'}</td>
-                <td className="px-4 py-2">{entry.sellPrice?.toFixed(3) || 'N/A'}</td>
-                <td className={`px-4 py-2 ${entry.profit && parseFloat(entry.profit) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {entry.profit ? `${entry.profit}%` : 'N/A'}
-                </td>
-                <td className={`px-4 py-2 ${profitAmount >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {profitAmount ? `${profitAmount.toLocaleString()}원` : 'N/A'}
-                </td>
-                <td className="px-4 py-2">
-                  {entry.times[1] ? '체결완료' : '미체결'}
-                </td>
-                <td className="px-4 py-2">
-                  <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-500 text-white">
-                    테스트
-                  </span>
-                </td>
-                <td className={`px-4 py-2 ${
-                  (entry.slopes?.ma360 ?? 0) > 0 ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {entry.slopes?.ma360?.toFixed(4) || '-'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-
   // 전략 변경 핸들러 수정
-  const handleStrategyChange = (strategy: TradeStrategy) => {
+  const handleStrategyChange = (strategy: any) => {
     updateTradeStrategy(strategy);
   };
 
@@ -861,6 +453,9 @@ export const CreateOrder = forwardRef<
       }
     } else {
       setIsBacktesting(false);
+      if (onBacktestEnd) {
+        onBacktestEnd();
+      }
     }
   };
 
@@ -880,289 +475,25 @@ export const CreateOrder = forwardRef<
         )}
       </div>
       
-      <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-lg">
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          {/* 주문 종류 선택 */}
-          <div>
-            <label className="block text-gray-400 mb-2">주문 종류</label>
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                onClick={() => setSide('bid')}
-                className={`flex-1 px-4 py-2 rounded ${
-                  side === 'bid' 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-gray-700 text-gray-300'
-                }`}
-              >
-                {side === 'bid' ? '✓ 매수' : '매수'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSide('ask')}
-                className={`flex-1 px-4 py-2 rounded ${
-                  side === 'ask' 
-                    ? 'bg-red-600 text-white' 
-                    : 'bg-gray-700 text-gray-300'
-                }`}
-              >
-                {side === 'ask' ? '✓ 매도' : '매도'}
-              </button>
-            </div>
-          </div>
-
-          {/* 주문 방식 선택 */}
-          <div>
-            <label className="block text-gray-400 mb-2">주문 방식</label>
-            <div className="flex space-x-2 mb-4">
-              <button
-                type="button"
-                onClick={() => setOrdType('limit')}
-                className={`px-4 py-2 rounded-lg ${
-                  ordType === 'limit' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300'
-                }`}
-              >
-                {ordType === 'limit' ? '✓ 지정가' : '지정가'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrdType('price')}
-                className={`px-4 py-2 rounded-lg ${
-                  ordType === 'price' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300'
-                }`}
-              >
-                {ordType === 'price' ? '✓ 시장가(KRW)' : '시장가(KRW)'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrdType('market')}
-                className={`px-4 py-2 rounded-lg ${
-                  ordType === 'market' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300'
-                }`}
-              >
-                {ordType === 'market' ? '✓ 시장가(수량)' : '시장가(수량)'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 가격 입력 */}
-        <div className="mb-4">
-          <label className="block text-gray-400 mb-2">가격 (KRW)</label>
-          <div className="space-y-2">
-            <div className="flex space-x-2">
-              <input
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="가격을 입력하세요"
-                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded"
-                min="0"
-                step="1"
-                disabled={ordType !== 'limit'}
-              />
-              {currentPrice && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setPrice(currentPrice.toString())}
-                    className={`px-4 py-2 ${
-                      ordType !== 'limit' 
-                        ? 'bg-gray-600 cursor-not-allowed' 
-                        : 'bg-blue-600 hover:bg-blue-700'
-                    } text-white rounded whitespace-nowrap`}
-                    disabled={ordType !== 'limit'}
-                  >
-                    현재가: {currentPrice.toLocaleString()} KRW
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPrice('')}
-                    className={`px-4 py-2 ${
-                      ordType !== 'limit'
-                        ? 'bg-gray-600 cursor-not-allowed'
-                        : 'bg-gray-600 hover:bg-gray-700'
-                    } text-white rounded`}
-                    disabled={ordType !== 'limit'}
-                  >
-                    초기화
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* 가격 히스토리 표시 */}
-            {priceHistory.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 bg-gray-700 p-2 rounded">
-                <div className="text-center">
-                  <div className="text-xs text-gray-400">이전가</div>
-                  <div className={getPriceChangeStyle(priceHistory[0], null)}>
-                    {priceHistory[0]?.toLocaleString() || '-'}
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs text-gray-400">현재가</div>
-                  <div className={getPriceChangeStyle(priceHistory[1], priceHistory[0])}>
-                    {priceHistory[1]?.toLocaleString() || '-'}
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs text-gray-400">이후가</div>
-                  <div className={getPriceChangeStyle(priceHistory[2], priceHistory[1])}>
-                    {priceHistory[2]?.toLocaleString() || '-'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {ma3Price && ordType === 'limit' && (
-              <button
-                type="button"
-                onClick={() => setPrice(ma3Price.toString())}
-                className={`px-4 py-2 ${
-                  ordType !== 'limit' 
-                    ? 'bg-gray-600 cursor-not-allowed' 
-                    : 'bg-blue-600 hover:bg-blue-700'
-                } text-white rounded`}
-                disabled={ordType !== 'limit'}
-              >
-                3초 중간가: {ma3Price.toLocaleString()} KRW
-              </button>
-            )}
-            {priceUpdateError && (
-              <div className="text-red-500 text-sm">{priceUpdateError}</div>
-            )}
-          </div>
-        </div>
-
-        {/* 수량 입력 및 퍼센트 버튼 */}
-        <div className="mb-4">
-          <label className="block text-gray-400 mb-2">수량</label>
-          <div className="flex space-x-2">
-            <input
-              type="number"
-              value={volume}
-              onChange={(e) => {
-                setVolume(e.target.value);
-                setActivePercent(0); // 수동 입력 시 활성 퍼센트 초기화
-              }}
-              placeholder="수량을 입력하세요"
-              className="flex-1 px-4 py-2 bg-gray-700 text-white rounded"
-              min="0"
-              step="0.0001"
-            />
-            <button
-              type="button"
-              onClick={() => handlePercentage(100)}
-              className={`px-3 py-2 ${
-                activePercent === 100 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              } text-white rounded`}
-            >
-              {activePercent === 100 ? '✓ 최대' : '최대'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePercentage(50)}
-              className={`px-3 py-2 ${
-                activePercent === 50 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              } text-white rounded`}
-            >
-              {activePercent === 50 ? '✓ 50%' : '50%'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePercentage(25)}
-              className={`px-3 py-2 ${
-                activePercent === 25 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              } text-white rounded`}
-            >
-              {activePercent === 25 ? '✓ 25%' : '25%'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePercentage(10)}
-              className={`px-3 py-2 ${
-                activePercent === 10 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              } text-white rounded`}
-            >
-              {activePercent === 10 ? '✓ 10%' : '10%'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleReset();
-                setActivePercent(0);
-              }}
-              className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
-            >
-              초기화
-            </button>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-4 bg-red-600 text-white rounded">
-            {error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className={`w-full py-2 rounded font-bold ${
-            isLoading 
-              ? 'bg-gray-600' 
-              : side === 'bid'
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-red-600 hover:bg-red-700'
-          } text-white`}
-          disabled={isLoading}
-        >
-          {isLoading ? '주문 처리 중...' : side === 'bid' ? '매수하기' : '매도하기'}
-        </button>
-      </form>
-
-      {/* 주문 금액 표시 */}
-      {orderAmount > 0 && (
-        <div className="mt-4 p-4 bg-gray-700 rounded">
-          <div className="text-gray-400">예상 주문 금액</div>
-          <div className="text-xl font-bold text-white">
-            {orderAmount.toLocaleString()} KRW
-          </div>
-          
-          {/* 주문 제한 표시 */}
-          {(() => {
-            if (orderAmount < orderLimits.minOrderPrice) {
-              return (
-                <div className="text-red-500 text-sm mt-2">
-                  최소 주문 금액({orderLimits.minOrderPrice.toLocaleString()} KRW)보다 작습니다.
-                </div>
-              );
-            }
-            if (orderAmount > orderLimits.maxOrderPrice) {
-              return (
-                <div className="text-red-500 text-sm mt-2">
-                  최대 주문 금액({orderLimits.maxOrderPrice.toLocaleString()} KRW)을 초과했습니다.
-                </div>
-              );
-            }
-            return null;
-          })()}
-        </div>
-      )}
+      <OrderForm
+        market={market}
+        side={side}
+        setSide={setSide}
+        volume={volume}
+        setVolume={setVolume}
+        price={price}
+        setPrice={setPrice}
+        ordType={ordType}
+        setOrdType={setOrdType}
+        isLoading={isLoading}
+        error={error}
+        currentPrice={currentPrice}
+        ma3Price={ma3Price}
+        priceUpdateError={priceUpdateError}
+        priceHistory={priceHistory}
+        orderLimits={orderLimits}
+        handleSubmit={handleSubmit}
+      />
 
       {/* 자동 거래 토글 버튼과 상태 표시 부분 수정 */}
       {mode === 'test' && (
@@ -1204,90 +535,11 @@ export const CreateOrder = forwardRef<
           )}
 
           {/* 매매 전략 선택 스위치 */}
-          <div className="flex flex-col gap-2 bg-gray-700 p-4 rounded-lg">
-            <h3 className="text-white font-bold mb-2">매매 전략 선택</h3>
-            <div className="grid grid-cols-1 gap-2">
-              <label className={`flex items-center p-3 rounded cursor-pointer ${
-                tradeStrategy === 'BOLLINGER' 
-                  ? 'bg-blue-600 ring-2 ring-white' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="tradeStrategy"
-                  value="BOLLINGER"
-                  checked={tradeStrategy === 'BOLLINGER'}
-                  onChange={() => handleStrategyChange('BOLLINGER')}
-                  disabled={autoTrading || isBacktesting}
-                  className="hidden"
-                />
-                <div className="flex flex-col">
-                  <span className="text-white font-medium">볼린저 밴드 전략</span>
-                  <span className="text-gray-300 text-sm">20일 기준, 2 표준편차 상/하단 돌파 시 매매</span>
-                </div>
-              </label>
-
-              <label className={`flex items-center p-3 rounded cursor-pointer ${
-                tradeStrategy === 'MA_CROSS' 
-                  ? 'bg-blue-600 ring-2 ring-white' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="tradeStrategy"
-                  value="MA_CROSS"
-                  checked={tradeStrategy === 'MA_CROSS'}
-                  onChange={() => handleStrategyChange('MA_CROSS')}
-                  disabled={autoTrading || isBacktesting}
-                  className="hidden"
-                />
-                <div className="flex flex-col">
-                  <span className="text-white font-medium">이동평균선 교차 전략</span>
-                  <span className="text-gray-300 text-sm">30MA/40MA, 40MA/60MA 교차 시 매매</span>
-                </div>
-              </label>
-
-              <label className={`flex items-center p-3 rounded cursor-pointer ${
-                tradeStrategy === 'MA_CROSS_DEVIATION' 
-                  ? 'bg-blue-600 ring-2 ring-white' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="tradeStrategy"
-                  value="MA_CROSS_DEVIATION"
-                  checked={tradeStrategy === 'MA_CROSS_DEVIATION'}
-                  onChange={() => handleStrategyChange('MA_CROSS_DEVIATION')}
-                  disabled={autoTrading || isBacktesting}
-                  className="hidden"
-                />
-                <div className="flex flex-col">
-                  <span className="text-white font-medium">이격도 MA 교차 전략</span>
-                  <span className="text-gray-300 text-sm">60MA/120MA 이격도 2% 이상 시 매매</span>
-                </div>
-              </label>
-
-              <label className={`flex items-center p-3 rounded cursor-pointer ${
-                tradeStrategy === 'SLOPE_FILTER' 
-                  ? 'bg-blue-600 ring-2 ring-white' 
-                  : 'bg-gray-600 hover:bg-gray-700'
-              }`}>
-                <input
-                  type="radio"
-                  name="tradeStrategy"
-                  value="SLOPE_FILTER"
-                  checked={tradeStrategy === 'SLOPE_FILTER'}
-                  onChange={() => handleStrategyChange('SLOPE_FILTER')}
-                  disabled={autoTrading || isBacktesting}
-                  className="hidden"
-                />
-                <div className="flex flex-col">
-                  <span className="text-white font-medium">기울기 필터 전략</span>
-                  <span className="text-gray-300 text-sm">RSI, MACD, MA 기울기 복합 분석</span>
-                </div>
-              </label>
-            </div>
-          </div>
+          <StrategySelector
+            tradeStrategy={tradeStrategy}
+            handleStrategyChange={handleStrategyChange}
+            disabled={autoTrading || isBacktesting}
+          />
 
           {autoTrading && (
             <div className="flex flex-col items-start">
@@ -1308,9 +560,7 @@ export const CreateOrder = forwardRef<
                 {showHistory ? '히스토리 숨기기' : '히스토리 보기'}
               </button>
               {showHistory && tradeCycles.length > 0 && (
-                <div className="mt-2">
-                  {renderTradeHistory(tradeCycles)}
-                </div>
+                <TradeHistory cycles={tradeCycles} />
               )}
             </div>
           )}

@@ -123,7 +123,7 @@ export interface MASettings {
 
 export interface TradeSignal {
   id?: string;
-  time: number;
+  time: Time;
   position: 'long' | 'short' | 'close';
   price: number;
   strategy: TradeStrategy;

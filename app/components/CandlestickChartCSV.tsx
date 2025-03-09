@@ -204,10 +204,17 @@ export const useCsvFunctions = (symbol: string) => {
         const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
         const analysisResult = selectedStrategy.analyze(parsedData);
         const signals = analysisResult.signals;
-        const strategyMarkers = createTradeMarkers(signals);
+        
+        // signals의 time 속성을 Time 타입으로 변환
+        const convertedSignals = signals.map(signal => ({
+          ...signal,
+          time: signal.time as unknown as Time
+        }));
+        
+        const strategyMarkers = createTradeMarkers(convertedSignals);
         
         // CSV 데이터에 대한 백테스트 결과 계산
-        const csvResult = calculateBacktestResult(parsedData, signals, 'test');
+        const csvResult = calculateBacktestResult(parsedData, convertedSignals, 'test');
         setCsvBacktestResult(csvResult);
 
         return { markers: strategyMarkers, result: csvResult };

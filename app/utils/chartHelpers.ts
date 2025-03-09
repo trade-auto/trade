@@ -79,7 +79,7 @@ export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[]
     }
     
     const markerTime = signal.time as Time;
-    console.log(`마커 생성: ${text}, 시간: ${new Date(signal.time * 1000).toLocaleString('ko-KR')}`);
+    console.log(`마커 생성: ${text}, 시간: ${new Date((signal.time as number) * 1000).toLocaleString('ko-KR')}`);
     
     return {
       time: markerTime,
