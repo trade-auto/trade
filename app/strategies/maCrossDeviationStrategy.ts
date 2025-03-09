@@ -1,5 +1,5 @@
 import { CandlestickData, Time } from 'lightweight-charts';
-import { TradingStrategy, TradeSignal, ExtendedMetadata } from './types';
+import { TradingStrategy, TradeSignal, ExtendedMetadata, AnalysisResult, AnalyzeOptions } from './types';
 
 // 이격도 MA 이탈 전략
 const maCrossDeviationStrategy: TradingStrategy = {
@@ -140,7 +140,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
   },
   
   // 기존 분석 함수
-  analyze(data) {
+  analyze(data: CandlestickData<Time>[], options?: AnalyzeOptions): AnalysisResult {
     const signals: TradeSignal[] = [];
     let currentPosition: 'long' | null = null;
     let lastTradeId: string | null = null;
@@ -148,7 +148,12 @@ const maCrossDeviationStrategy: TradingStrategy = {
     
     // 충분한 데이터가 있는지 확인
     if (data.length < 900) {
-      return signals;
+      return {
+        signals,
+        lastProcessedIndex: data.length - 1,
+        currentPosition,
+        lastTradeId
+      };
     }
     
     const self = this; // this 컨텍스트 저장
@@ -192,8 +197,8 @@ const maCrossDeviationStrategy: TradingStrategy = {
           // 첫 번째 거래 여부를 analyzeExit에 전달하기 위한 임시 방법
           // 실제 구현에서는 더 나은 상태 관리 방법이 필요
           const shouldExit = isFirstTrade ? 
-            (prevMa60, ma60, prevMa300, ma300) => (prevMa60 >= prevMa300 && ma60 < ma300) :
-            (prevMa60, ma60, prevMa360, ma360) => (prevMa60 >= prevMa360 && ma60 < ma360);
+            (prevMa60: number, ma60: number, prevMa300: number, ma300: number) => (prevMa60 >= prevMa300 && ma60 < ma300) :
+            (prevMa60: number, ma60: number, prevMa360: number, ma360: number) => (prevMa60 >= prevMa360 && ma60 < ma360);
           
           // 현재 및 이전 MAs 계산
           const ma60 = data.slice(i - 60, i).reduce((sum, d) => sum + d.close, 0) / 60;
@@ -253,7 +258,12 @@ const maCrossDeviationStrategy: TradingStrategy = {
       }
     }
     
-    return signals;
+    return {
+      signals,
+      lastProcessedIndex: data.length - 1,
+      currentPosition,
+      lastTradeId
+    };
   }
 };
 
