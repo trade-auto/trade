@@ -4,6 +4,7 @@ import { ExtendedCandlestickData, DateRange, Time, UpbitCandle } from './Candles
 import { formatDate, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy, TradeSignal } from '../types/trading';
+import { TradeSignal as StrategyTradeSignal } from '../strategies/types';
 
 export const useCsvFunctions = (symbol: string) => {
   // CSV 상태
@@ -20,6 +21,7 @@ export const useCsvFunctions = (symbol: string) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importProgress, setImportProgress] = useState(0);
   const [csvBacktestResult, setCsvBacktestResult] = useState<any>(null);
+  const [backtestMarkers, setBacktestMarkers] = useState<any[]>([]);
 
   // CSV 저장 함수
   const saveToCSV = useCallback(async () => {
@@ -200,34 +202,37 @@ export const useCsvFunctions = (symbol: string) => {
         setImportedData(parsedData);
         setIsDataImported(true);
         
-        // 매매 신호 분석 및 마커 생성 (현재 선택된 전략만)
+        // 매매 신호 분석 및 마커 생성
         const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
         const analysisResult = selectedStrategy.analyze(parsedData);
         const signals = analysisResult.signals;
         
-        // signals의 time 속성을 Time 타입으로 변환
-        const convertedSignals = signals.map(signal => ({
-          id: signal.id,
-          time: signal.time as unknown as Time,
-          position: signal.position,
-          price: signal.price,
-          strategy: signal.strategy,
-          reason: signal.reason,
-          metadata: signal.metadata,
-          relatedTradeId: signal.relatedTradeId
-        })) as unknown as TradeSignal[];
+        const convertedSignals = signals
+          .filter(signal => signal.position === 'buy' || signal.position === 'sell')
+          .map(signal => ({
+            ...signal,
+            time: (Number(signal.time) as unknown) as Time,
+            position: signal.position as 'buy' | 'sell',
+            metadata: signal.metadata ? {
+              ...signal.metadata,
+              ma60: signal.metadata.ma60 ?? 0
+            } : undefined
+          })) as TradeSignal[];
         
         const strategyMarkers = createTradeMarkers(convertedSignals);
+        setBacktestMarkers(strategyMarkers);
         
-        // CSV 데이터에 대한 백테스트 결과 계산
-        const csvResult = calculateBacktestResult(parsedData, convertedSignals, 'test');
+        // 백테스트 결과 계산
+        const csvResult = useUpbitStore.getState().calculateBacktestResult(
+          parsedData,
+          convertedSignals as unknown as StrategyTradeSignal[],
+          'test'
+        );
         setCsvBacktestResult(csvResult);
 
-        return { markers: strategyMarkers, result: csvResult };
       } catch (error) {
         console.error('CSV 파일 파싱 오류:', error);
         alert('CSV 파일 처리 중 오류가 발생했습니다.');
-        return null;
       }
     };
     reader.readAsText(file);
@@ -253,6 +258,8 @@ export const useCsvFunctions = (symbol: string) => {
     handleFileImport,
     triggerFileInput,
     setImportedData,
-    setIsDataImported
+    setIsDataImported,
+    backtestMarkers,
+    setBacktestMarkers
   };
 }; 

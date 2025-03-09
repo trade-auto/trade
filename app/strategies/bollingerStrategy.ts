@@ -1,6 +1,9 @@
 import { CandlestickData, Time } from 'lightweight-charts';
 import { BollingerStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult } from './types';
 import { calculateStandardDeviation } from './utils';
+import useUpbitStore from '../store/useUpbitStore';
+
+type TradeState = 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
 
 // 볼린저 밴드 전략
 const bollingerStrategy: BollingerStrategy = {
@@ -36,15 +39,47 @@ const bollingerStrategy: BollingerStrategy = {
     }));
     console.log('캔들 인덱스:', index);
 
-    // 15분(900초) 데이터가 쌓일 때까지 대기
-    if (index < 900) {
-      console.log('초기 데이터 수집 중... (필요: 900초 = 15분)');
+    // 필요한 최소 데이터 검사
+    const requiredData = 900; // MA900 계산에 필요
+    if (index < requiredData) {
+      console.log(`초기 데이터 수집 중... (필요: ${requiredData}초)`);
+      console.log(`현재: ${index}초 / ${requiredData}초 (${((index/requiredData)*100).toFixed(1)}%)`);
       return null;
     }
 
-    // 이미 매수 포지션이 있거나 거래 중인 경우 매수 신호를 발생시키지 않음
-    // 실제 구현에서는 store에서 상태를 가져와야 함
+    // 충분한 데이터가 있는지 검사
+    if (data.length < requiredData || index < requiredData) {
+      console.log('충분한 데이터가 없습니다.');
+      console.log(`필요한 데이터: ${requiredData}초`);
+      console.log(`현재 데이터 길이: ${data.length}초`);
+      console.log(`현재 인덱스: ${index}`);
+      return null;
+    }
+
+    // 이전 데이터 무결성 검사
+    const dataSlice = data.slice(index - requiredData, index);
+    if (dataSlice.some(d => d === undefined || d.close === undefined)) {
+      console.log('이전 데이터에 누락된 값이 있습니다.');
+      return null;
+    }
+
+    // 현재 거래 상태 체크
+    const store = useUpbitStore.getState();
+    const currentState = store.tradeState as unknown as TradeState;
     
+    console.log('\n=== 현재 거래 상태 체크 ===');
+    console.log('현재 상태:', currentState);
+    
+    // 매수 가능 상태 체크
+    const canBuy = currentState === 'waiting_buy';
+    if (!canBuy) {
+      console.log('\n=== ❌ 매수 불가 상태 ===');
+      console.log('매수 가능 상태가 아닙니다. (waiting_buy 상태여야 함)');
+      return null;
+    }
+
+    console.log('✅ 매수 가능 상태 확인');
+
     // MA 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
@@ -137,7 +172,7 @@ const bollingerStrategy: BollingerStrategy = {
     });
 
     // 매수 시그널 생성 - 기본 조건
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900  ) {
+    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
@@ -376,11 +411,22 @@ const bollingerStrategy: BollingerStrategy = {
     let endIndex = data.length;
     
     if (options?.realtime) {
-      if (options?.lastProcessedIndex !== undefined && options.lastProcessedIndex >= 900) {
-        // 마지막으로 처리된 인덱스 이후의 데이터만 분석
-        startIndex = options.lastProcessedIndex + 1;
-        console.log(`실시간 모드: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
-        console.log('MA900 계산 가능 여부:', startIndex >= 900 ? '✅' : '❌');
+      if (options?.lastProcessedIndex !== undefined) {
+        // 이미 초기화가 완료된 경우
+        if (options.lastProcessedIndex >= 900) {
+          startIndex = options.lastProcessedIndex + 1;
+          console.log(`실시간 모드: 신규 데이터만 분석 (인덱스 ${startIndex}부터 ${endIndex - 1}까지)`);
+        } else {
+          // 아직 초기화가 필요한 경우
+          console.log('실시간 모드: 초기 데이터 수집 중...');
+          console.log(`현재: ${options.lastProcessedIndex}초 / 900초 (${((options.lastProcessedIndex/900)*100).toFixed(1)}%)`);
+          return {
+            signals: [],
+            lastProcessedIndex: options.lastProcessedIndex,
+            currentPosition,
+            lastTradeId
+          };
+        }
         
         // 현재 포지션 상태 설정
         if (options.currentPosition) {
@@ -394,8 +440,7 @@ const bollingerStrategy: BollingerStrategy = {
         }
       }
     } else {
-      console.log(`전체 데이터 분석: 인덱스 ${startIndex}부터 ${endIndex - 1}까지 분석합니다.`);
-      console.log('MA900 계산에 필요한 초기 데이터:', startIndex, '초');
+      console.log(`전체 데이터 분석: 인덱스 ${startIndex}부터 ${endIndex - 1}까지`);
     }
 
     for (let i = startIndex; i < endIndex; i++) {

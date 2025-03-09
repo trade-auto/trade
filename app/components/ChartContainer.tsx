@@ -10,8 +10,9 @@ import {
   createSeriesMarkers,
   ISeriesMarkersPluginApi,
   LineWidth,
+  SeriesMarker,
+  CandlestickData,
 } from 'lightweight-charts';
-import { SeriesMarker } from 'lightweight-charts';
 import useUpbitStore from '../store/useUpbitStore';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
@@ -27,6 +28,7 @@ interface ChartContainerProps {
   markers: SeriesMarker<Time>[];
   isAutoUpdate?: boolean;
   isRealtimeAPIEnabled?: boolean;
+  data?: CandlestickData<Time>[];
   onChartReady: (
     chartApi: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
@@ -135,6 +137,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   markers,
   isAutoUpdate,
   isRealtimeAPIEnabled,
+  data,
   onChartReady,
 }) => {
   const container = useRef<HTMLDivElement>(null);
@@ -217,6 +220,16 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         visible: true,
       });
     });
+
+    // 데이터가 제공된 경우 사용
+    if (data) {
+      seriesRefs.current.candle!.setData(data);
+    }
+
+    // 마커 설정
+    if (markers && markers.length > 0 && seriesRefs.current.candle?.setMarkers) {
+      seriesRefs.current.candle.setMarkers(markers);
+    }
 
     // 차트 준비 완료 콜백
     onChartReady(

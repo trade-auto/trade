@@ -285,7 +285,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           <div className="text-white">CSV 임포트 진행률: {importProgress}%</div>
         </div>
 
-        {isDataImported && (    
+        {/* 백테스트 차트 섹션 */}
+        {isDataImported && importedData.length > 0 && (
           <div>
             <div className="relative w-full mt-4">
               <div className="text-white text-lg font-bold mb-2">백테스트 차트</div>
@@ -294,9 +295,10 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
                 chartHeight={chartHeight}
                 toggleFullscreen={toggleFullscreen}
                 symbol={symbol}
-                markers={[]}
+                markers={backtestMarkers}
                 chartType={chartType}
                 onChartReady={handleBacktestChartInit}
+                data={importedData}
               />
             </div>
             <div>

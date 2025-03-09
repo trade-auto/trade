@@ -62,6 +62,17 @@ interface TradeState {
   };
 }
 
+interface BacktestResult {
+  trades: any[];
+  totalProfit: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  averageProfit: number;
+  maxDrawdown: number;
+}
+
 interface UpbitStore {
   prices: Record<string, PriceData>;
   tickers: Record<string, TickerData>;
@@ -111,6 +122,11 @@ interface UpbitStore {
   getClosedTrades: () => Trade[];
   initializeTrades: () => void;
   resetTradeState: () => void;
+  calculateBacktestResult: (
+    data: CandlestickData<Time>[],
+    signals: TradeSignal[],
+    testId: string
+  ) => BacktestResult;
 }
 
 // 로컬 스토리지에서 MA 설정 불러오기
@@ -459,6 +475,70 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
           missedFirstCycle: false
         }
       });
+    },
+    calculateBacktestResult: (data, signals, testId) => {
+      const trades: any[] = [];
+      let currentTrade: any = null;
+      let maxDrawdown = 0;
+      let peakValue = 0;
+      let totalValue = 100000000; // 초기 자본 1억원
+
+      signals.forEach((signal, index) => {
+        if (signal.position === 'buy' && !currentTrade) {
+          currentTrade = {
+            id: `${testId}-${index}`,
+            entryTime: signal.time,
+            entryPrice: signal.price,
+            entryReason: signal.reason,
+            entryMetadata: signal.metadata,
+            strategy: signal.strategy,
+            status: 'open',
+            type: 'long'
+          };
+        } else if (signal.position === 'sell' && currentTrade) {
+          const profit = ((signal.price - currentTrade.entryPrice) / currentTrade.entryPrice) * 100;
+          const profitAmount = (totalValue * profit) / 100;
+
+          trades.push({
+            ...currentTrade,
+            exitTime: signal.time,
+            exitPrice: signal.price,
+            exitReason: signal.reason,
+            exitMetadata: signal.metadata,
+            profit: profitAmount,
+            profitPercentage: profit,
+            status: 'closed'
+          });
+
+          totalValue += profitAmount;
+
+          if (totalValue > peakValue) {
+            peakValue = totalValue;
+          }
+
+          const drawdown = ((peakValue - totalValue) / peakValue) * 100;
+          if (drawdown > maxDrawdown) {
+            maxDrawdown = drawdown;
+          }
+
+          currentTrade = null;
+        }
+      });
+
+      const closedTrades = trades.filter(trade => trade.status === 'closed');
+      const winningTrades = closedTrades.filter(trade => (trade.profitPercentage || 0) > 0);
+      const totalProfit = closedTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
+
+      return {
+        trades,
+        totalProfit,
+        totalTrades: closedTrades.length,
+        winningTrades: winningTrades.length,
+        losingTrades: closedTrades.length - winningTrades.length,
+        winRate: closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0,
+        averageProfit: closedTrades.length > 0 ? totalProfit / closedTrades.length : 0,
+        maxDrawdown
+      };
     }
   };
 });

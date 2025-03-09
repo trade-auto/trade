@@ -23,12 +23,11 @@ const SYMBOLS = [
 ];
 
 export default function OrdersPage() {
+  const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<'live' | 'test'>('test');
-  const [selectedSymbol, setSelectedSymbol] = useState(() => {
-    const saved = localStorage.getItem('selectedSymbol');
-    return saved || 'KRW-BTC';
-  });
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
+  const [isClient, setIsClient] = useState(false);
   const openOrdersRef = useRef<{ loadOpenOrders?: () => void }>({});
   const [currentPrice, setCurrentPrice] = useState<number>(3850);
   const [orderQuantity, setOrderQuantity] = useState<number>(12.9870);
@@ -56,35 +55,89 @@ export default function OrdersPage() {
     }) => Promise<void> 
   }>(null);
 
+  // 클라이언트 사이드 마운트 및 localStorage 처리
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const saved = localStorage.getItem('selectedSymbol');
+      if (saved) {
+        setSelectedSymbol(saved);
+      }
+    } catch (error) {
+      console.warn('localStorage is not available:', error);
+    }
+  }, []);
+
   // WebSocket을 통해 실시간 가격 업데이트
   useEffect(() => {
-    const ws = new WebSocket('wss://api.upbit.com/websocket/v1');
-    
-    ws.onopen = () => {
-      const message = JSON.stringify([
-        { ticket: "trade" },
-        { type: "trade", codes: [selectedSymbol] }
-      ]);
-      ws.send(message);
-    };
+    if (!mounted) return;
 
-    ws.onmessage = (event) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result as string);
-          if (data.type === 'trade') {
-            setCurrentPrice(data.trade_price);
-          }
-        } catch (error) {
-          console.error('JSON 파싱 오류:', error);
+    let ws: WebSocket | null = null;
+    
+    try {
+      ws = new WebSocket('wss://api.upbit.com/websocket/v1');
+      
+      ws.onopen = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const message = JSON.stringify([
+            { ticket: "trade" },
+            { type: "trade", codes: [selectedSymbol] }
+          ]);
+          ws.send(message);
         }
       };
-      reader.readAsText(event.data);
-    };
 
-    return () => ws.close();
-  }, [selectedSymbol]);
+      ws.onmessage = (event) => {
+        if (!(event.data instanceof Blob)) {
+          console.warn('Unexpected message format:', event.data);
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const text = reader.result;
+            if (typeof text !== 'string') {
+              throw new Error('FileReader result is not a string');
+            }
+
+            const data = JSON.parse(text);
+            if (data && data.type === 'trade' && typeof data.trade_price === 'number') {
+              setCurrentPrice(data.trade_price);
+            }
+          } catch (error) {
+            console.error('WebSocket 메시지 처리 오류:', error);
+          }
+        };
+
+        reader.onerror = (error) => {
+          console.error('FileReader 오류:', error);
+        };
+
+        reader.readAsText(event.data);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket 오류:', error);
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket 연결 종료:', event.code, event.reason);
+      };
+    } catch (error) {
+      console.error('WebSocket 초기화 오류:', error);
+    }
+
+    return () => {
+      if (ws) {
+        try {
+          ws.close();
+        } catch (error) {
+          console.error('WebSocket 종료 오류:', error);
+        }
+      }
+    };
+  }, [selectedSymbol, mounted]);
 
   // 잔고 정보 로드
   const loadBalance = useCallback(async () => {
@@ -118,10 +171,16 @@ export default function OrdersPage() {
     }
   };
 
-  const handleSymbolChange = (symbol: string) => {
+  const handleSymbolChange = useCallback((symbol: string) => {
     setSelectedSymbol(symbol);
-    localStorage.setItem('selectedSymbol', symbol);
-  };
+    if (mounted) {
+      try {
+        localStorage.setItem('selectedSymbol', symbol);
+      } catch (error) {
+        console.warn('Failed to save to localStorage:', error);
+      }
+    }
+  }, [mounted]);
 
   const handlePriceUpdate = (price: number) => {
     if (price) setCurrentPrice(price);
@@ -130,6 +189,20 @@ export default function OrdersPage() {
   const handleQuantityUpdate = (quantity: number) => {
     if (quantity) setOrderQuantity(quantity);
   };
+
+  if (!mounted) {
+    return (
+      <main className="min-h-screen p-8 bg-gray-900">
+        <div className="max-w-7xl mx-auto">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-700 rounded w-48 mb-4"></div>
+            <div className="h-32 bg-gray-800 rounded mb-4"></div>
+            <div className="h-64 bg-gray-800 rounded"></div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen p-8 bg-gray-900">
