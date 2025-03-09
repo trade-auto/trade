@@ -119,24 +119,15 @@ const bollingerStrategy: BollingerStrategy = {
       '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
       '조건 4 (MA900 상향 10봉)': isMA900Upward ? '✅' : '❌',
       '조건 5 (MA60 < MA900)': isBelow900 ? '✅' : '❌',
-      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward  ) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
 
     // 매수 시그널 생성 - 기본 조건
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward  ) {
+    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
       return 'long';
     }
-    
 
-    
-    // // 추가 완화된 매수 조건 (MA60이 상승 추세이고 MA120보다 위에 있는 경우)
-    // if (ma60Slope > 0 && isAbove120 && ma60Above120Count >= 5 && isBelow900) {
-    //   console.log('\n=== ✅ 추가 완화된 매수 조건 충족! ===');
-    //   console.log('추가 완화된 조건: MA60 상승 추세, MA60 > MA120 (5봉 이상), MA60 < MA900');
-    //   return 'long';
-    // }
-    
     console.log('\n=== ❌ 매수 조건 불충족 ===');
     return null;
   },

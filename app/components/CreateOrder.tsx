@@ -538,7 +538,7 @@ export const CreateOrder = forwardRef<
           <StrategySelector
             tradeStrategy={tradeStrategy}
             handleStrategyChange={handleStrategyChange}
-            disabled={autoTrading || isBacktesting}
+                  disabled={autoTrading || isBacktesting}
           />
 
           {autoTrading && (
