@@ -1,4 +1,4 @@
-import { CandlestickData, Time } from 'lightweight-charts';
+﻿import { CandlestickData, Time } from 'lightweight-charts';
 import { BollingerStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult, TradeStrategy } from './types';
 import { calculateStandardDeviation } from './utils';
 import useUpbitStore from '../store/useUpbitStore';
@@ -25,7 +25,7 @@ const bollingerStrategy: BollingerStrategy = {
   },
   
   // 진입 조건 분석
-  analyzeEntry(data, index) {
+  analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | null {
     const entryDateTime = new Date(data[index].time as number * 1000);
     console.log('\n=== 📊 analyzeEntry 함수 진입 ===');
     console.log('분석 시작 시간:', entryDateTime.toLocaleString('ko-KR'));
@@ -72,7 +72,7 @@ const bollingerStrategy: BollingerStrategy = {
     }
 
     console.log('✅ 매수 가능 상태 확인');
-
+    
     // MA 계산
     // MA 60, 120, 240, 900 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
@@ -375,7 +375,7 @@ const bollingerStrategy: BollingerStrategy = {
       if (options?.lastProcessedIndex !== undefined) {
         // 이미 초기화가 완료된 경우
         if (options.lastProcessedIndex >= 900) {
-          startIndex = options.lastProcessedIndex + 1;
+        startIndex = options.lastProcessedIndex + 1;
           console.log(`실시간 모드: 신규 데이터만 분석 (인덱스 ${startIndex}부터 ${endIndex - 1}까지)`);
         } else {
           // 아직 초기화가 필요한 경우이지만, 분석은 계속 진행
@@ -454,9 +454,9 @@ const bollingerStrategy: BollingerStrategy = {
             };
             
             signals.push(signal);
-            currentPosition = null;
-            lastTradeId = null;
-            
+          currentPosition = null;
+          lastTradeId = null;
+          
             console.log(`\n매도 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
             console.log(`가격: ${price}`);
             console.log(`수익률: ${((price - entryPrice) / entryPrice * 100).toFixed(2)}%`);

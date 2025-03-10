@@ -1,5 +1,5 @@
 import { CandlestickData, Time } from 'lightweight-charts';
-import { TradingStrategy, TradeSignal, ExtendedMetadata } from './types';
+import { TradingStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult } from './types';
 
 // MA 크로스 전략
 const maCrossStrategy: TradingStrategy = {
@@ -21,7 +21,7 @@ const maCrossStrategy: TradingStrategy = {
   },
   
   // 진입 조건 분석
-  analyzeEntry(data, index) {
+  analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | null {
     if (index < 60) return null; // 충분한 데이터 확보
     
     const shortPeriod = 30;
@@ -33,15 +33,15 @@ const maCrossStrategy: TradingStrategy = {
     const prevLongMA = data.slice(index - longPeriod - 1, index - 1).reduce((a, b) => a + b.close, 0) / longPeriod;
     
     if (prevShortMA <= prevLongMA && shortMA > longMA) {
-      return 'long';
+      return 'buy';
     }
     
     return null;
   },
   
   // 청산 조건 분석
-  analyzeExit(data, index, position, entryPrice) {
-    if (index < 60 || position !== 'long') return false; // 충분한 데이터 확보 및 롱 포지션 확인
+  analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
+    if (index < 60 || position !== 'buy') return false; // 충분한 데이터 확보 및 매수 포지션 확인
     
     const shortPeriod = 30;
     const longPeriod = 60;
@@ -56,7 +56,7 @@ const maCrossStrategy: TradingStrategy = {
   },
   
   // 지표 계산 함수
-  calculateIndicators(data, index) {
+  calculateIndicators(data: CandlestickData<Time>[], index: number): ExtendedMetadata {
     if (index < 60) {
       return {} as ExtendedMetadata;
     }
@@ -76,15 +76,20 @@ const maCrossStrategy: TradingStrategy = {
   },
   
   // 기존 analyze 함수는 새로운 함수들을 활용
-  analyze(data) {
+  analyze(data: CandlestickData<Time>[], options?: AnalyzeOptions): AnalysisResult {
     const signals: TradeSignal[] = [];
     const shortPeriod = 30;
     const longPeriod = 60;
-    let currentPosition: 'long' | null = null;
-    let lastTradeId: string | null = null;
+    let currentPosition: 'buy' | null = options?.currentPosition || null;
+    let lastTradeId: string | null = options?.lastTradeId || null;
     
     if (data.length < longPeriod) {
-      return signals;
+      return {
+        signals,
+        lastProcessedIndex: data.length - 1,
+        currentPosition,
+        lastTradeId
+      };
     }
     
     const self = this; // this 컨텍스트 저장
@@ -94,18 +99,18 @@ const maCrossStrategy: TradingStrategy = {
       if (currentPosition === null) {
         const entrySignal = self.analyzeEntry?.(data, i);
         
-        if (entrySignal === 'long') {
+        if (entrySignal === 'buy') {
           const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           signals.push({
             id: tradeId,
             time: data[i].time as number,
-            position: 'long',
+            position: 'buy',
             price: data[i].close,
             strategy: 'MA_CROSS',
             reason: '단기 이동평균선이 장기 이동평균선을 상향 돌파',
             metadata: self.calculateIndicators?.(data, i)
           });
-          currentPosition = 'long';
+          currentPosition = 'buy';
           lastTradeId = tradeId;
           console.log('✅ 매수 신호 생성:', {
             시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
@@ -114,21 +119,21 @@ const maCrossStrategy: TradingStrategy = {
             '거래 ID': tradeId
           });
         }
-      } else if (currentPosition === 'long') {
-        // 마지막 롱 진입 신호의 인덱스 찾기
+      } else if (currentPosition === 'buy') {
+        // 마지막 매수 진입 신호의 인덱스 찾기
         const entrySignalIndex = signals.findIndex(signal => 
-          signal.id === lastTradeId && signal.position === 'long');
+          signal.id === lastTradeId && signal.position === 'buy');
         
         if (entrySignalIndex >= 0) {
           const entryPrice = signals[entrySignalIndex].price;
-          const shouldExit = self.analyzeExit?.(data, i, 'long', entryPrice);
+          const shouldExit = self.analyzeExit?.(data, i, 'buy', entryPrice);
           
           if (shouldExit) {
             const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             signals.push({
               id: exitTradeId,
               time: data[i].time as number,
-              position: 'close',
+              position: 'sell',
               price: data[i].close,
               strategy: 'MA_CROSS',
               reason: '단기 이동평균선이 장기 이동평균선을 하향 돌파',
@@ -140,7 +145,7 @@ const maCrossStrategy: TradingStrategy = {
             console.log('✅ 매도 신호 생성:', {
               시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
               가격: data[i].close.toLocaleString('ko-KR') + '원',
-              '이전 포지션': 'long',
+              '이전 포지션': 'buy',
               '매수가': entryPrice.toLocaleString('ko-KR') + '원',
               '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
               '거래 ID': exitTradeId,
@@ -152,7 +157,12 @@ const maCrossStrategy: TradingStrategy = {
       }
     }
     
-    return signals;
+    return {
+      signals,
+      lastProcessedIndex: data.length - 1,
+      currentPosition,
+      lastTradeId
+    };
   }
 };
 

@@ -498,8 +498,11 @@ export const useChartData = (
         if (nineHundredEMASeriesRef.current) {
           const seriesData = nineHundredEMASeriesRef.current.data() as { time: Time; value: number }[];
           if (seriesData.length > 1) {
-            const prevMA900 = seriesData[seriesData.length - 1].value;
+            // 이전 값은 배열의 마지막에서 두 번째 값
+            const prevMA900 = seriesData[seriesData.length - 2].value;
+            // 현재 값과 이전 값 비교
             isMA900Upward = ma900.value > prevMA900;
+            console.log(`MA900 상승세 체크: 현재(${ma900.value.toFixed(0)}) > 이전(${prevMA900.toFixed(0)}) = ${isMA900Upward ? '상승' : '하락'}`);
           }
         }
         
@@ -512,8 +515,8 @@ export const useChartData = (
           '조건 1 (MA240 상향 5봉 이상)': `${ma240UpCount}/5 ${ma240UpCount >= 5 ? '✅' : '❌'}`,
           '조건 2 (MA60 > MA120)': `${ma60.value.toFixed(0)} > ${ma120.value.toFixed(0)} ${isAbove120 ? '✅' : '❌'}`,
           '조건 3 (MA60 > MA240)': `${ma60.value.toFixed(0)} > ${ma240.value.toFixed(0)} ${isAbove240 ? '✅' : '❌'}`,
-          '조건 4 (MA900 상승세)': `${isMA900Upward ? '✅' : '❌'}`,
-          '조건 5 (MA60 < MA900)': `${ma60.value.toFixed(0)} < ${ma900.value.toFixed(0)} ${isBelow900 ? '✅' : '❌'}`,
+          '조건 4 (MA900 상승세)': `${ma900.value.toFixed(0)} ${isMA900Upward ? '↑' : '↓'} ${isMA900Upward ? '✅' : '❌'}`,
+          '조건 5 (MA60 < MA900)': `${ma60.value.toFixed(0)} ${isBelow900 ? '<' : '>'} ${ma900.value.toFixed(0)} ${isBelow900 ? '✅' : '❌'}`,
           '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) ? 
             '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
         });
