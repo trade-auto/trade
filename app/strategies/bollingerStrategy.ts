@@ -41,7 +41,8 @@ const bollingerStrategy: BollingerStrategy = {
 
     // 필요한 최소 데이터 검사
     const requiredData = 900; // MA900 계산에 필요
-    if (index < requiredData) {
+    const isCollecting = index < requiredData;
+    if (isCollecting) {
       console.log(`초기 데이터 수집 중... (필요: ${requiredData}초)`);
       console.log(`현재: ${index}초 / ${requiredData}초 (${((index/requiredData)*100).toFixed(1)}%)`);
       return null;
@@ -385,10 +386,9 @@ const bollingerStrategy: BollingerStrategy = {
     let currentPosition: 'buy' | null = options?.currentPosition || null;
     let lastTradeId: string | null = options?.lastTradeId || null;
     
-    // 실시간 모드에서는 1시간(3600초)의 데이터가 있어야 하며,
-    // 그 중 첫 15분(900초)은 MA900 계산을 위한 데이터로 사용됨
-    if (data.length < 3600) {
-      console.log('데이터가 충분하지 않습니다. 최소 3600개의 캔들이 필요합니다. (1시간)');
+    // MA900 계산을 위해 최소 900초의 데이터가 필요
+    if (data.length < 900) {
+      console.log('데이터가 충분하지 않습니다. 최소 900개의 캔들이 필요합니다. (15분)');
       console.log('현재 데이터 길이:', data.length, '초');
       return {
         signals,
@@ -407,7 +407,7 @@ const bollingerStrategy: BollingerStrategy = {
     
     // 실시간 모드인 경우 마지막 캔들만 분석
     // MA900 계산을 위해 시작 인덱스를 900으로 설정
-    let startIndex = 900;
+    let startIndex = 0; // 처음부터 데이터 수집
     let endIndex = data.length;
     
     if (options?.realtime) {
