@@ -787,14 +787,7 @@ export const useChartData = (
 
   // 자동 업데이트 함수 (실시간 API 사용하지 않을 때)
   const handleAutoUpdate = useCallback(async () => {
-    // 실시간 모드가 아니거나 이미 요청 중이면 실행하지 않음
     if (!isAutoUpdate || isRealtimeAPIEnabled || ongoingRequestRef.current) return;
-    
-    // 초봉 차트가 아니면 자동 업데이트 필요 없음 (과거 데이터)
-    if (!chartType.startsWith('seconds/')) {
-      console.log('초봉 차트가 아닌 경우 자동 업데이트가 필요하지 않습니다.');
-      return;
-    }
     
     ongoingRequestRef.current = true;
     
@@ -891,19 +884,15 @@ export const useChartData = (
   
   // 자동 업데이트 타이머 설정
   useEffect(() => {
-    // 자동 업데이트는 초봉 차트에서만 필요함
-    if (isAutoUpdate && !isRealtimeAPIEnabled && chartType.startsWith('seconds/')) {
-      // 30초마다 자동 업데이트 (10초는 너무 빈번함)
+    if (isAutoUpdate && !isRealtimeAPIEnabled) {
+      // 10초마다 자동 업데이트
       const timer = setInterval(() => {
         handleAutoUpdate();
       }, 10000);
       
       timeoutRef.current = timer;
       
-      console.log('자동 업데이트 타이머 설정: 30초 간격 (초봉 차트만 해당)');
-      
-      // 초기 로드 시 한 번 실행
-      handleAutoUpdate();
+      console.log('자동 업데이트 타이머 설정: 10초 간격');
       
       return () => {
         if (timeoutRef.current) {
@@ -913,7 +902,7 @@ export const useChartData = (
         }
       };
     }
-  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, handleAutoUpdate]);
+  }, [isAutoUpdate, isRealtimeAPIEnabled, handleAutoUpdate]);
 
   return {
     // 상태
