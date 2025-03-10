@@ -352,201 +352,14 @@ export const useChartData = (
     setIsRealtimeAPIEnabled(prev => !prev);
   }, []);
 
-  // 실시간 API 업데이트 함수
-  const updateRealtimeData = useCallback(async () => {
-    if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/') || ongoingRequestRef.current) return;
-    
-    ongoingRequestRef.current = true;
-    
-    try {
-      setRealtimeUpdateStatus(prev => ({
-        ...prev,
-        isUpdating: true
-      }));
-      
-      console.log('실시간 데이터 업데이트 중...');
-      
-      // 현재 시간 기준으로 최신 데이터 가져오기
-      const now = new Date();
-      const to = now.toISOString();
-      const endpoint = getChartEndpoint(chartType);
-      
-      const response = await fetch(
-        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=2`
-      );
-      
-      if (!response.ok) {
-        throw new Error('실시간 데이터 로딩 실패');
-      }
-      
-      const data: UpbitCandle[] = await response.json();
-      
-      if (!data || data.length === 0) {
-        console.log('새로운 데이터 없음');
-        return;
-      }
-      
-      // 가장 최신 캔들 가져오기
-      const latestCandle = data[0];
-      
-      // 데이터 처리
-      const newCandle = {
-        time: new Date(latestCandle.candle_date_time_kst).getTime() / 1000 as Time,
-        open: latestCandle.opening_price,
-        high: latestCandle.high_price,
-        low: latestCandle.low_price,
-        close: latestCandle.trade_price,
-        volume: latestCandle.candle_acc_trade_volume,
-      };
-      
-      // 현재 차트에 있는 마지막 캔들 확인
-      let shouldUpdate = true;
-      if (allData.length > 0) {
-        const lastCandle = allData[allData.length - 1];
-        // 같은 시간의 캔들이면 업데이트, 다른 시간이면 추가
-        if (lastCandle.time === newCandle.time) {
-          // 마지막 캔들 업데이트
-          const updatedData = [...allData.slice(0, -1), newCandle];
-          setAllData(updatedData);
-          
-          // 차트 업데이트
-          if (candleSeriesRef.current) {
-            candleSeriesRef.current.update(newCandle);
-          }
-          
-          // 볼륨 업데이트
-          if (volumeSeriesRef.current) {
-            volumeSeriesRef.current.update({
-              time: newCandle.time,
-              value: newCandle.volume,
-              color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
-            });
-          }
-          
-          // 이동평균선 업데이트
-          updateMovingAverages(updatedData);
-          
-          console.log('기존 캔들 업데이트:', newCandle);
-        } else if ((newCandle.time as number) > (lastCandle.time as number)) {
-          // 새 캔들 추가
-          const updatedData = [...allData, newCandle];
-          setAllData(updatedData);
-          
-          // 차트에 새 캔들 추가
-          if (candleSeriesRef.current) {
-            candleSeriesRef.current.update(newCandle);
-          }
-          
-          // 볼륨 추가
-          if (volumeSeriesRef.current) {
-            volumeSeriesRef.current.update({
-              time: newCandle.time,
-              value: newCandle.volume,
-              color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
-            });
-          }
-          
-          // 이동평균선 업데이트
-          updateMovingAverages(updatedData);
-          
-          console.log('새 캔들 추가:', newCandle);
-          
-          // 전략 분석 실행
-          if (updatedData.length > 900) {
-            const analysisResult = useUpbitStore.getState().analyzeRealtimeData(updatedData);
-            
-            if (analysisResult && analysisResult.signals) {
-              const signals = analysisResult.signals
-                .filter((signal: any) => signal.position !== null)
-                .map((signal: any) => ({
-                  ...signal,
-                  time: signal.time as unknown as Time,
-                  position: signal.position as 'buy' | 'sell',
-                  metadata: signal.metadata ? {
-                    ...signal.metadata,
-                    ma60: signal.metadata.ma60 || 0
-                  } : undefined
-                }));
-              
-              const strategyMarkers = createTradeMarkers(signals);
-              setMarkers(strategyMarkers);
-            }
-          }
-        } else {
-          shouldUpdate = false;
-          console.log('이전 캔들 무시:', newCandle);
-        }
-      } else {
-        // 데이터가 없는 경우 첫 캔들 추가
-        setAllData([newCandle]);
-        
-        if (candleSeriesRef.current) {
-          candleSeriesRef.current.setData([newCandle]);
-        }
-        
-        if (volumeSeriesRef.current) {
-          volumeSeriesRef.current.setData([{
-            time: newCandle.time,
-            value: newCandle.volume,
-            color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
-          }]);
-        }
-        
-        console.log('첫 캔들 추가:', newCandle);
-      }
-      
-      // 현재 가격 업데이트
-      if (shouldUpdate) {
-        setChartPrice(newCandle.close);
-        
-        // 업데이트 상태 갱신
-        setRealtimeUpdateStatus(prev => ({
-          isUpdating: false,
-          lastUpdateTime: new Date().toLocaleString('ko-KR'),
-          updateCount: prev.updateCount + 1
-        }));
-      }
-      
-    } catch (error) {
-      console.error('실시간 데이터 업데이트 오류:', error);
-    } finally {
-      ongoingRequestRef.current = false;
-      setRealtimeUpdateStatus(prev => ({
-        ...prev,
-        isUpdating: false
-      }));
-    }
-  }, [isRealtimeAPIEnabled, chartType, symbol, allData]);
-
-  // 실시간 업데이트 타이머 설정
-  useEffect(() => {
-    if (isRealtimeAPIEnabled && chartType.startsWith('seconds/')) {
-      // 1초마다 업데이트 (매매 상태를 더 자주 체크하기 위해)
-      const timer = setInterval(() => {
-        updateRealtimeData();
-      }, 1000);
-      
-      timeoutRef.current = timer;
-      
-      console.log('실시간 업데이트 타이머 설정: 1초 간격');
-      
-      return () => {
-        if (timeoutRef.current) {
-          clearInterval(timeoutRef.current);
-          timeoutRef.current = null;
-          console.log('실시간 업데이트 타이머 해제');
-        }
-      };
-    }
-  }, [isRealtimeAPIEnabled, chartType, updateRealtimeData]);
-
-  // 이동평균선 업데이트 함수
+  // 이동평균선 업데이트 함수 최적화
   const updateMovingAverages = useCallback((data: ExtendedCandlestickData[]) => {
     if (data.length < 60) return; // 최소 60개 데이터 필요
     
+    const startTime = Date.now();
+    console.log('이동평균선 업데이트 시작');
+    
     try {
-      console.log('이동평균선 업데이트 중...');
-      
       // 마지막 캔들 시간
       const lastTime = data[data.length - 1].time;
       
@@ -554,10 +367,13 @@ export const useChartData = (
       const calculateSmoothMA = (period: number, seriesRef: React.MutableRefObject<ISeriesApi<"Line"> | null>) => {
         if (data.length < period) return null;
         
-        // 단순 이동평균 계산 (최신 캔들 기준)
-        const slice = data.slice(data.length - period);
-        const sum = slice.reduce((acc, candle) => acc + candle.close, 0);
-        const sma = sum / period;
+        // 성능 최적화: 단순 이동평균 계산 (슬라이스 최소화)
+        let sum = 0;
+        const startIdx = Math.max(0, data.length - period);
+        for (let i = startIdx; i < data.length; i++) {
+          sum += data[i].close;
+        }
+        const sma = sum / (data.length - startIdx);
         
         // 이전 값 가져오기
         let prevValue: number | null = null;
@@ -598,7 +414,6 @@ export const useChartData = (
           
           if (changePercent > maxChangePercent) {
             // 변화율이 너무 크면 제한
-            console.log(`${period}MA 변화율 제한: ${changePercent.toFixed(2)}% → ${maxChangePercent}%`);
             const maxChange = prevValue * (maxChangePercent / 100);
             newValue = prevValue + (ema > prevValue ? maxChange : -maxChange);
           } else {
@@ -620,8 +435,33 @@ export const useChartData = (
       const ma300 = calculateSmoothMA(300, threeHundredEMASeriesRef);
       const ma900 = calculateSmoothMA(900, nineHundredEMASeriesRef);
       
-      // 매수 조건 체크 및 로그 출력
-      if (ma60 && ma120 && ma240 && ma900) {
+      // 이동평균선 차트 업데이트
+      if (ma60 && sixtyEMASeriesRef.current) {
+        sixtyEMASeriesRef.current.update(ma60);
+      }
+      
+      if (ma120 && oneTwentyEMASeriesRef.current) {
+        oneTwentyEMASeriesRef.current.update(ma120);
+      }
+      
+      if (ma240 && twoFortyEMASeriesRef.current) {
+        twoFortyEMASeriesRef.current.update(ma240);
+      }
+      
+      if (ma360 && threeHundredSixtyEMASeriesRef.current) {
+        threeHundredSixtyEMASeriesRef.current.update(ma360);
+      }
+      
+      if (ma300 && threeHundredEMASeriesRef.current) {
+        threeHundredEMASeriesRef.current.update(ma300);
+      }
+      
+      if (ma900 && nineHundredEMASeriesRef.current) {
+        nineHundredEMASeriesRef.current.update(ma900);
+      }
+      
+      // 매수 조건 체크 및 로그 출력 (성능 최적화: 3초마다 한 번씩만 수행)
+      if (ma60 && ma120 && ma240 && ma900 && Date.now() % 3000 < 1000) {
         // 조건 1: MA240 상향 5봉 이상 체크
         let ma240UpCount = 0;
         
@@ -690,36 +530,212 @@ export const useChartData = (
         });
       }
       
-      // 이동평균선 차트 업데이트
-      if (ma60 && sixtyEMASeriesRef.current) {
-        sixtyEMASeriesRef.current.update(ma60);
-      }
-      
-      if (ma120 && oneTwentyEMASeriesRef.current) {
-        oneTwentyEMASeriesRef.current.update(ma120);
-      }
-      
-      if (ma240 && twoFortyEMASeriesRef.current) {
-        twoFortyEMASeriesRef.current.update(ma240);
-      }
-      
-      if (ma360 && threeHundredSixtyEMASeriesRef.current) {
-        threeHundredSixtyEMASeriesRef.current.update(ma360);
-      }
-      
-      if (ma300 && threeHundredEMASeriesRef.current) {
-        threeHundredEMASeriesRef.current.update(ma300);
-      }
-      
-      if (ma900 && nineHundredEMASeriesRef.current) {
-        nineHundredEMASeriesRef.current.update(ma900);
-      }
-      
-      console.log('이동평균선 업데이트 완료');
+      const endTime = Date.now();
+      console.log(`이동평균선 업데이트 완료: ${endTime - startTime}ms 소요`);
     } catch (error) {
       console.error('이동평균선 업데이트 오류:', error);
     }
   }, []);
+
+  // 실시간 API 업데이트 함수
+  const updateRealtimeData = useCallback(async () => {
+    // 이미 업데이트 중이면 중복 요청 방지 (단, 3초 이상 걸리면 강제로 새로운 요청 허용)
+    if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/')) return;
+    
+    const now = Date.now();
+    if (ongoingRequestRef.current) {
+      const lastRequestTime = ongoingRequestRef.current as unknown as number;
+      // 마지막 요청 시작 후 3초가 지났으면 새 요청 허용
+      if (now - lastRequestTime < 3000) {
+        console.log(`이전 요청 진행 중... (${((now - lastRequestTime) / 1000).toFixed(1)}초 경과)`);
+        return;
+      } else {
+        console.log('이전 요청 타임아웃, 새 요청 시작');
+      }
+    }
+    
+    // 요청 시작 시간 기록
+    ongoingRequestRef.current = now as any; // 타입 오류 해결
+    
+    try {
+      console.log('실시간 데이터 업데이트 시작:', new Date().toLocaleTimeString());
+      setRealtimeUpdateStatus(prev => ({
+        ...prev,
+        isUpdating: true
+      }));
+      
+      // 현재 시간 기준으로 최신 데이터 가져오기
+      const to = new Date().toISOString();
+      const endpoint = getChartEndpoint(chartType);
+      
+      // API 호출 시작 시간 기록
+      const apiStartTime = Date.now();
+      
+      const response = await fetch(
+        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=2`
+      );
+      
+      // API 호출 소요 시간 계산
+      const apiTime = Date.now() - apiStartTime;
+      console.log(`API 호출 소요 시간: ${apiTime}ms`);
+      
+      if (!response.ok) {
+        throw new Error('실시간 데이터 로딩 실패');
+      }
+      
+      const data: UpbitCandle[] = await response.json();
+      
+      if (!data || data.length === 0) {
+        console.log('새로운 데이터 없음');
+        ongoingRequestRef.current = false;
+        return;
+      }
+      
+      // 데이터 처리 시작 시간 기록
+      const processStartTime = Date.now();
+      
+      // 가장 최신 캔들 가져오기
+      const latestCandle = data[0];
+      
+      // 데이터 처리
+      const newCandle = {
+        time: new Date(latestCandle.candle_date_time_kst).getTime() / 1000 as Time,
+        open: latestCandle.opening_price,
+        high: latestCandle.high_price,
+        low: latestCandle.low_price,
+        close: latestCandle.trade_price,
+        volume: latestCandle.candle_acc_trade_volume,
+      };
+      
+      // 현재 차트에 있는 마지막 캔들 확인
+      let shouldUpdate = true;
+      if (allData.length > 0) {
+        const lastCandle = allData[allData.length - 1];
+        // 같은 시간의 캔들이면 업데이트, 다른 시간이면 추가
+        if (lastCandle.time === newCandle.time) {
+          // 마지막 캔들 업데이트
+          const updatedData = [...allData.slice(0, -1), newCandle];
+          setAllData(updatedData);
+          
+          // 차트 업데이트
+          if (candleSeriesRef.current) {
+            candleSeriesRef.current.update(newCandle);
+          }
+          
+          // 볼륨 업데이트
+          if (volumeSeriesRef.current) {
+            volumeSeriesRef.current.update({
+              time: newCandle.time,
+              value: newCandle.volume,
+              color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
+            });
+          }
+          
+          // 이동평균선 업데이트 (성능 최적화: 1초마다 하지 않고 3초마다 수행)
+          const shouldUpdateMA = Date.now() % 3000 < 1000;
+          if (shouldUpdateMA) {
+            updateMovingAverages(updatedData);
+          }
+          
+          console.log('기존 캔들 업데이트:', newCandle);
+        } else if ((newCandle.time as number) > (lastCandle.time as number)) {
+          // 새 캔들 추가
+          const updatedData = [...allData, newCandle];
+          setAllData(updatedData);
+          
+          // 차트에 새 캔들 추가
+          if (candleSeriesRef.current) {
+            candleSeriesRef.current.update(newCandle);
+          }
+          
+          // 볼륨 추가
+          if (volumeSeriesRef.current) {
+            volumeSeriesRef.current.update({
+              time: newCandle.time,
+              value: newCandle.volume,
+              color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
+            });
+          }
+          
+          // 이동평균선 업데이트 (새 캔들이 추가될 때는 항상 수행)
+          updateMovingAverages(updatedData);
+          
+          console.log('새 캔들 추가:', newCandle);
+        } else {
+          shouldUpdate = false;
+          console.log('이전 캔들 무시:', newCandle);
+        }
+      } else {
+        // 데이터가 없는 경우 첫 캔들 추가
+        setAllData([newCandle]);
+        
+        if (candleSeriesRef.current) {
+          candleSeriesRef.current.setData([newCandle]);
+        }
+        
+        if (volumeSeriesRef.current) {
+          volumeSeriesRef.current.setData([{
+            time: newCandle.time,
+            value: newCandle.volume,
+            color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
+          }]);
+        }
+        
+        console.log('첫 캔들 추가:', newCandle);
+      }
+      
+      // 데이터 처리 소요 시간 계산
+      const processTime = Date.now() - processStartTime;
+      console.log(`데이터 처리 소요 시간: ${processTime}ms`);
+      
+      // 현재 가격 업데이트
+      if (shouldUpdate) {
+        setChartPrice(newCandle.close);
+        
+        // 업데이트 상태 갱신
+        setRealtimeUpdateStatus(prev => ({
+          isUpdating: false,
+          lastUpdateTime: new Date().toLocaleString('ko-KR'),
+          updateCount: prev.updateCount + 1
+        }));
+      }
+      
+      // 전체 소요 시간 계산
+      const totalTime = Date.now() - now;
+      console.log(`실시간 업데이트 완료: ${totalTime}ms 소요`);
+      
+    } catch (error) {
+      console.error('실시간 데이터 업데이트 오류:', error);
+    } finally {
+      ongoingRequestRef.current = false;
+      setRealtimeUpdateStatus(prev => ({
+        ...prev,
+        isUpdating: false
+      }));
+    }
+  }, [isRealtimeAPIEnabled, chartType, symbol, allData, updateMovingAverages]);
+
+  // 실시간 업데이트 타이머 설정
+  useEffect(() => {
+    if (isRealtimeAPIEnabled && chartType.startsWith('seconds/')) {
+      // 1초마다 업데이트 (매매 상태를 더 자주 체크하기 위해)
+      const timer = setInterval(() => {
+        updateRealtimeData();
+      }, 1000);
+      
+      timeoutRef.current = timer;
+      
+      console.log('실시간 업데이트 타이머 설정: 1초 간격');
+      
+      return () => {
+        if (timeoutRef.current) {
+          clearInterval(timeoutRef.current);
+          timeoutRef.current = null;
+          console.log('실시간 업데이트 타이머 해제');
+        }
+      };
+    }
+  }, [isRealtimeAPIEnabled, chartType, updateRealtimeData]);
 
   return {
     // 상태
