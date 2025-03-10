@@ -638,6 +638,30 @@ export const useChartData = (
           }
           
           console.log('기존 캔들 업데이트:', newCandle);
+          
+          // 전략 분석 실행 및 마커 업데이트 (새 캔들이 추가될 때)
+          if (updatedData.length > 900) {
+            console.log('전략 분석 실행 및 마커 업데이트...');
+            const analysisResult = useUpbitStore.getState().analyzeRealtimeData(updatedData);
+            
+            if (analysisResult && analysisResult.signals) {
+              const signals = analysisResult.signals
+                .filter((signal: any) => signal.position !== null)
+                .map((signal: any) => ({
+                  ...signal,
+                  time: signal.time as unknown as Time,
+                  position: signal.position as 'buy' | 'sell',
+                  metadata: signal.metadata ? {
+                    ...signal.metadata,
+                    ma60: signal.metadata.ma60 || 0
+                  } : undefined
+                }));
+              
+              const strategyMarkers = createTradeMarkers(signals);
+              setMarkers(strategyMarkers);
+              console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+            }
+          }
         } else if ((newCandle.time as number) > (lastCandle.time as number)) {
           // 새 캔들 추가
           const updatedData = [...allData, newCandle];
@@ -661,6 +685,30 @@ export const useChartData = (
           updateMovingAverages(updatedData);
           
           console.log('새 캔들 추가:', newCandle);
+          
+          // 전략 분석 실행 및 마커 업데이트 (새 캔들이 추가될 때)
+          if (updatedData.length > 900) {
+            console.log('전략 분석 실행 및 마커 업데이트...');
+            const analysisResult = useUpbitStore.getState().analyzeRealtimeData(updatedData);
+            
+            if (analysisResult && analysisResult.signals) {
+              const signals = analysisResult.signals
+                .filter((signal: any) => signal.position !== null)
+                .map((signal: any) => ({
+                  ...signal,
+                  time: signal.time as unknown as Time,
+                  position: signal.position as 'buy' | 'sell',
+                  metadata: signal.metadata ? {
+                    ...signal.metadata,
+                    ma60: signal.metadata.ma60 || 0
+                  } : undefined
+                }));
+              
+              const strategyMarkers = createTradeMarkers(signals);
+              setMarkers(strategyMarkers);
+              console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+            }
+          }
         } else {
           shouldUpdate = false;
           console.log('이전 캔들 무시:', newCandle);
@@ -736,6 +784,136 @@ export const useChartData = (
       };
     }
   }, [isRealtimeAPIEnabled, chartType, updateRealtimeData]);
+
+  // 자동 업데이트 함수 (실시간 API 사용하지 않을 때)
+  const handleAutoUpdate = useCallback(async () => {
+    // 실시간 모드가 아니거나 이미 요청 중이면 실행하지 않음
+    if (!isAutoUpdate || isRealtimeAPIEnabled || ongoingRequestRef.current) return;
+    
+    // 초봉 차트가 아니면 자동 업데이트 필요 없음 (과거 데이터)
+    if (!chartType.startsWith('seconds/')) {
+      console.log('초봉 차트가 아닌 경우 자동 업데이트가 필요하지 않습니다.');
+      return;
+    }
+    
+    ongoingRequestRef.current = true;
+    
+    try {
+      console.log('자동 업데이트 시작...');
+      
+      // 현재 시간 기준으로 최신 데이터 가져오기
+      const now = new Date();
+      const to = now.toISOString();
+      const endpoint = getChartEndpoint(chartType);
+      
+      const response = await fetch(
+        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=200`
+      );
+      
+      if (!response.ok) {
+        throw new Error('자동 업데이트 데이터 로딩 실패');
+      }
+      
+      const data: UpbitCandle[] = await response.json();
+      
+      if (!data || data.length === 0) {
+        console.log('새로운 데이터 없음');
+        return;
+      }
+      
+      // 데이터 처리
+      const processedData = data.map((candle: UpbitCandle) => ({
+        time: new Date(candle.candle_date_time_kst).getTime() / 1000 as Time,
+        open: candle.opening_price,
+        high: candle.high_price,
+        low: candle.low_price,
+        close: candle.trade_price,
+        volume: candle.candle_acc_trade_volume,
+      })).reverse(); // 시간 순으로 정렬
+      
+      // 차트 업데이트
+      if (candleSeriesRef.current) {
+        candleSeriesRef.current.setData(processedData);
+      }
+      
+      // 볼륨 업데이트
+      if (volumeSeriesRef.current) {
+        const volumeData = processedData.map((d) => ({
+          time: d.time,
+          value: d.volume,
+          color: d.close >= d.open ? '#26a69a' : '#ef5350',
+        }));
+        volumeSeriesRef.current.setData(volumeData);
+      }
+      
+      // 이동평균선 업데이트
+      updateMovingAverages(processedData);
+      
+      // 전략 분석 실행 및 마커 업데이트
+      if (processedData.length > 900) {
+        console.log('자동 업데이트: 전략 분석 실행 및 마커 업데이트...');
+        const analysisResult = useUpbitStore.getState().analyzeRealtimeData(processedData);
+        
+        if (analysisResult && analysisResult.signals) {
+          const signals = analysisResult.signals
+            .filter((signal: any) => signal.position !== null)
+            .map((signal: any) => ({
+              ...signal,
+              time: signal.time as unknown as Time,
+              position: signal.position as 'buy' | 'sell',
+              metadata: signal.metadata ? {
+                ...signal.metadata,
+                ma60: signal.metadata.ma60 || 0
+              } : undefined
+            }));
+          
+          const strategyMarkers = createTradeMarkers(signals);
+          setMarkers(strategyMarkers);
+          console.log(`자동 업데이트: 마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+        }
+      }
+      
+      // 현재 가격 업데이트
+      if (processedData.length > 0) {
+        setChartPrice(processedData[processedData.length - 1].close);
+      }
+      
+      // 데이터 저장
+      setAllData(processedData);
+      
+      console.log('자동 업데이트 완료');
+    } catch (error) {
+      console.error('자동 업데이트 오류:', error);
+    } finally {
+      ongoingRequestRef.current = false;
+    }
+  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, symbol, updateMovingAverages]);
+  
+  // 자동 업데이트 타이머 설정
+  useEffect(() => {
+    // 자동 업데이트는 초봉 차트에서만 필요함
+    if (isAutoUpdate && !isRealtimeAPIEnabled && chartType.startsWith('seconds/')) {
+      // 30초마다 자동 업데이트 (10초는 너무 빈번함)
+      const timer = setInterval(() => {
+        handleAutoUpdate();
+      }, 10000);
+      
+      timeoutRef.current = timer;
+      
+      console.log('자동 업데이트 타이머 설정: 30초 간격 (초봉 차트만 해당)');
+      
+      // 초기 로드 시 한 번 실행
+      handleAutoUpdate();
+      
+      return () => {
+        if (timeoutRef.current) {
+          clearInterval(timeoutRef.current);
+          timeoutRef.current = null;
+          console.log('자동 업데이트 타이머 해제');
+        }
+      };
+    }
+  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, handleAutoUpdate]);
 
   return {
     // 상태
