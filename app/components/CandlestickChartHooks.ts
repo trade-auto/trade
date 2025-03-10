@@ -423,6 +423,9 @@ export const useChartData = (
             });
           }
           
+          // 이동평균선 업데이트
+          updateMovingAverages(updatedData);
+          
           console.log('기존 캔들 업데이트:', newCandle);
         } else if ((newCandle.time as number) > (lastCandle.time as number)) {
           // 새 캔들 추가
@@ -442,6 +445,9 @@ export const useChartData = (
               color: newCandle.close >= newCandle.open ? '#26a69a' : '#ef5350',
             });
           }
+          
+          // 이동평균선 업데이트
+          updateMovingAverages(updatedData);
           
           console.log('새 캔들 추가:', newCandle);
           
@@ -533,6 +539,70 @@ export const useChartData = (
       };
     }
   }, [isRealtimeAPIEnabled, chartType, updateRealtimeData]);
+
+  // 이동평균선 업데이트 함수
+  const updateMovingAverages = useCallback((data: ExtendedCandlestickData[]) => {
+    if (data.length < 60) return; // 최소 60개 데이터 필요
+    
+    try {
+      console.log('이동평균선 업데이트 중...');
+      
+      // 마지막 캔들 시간
+      const lastTime = data[data.length - 1].time;
+      
+      // 각 이동평균선 계산
+      const calculateLastEMA = (period: number) => {
+        if (data.length < period) return null;
+        
+        // 단순 이동평균 계산 (최신 캔들 기준)
+        const slice = data.slice(data.length - period);
+        const sum = slice.reduce((acc, candle) => acc + candle.close, 0);
+        const ema = sum / period;
+        
+        return {
+          time: lastTime,
+          value: ema
+        };
+      };
+      
+      // 각 이동평균선 업데이트
+      const ma60 = calculateLastEMA(60);
+      const ma120 = calculateLastEMA(120);
+      const ma240 = calculateLastEMA(240);
+      const ma360 = calculateLastEMA(360);
+      const ma300 = calculateLastEMA(300);
+      const ma900 = calculateLastEMA(900);
+      
+      // 이동평균선 차트 업데이트
+      if (ma60 && sixtyEMASeriesRef.current) {
+        sixtyEMASeriesRef.current.update(ma60);
+      }
+      
+      if (ma120 && oneTwentyEMASeriesRef.current) {
+        oneTwentyEMASeriesRef.current.update(ma120);
+      }
+      
+      if (ma240 && twoFortyEMASeriesRef.current) {
+        twoFortyEMASeriesRef.current.update(ma240);
+      }
+      
+      if (ma360 && threeHundredSixtyEMASeriesRef.current) {
+        threeHundredSixtyEMASeriesRef.current.update(ma360);
+      }
+      
+      if (ma300 && threeHundredEMASeriesRef.current) {
+        threeHundredEMASeriesRef.current.update(ma300);
+      }
+      
+      if (ma900 && nineHundredEMASeriesRef.current) {
+        nineHundredEMASeriesRef.current.update(ma900);
+      }
+      
+      console.log('이동평균선 업데이트 완료');
+    } catch (error) {
+      console.error('이동평균선 업데이트 오류:', error);
+    }
+  }, []);
 
   return {
     // 상태
