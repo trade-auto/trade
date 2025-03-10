@@ -550,28 +550,145 @@ export const useChartData = (
       // 마지막 캔들 시간
       const lastTime = data[data.length - 1].time;
       
-      // 각 이동평균선 계산
-      const calculateLastEMA = (period: number) => {
+      // 이동평균선 계산 함수 (부드러운 이동평균 사용)
+      const calculateSmoothMA = (period: number, seriesRef: React.MutableRefObject<ISeriesApi<"Line"> | null>) => {
         if (data.length < period) return null;
         
         // 단순 이동평균 계산 (최신 캔들 기준)
         const slice = data.slice(data.length - period);
         const sum = slice.reduce((acc, candle) => acc + candle.close, 0);
-        const ema = sum / period;
+        const sma = sum / period;
+        
+        // 이전 값 가져오기
+        let prevValue: number | null = null;
+        if (seriesRef.current) {
+          const seriesData = seriesRef.current.data() as { time: Time; value: number }[];
+          prevValue = seriesData.length > 0 ? seriesData[seriesData.length - 1].value : null;
+        }
+        
+        // 새 값 계산
+        let newValue: number;
+        
+        if (prevValue === null) {
+          // 이전 값이 없으면 SMA 사용
+          newValue = sma;
+        } else {
+          // 이전 값이 있으면 부드러운 전환 적용
+          
+          // 1. 지수 이동평균 계산 (EMA)
+          const alpha = 2 / (period + 1);
+          const ema = (data[data.length - 1].close - prevValue) * alpha + prevValue;
+          
+          // 2. 변화율 제한 적용
+          const changePercent = Math.abs((ema - prevValue) / prevValue * 100);
+          
+          // 각 이동평균선별 최대 변화율 설정
+          let maxChangePercent: number;
+          if (period <= 60) {
+            maxChangePercent = 0.3; // 60MA는 최대 0.3% 변화
+          } else if (period <= 120) {
+            maxChangePercent = 0.25; // 120MA는 최대 0.25% 변화
+          } else if (period <= 240) {
+            maxChangePercent = 0.2; // 240MA는 최대 0.2% 변화
+          } else if (period <= 360) {
+            maxChangePercent = 0.15; // 360MA는 최대 0.15% 변화
+          } else {
+            maxChangePercent = 0.1; // 900MA는 최대 0.1% 변화
+          }
+          
+          if (changePercent > maxChangePercent) {
+            // 변화율이 너무 크면 제한
+            console.log(`${period}MA 변화율 제한: ${changePercent.toFixed(2)}% → ${maxChangePercent}%`);
+            const maxChange = prevValue * (maxChangePercent / 100);
+            newValue = prevValue + (ema > prevValue ? maxChange : -maxChange);
+          } else {
+            newValue = ema;
+          }
+        }
         
         return {
           time: lastTime,
-          value: ema
+          value: newValue
         };
       };
       
-      // 각 이동평균선 업데이트
-      const ma60 = calculateLastEMA(60);
-      const ma120 = calculateLastEMA(120);
-      const ma240 = calculateLastEMA(240);
-      const ma360 = calculateLastEMA(360);
-      const ma300 = calculateLastEMA(300);
-      const ma900 = calculateLastEMA(900);
+      // 각 이동평균선 계산
+      const ma60 = calculateSmoothMA(60, sixtyEMASeriesRef);
+      const ma120 = calculateSmoothMA(120, oneTwentyEMASeriesRef);
+      const ma240 = calculateSmoothMA(240, twoFortyEMASeriesRef);
+      const ma360 = calculateSmoothMA(360, threeHundredSixtyEMASeriesRef);
+      const ma300 = calculateSmoothMA(300, threeHundredEMASeriesRef);
+      const ma900 = calculateSmoothMA(900, nineHundredEMASeriesRef);
+      
+      // 매수 조건 체크 및 로그 출력
+      if (ma60 && ma120 && ma240 && ma900) {
+        // 조건 1: MA240 상향 5봉 이상 체크
+        let ma240UpCount = 0;
+        
+        // 이전 MA240 값들 가져오기
+        const ma240Values: number[] = [];
+        if (twoFortyEMASeriesRef.current) {
+          const seriesData = twoFortyEMASeriesRef.current.data() as { time: Time; value: number }[];
+          // 최근 6개 값 가져오기 (현재 값 포함)
+          for (let i = Math.max(0, seriesData.length - 6); i < seriesData.length; i++) {
+            ma240Values.push(seriesData[i].value);
+          }
+        }
+        
+        // 현재 값 추가
+        ma240Values.push(ma240.value);
+        
+        // 상승 추세 확인
+        for (let i = 1; i < ma240Values.length; i++) {
+          if (ma240Values[i] > ma240Values[i-1]) {
+            ma240UpCount++;
+          } else {
+            break;
+          }
+        }
+        
+        // 조건 2: MA60 > MA120
+        const isAbove120 = ma60.value > ma120.value;
+        
+        // 조건 3: MA60 > MA240
+        const isAbove240 = ma60.value > ma240.value;
+        
+        // 조건 4: MA900 상승세
+        let isMA900Upward = false;
+        if (nineHundredEMASeriesRef.current) {
+          const seriesData = nineHundredEMASeriesRef.current.data() as { time: Time; value: number }[];
+          if (seriesData.length > 1) {
+            const prevMA900 = seriesData[seriesData.length - 1].value;
+            isMA900Upward = ma900.value > prevMA900;
+          }
+        }
+        
+        // 조건 5: MA60 < MA900
+        const isBelow900 = ma60.value < ma900.value;
+        
+        // 모든 조건 로그 출력
+        console.log('\n=== 매수 조건 체크 ===');
+        console.log({
+          '조건 1 (MA240 상향 5봉 이상)': `${ma240UpCount}/5 ${ma240UpCount >= 5 ? '✅' : '❌'}`,
+          '조건 2 (MA60 > MA120)': `${ma60.value.toFixed(0)} > ${ma120.value.toFixed(0)} ${isAbove120 ? '✅' : '❌'}`,
+          '조건 3 (MA60 > MA240)': `${ma60.value.toFixed(0)} > ${ma240.value.toFixed(0)} ${isAbove240 ? '✅' : '❌'}`,
+          '조건 4 (MA900 상승세)': `${isMA900Upward ? '✅' : '❌'}`,
+          '조건 5 (MA60 < MA900)': `${ma60.value.toFixed(0)} < ${ma900.value.toFixed(0)} ${isBelow900 ? '✅' : '❌'}`,
+          '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) ? 
+            '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+        });
+        
+        // 현재 가격과 주요 이동평균선 값 출력
+        const currentPrice = data[data.length - 1].close;
+        console.log('\n=== 현재 가격 및 이동평균선 ===');
+        console.log({
+          '현재 가격': currentPrice.toLocaleString('ko-KR'),
+          'MA60': ma60.value.toLocaleString('ko-KR'),
+          'MA120': ma120.value.toLocaleString('ko-KR'),
+          'MA240': ma240.value.toLocaleString('ko-KR'),
+          'MA900': ma900.value.toLocaleString('ko-KR')
+        });
+      }
       
       // 이동평균선 차트 업데이트
       if (ma60 && sixtyEMASeriesRef.current) {
