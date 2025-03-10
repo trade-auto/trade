@@ -127,6 +127,8 @@ interface UpbitStore {
     signals: TradeSignal[],
     testId: string
   ) => BacktestResult;
+  lastAnalysisResult: any;
+  analyzeRealtimeData: (data: CandlestickData<Time>[]) => any;
 }
 
 // 로컬 스토리지에서 MA 설정 불러오기
@@ -539,6 +541,31 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
         averageProfit: closedTrades.length > 0 ? totalProfit / closedTrades.length : 0,
         maxDrawdown
       };
+    },
+    lastAnalysisResult: null,
+    analyzeRealtimeData: (data) => {
+      const state = get();
+      const selectedStrategy = state.strategies[state.tradeStrategy];
+      
+      // 이전 분석 결과 가져오기
+      const prevAnalysisResult = state.lastAnalysisResult;
+      
+      // 분석 옵션 설정
+      const options = {
+        realtime: true,
+        lastProcessedIndex: prevAnalysisResult?.lastProcessedIndex || 0,
+        currentPosition: prevAnalysisResult?.currentPosition || null,
+        lastTradeId: prevAnalysisResult?.lastTradeId || null,
+        signals: prevAnalysisResult?.signals || []
+      };
+      
+      // 전략 분석 실행
+      const analysisResult = selectedStrategy.analyze(data, options);
+      
+      // 분석 결과 저장
+      set({ lastAnalysisResult: analysisResult });
+      
+      return analysisResult;
     }
   };
 });

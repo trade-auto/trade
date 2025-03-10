@@ -141,6 +141,7 @@ export interface AnalyzeOptions {
   currentPosition?: 'buy' | null;
   lastTradeId?: string | null;
   entryPrice?: number;
+  signals?: TradeSignal[];
 }
 
 // 트레이딩 전략 인터페이스
