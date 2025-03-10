@@ -10,6 +10,8 @@ import { formatElapsedTime, calculateTotalProfit } from '../utils/formatters';
 import { getTradeSignal, calculateOrderVolume } from '../utils/strategies';
 import { calculateMA, calculateRelativeSlope, calculateBollingerBands } from '../utils/indicators';
 import { CreateOrderProps, OrderParams, TradeCycle } from '../types/trading';
+import strategies from '../strategies';
+import { Time } from 'lightweight-charts';
 
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
@@ -153,72 +155,34 @@ export const CreateOrder = forwardRef<
   useEffect(() => {
     if ((!autoTrading && !isBacktesting) || !currentPrice) return;
 
-    let signal = '';
+    const handleTradeSignal = async () => {
+      try {
+        // 현재 전략에서 신호 가져오기
+        const strategy = strategies[tradeStrategy];
+        if (!strategy || !priceHistory.length) return;
 
-    if (tradeStrategy === 'BOLLINGER' && priceHistory.length >= 20) {
-      // 볼린저 밴드 전략
-      const bands = calculateBollingerBands(priceHistory);
-      if (bands) {
-        if (currentPrice > bands.upper && currentCycle === 'waiting_buy') {
-          signal = '볼린저 밴드 매수 신호: 상단 밴드 돌파';
-        } else if (currentPrice < bands.lower && currentCycle === 'waiting_sell') {
-          signal = '볼린저 밴드 매도 신호: 하단 밴드 도달';
-        }
-      }
-    } else if (tradeStrategy === 'MA_CROSS' && priceHistory.length >= 60) {
-      // 단순 이동평균선 교차 전략
-      const ma30 = calculateMA(priceHistory, maPeriods.thirty);
-      const ma40 = calculateMA(priceHistory, maPeriods.forty);
-      const ma60 = calculateMA(priceHistory, maPeriods.sixty);
-      
-      // 30MA와 40MA의 교차
-      if (ma30[ma30.length - 2] <= ma40[ma40.length - 2] && 
-          ma30[ma30.length - 1] > ma40[ma40.length - 1]) {
-        signal = '이동평균선 매수 신호: 30MA가 40MA 상향돌파';
-      } else if (ma30[ma30.length - 2] >= ma40[ma40.length - 2] && 
-                 ma30[ma30.length - 1] < ma40[ma40.length - 1]) {
-        signal = '이동평균선 매도 신호: 30MA가 40MA 하향돌파';
-      }
-      
-      // 40MA와 60MA의 교차도 확인
-      if (ma40[ma40.length - 2] <= ma60[ma60.length - 2] && 
-          ma40[ma40.length - 1] > ma60[ma60.length - 1]) {
-        signal += '\n이동평균선 매수 신호: 40MA가 60MA 상향돌파';
-      } else if (ma40[ma40.length - 2] >= ma60[ma60.length - 2] && 
-                 ma40[ma40.length - 1] < ma60[ma60.length - 1]) {
-        signal += '\n이동평균선 매도 신호: 40MA가 60MA 하향돌파';
-      }
-    } else if (tradeStrategy === 'MA_CROSS_DEVIATION' && priceHistory.length >= 120) {
-      // 이격도 필터 적용 전략
-      const ma40 = calculateMA(priceHistory, maPeriods.forty);  // 40일 이동평균
-      const ma60 = calculateMA(priceHistory, maPeriods.sixty);  // 60일 이동평균
-      const ma120 = calculateMA(priceHistory, maPeriods.oneTwenty); // 120일 이동평균
-      
-      // 이격도 계산: (60일 MA - 120일 MA) / 120일 MA
-      const gap = Math.abs(ma60[ma60.length - 1] - ma120[ma120.length - 1]) / ma120[ma120.length - 1];
-      
-      if (gap >= 0.02) { // 이격도가 2% 이상일 때
-        // 매수 조건: 
-        // 1. 40MA와 60MA가 모두 120MA 위에 있음
-        if (ma40[ma40.length - 1] > ma120[ma120.length - 1] && 
-            ma60[ma60.length - 1] > ma120[ma120.length - 1]) {
-          signal = `이격도 매수 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
-        } 
-        // 매도 조건:
-        // 1. 40MA와 60MA가 모두 120MA 아래에 있음
-        else if (ma40[ma40.length - 1] < ma120[ma120.length - 1] && 
-                 ma60[ma60.length - 1] < ma120[ma120.length - 1]) {
-          signal = `이격도 매도 신호: 이격도 ${(gap * 100).toFixed(2)}%`;
-        }
-      }
-    } else if (tradeStrategy === 'SLOPE_FILTER' && priceHistory.length >= 360) {
-      (async () => {
-        // 새로운 조건 적용: getTradeSignal 함수 사용
-        const priceData: number[] = priceHistory.slice(-100);
-        const signal = getTradeSignal(priceData, currentPrice);
+        // 전략 분석 실행
+        const result = strategy.analyze(
+          priceHistory.map(price => ({
+            time: Math.floor(Date.now() / 1000) as Time,
+            open: price,
+            high: price,
+            low: price,
+            close: price
+          })),
+          {
+            realtime: true,
+            currentPosition: currentCycle === 'waiting_sell' ? 'buy' : null
+          }
+        );
 
-        // 현재 주문 사이클에 따라 조건 실행: 매수 후 매수 조건은 무시, 매도 후 재매도 무시
-        if (currentCycle === 'waiting_buy' && signal === "buy") {
+        // 마지막 신호 확인
+        const lastSignal = result.signals[result.signals.length - 1];
+        if (!lastSignal) return;
+
+        // 매수 신호 처리
+        if (currentCycle === 'waiting_buy' && lastSignal.position === 'buy') {
+          console.log('매수 신호 감지:', lastSignal);
           await createOrder({
             market: market,
             side: 'bid',
@@ -227,8 +191,12 @@ export const CreateOrder = forwardRef<
             ord_type: 'limit',
             mode: mode === 'test' ? 'test' : 'live-auto'
           });
-          setCurrentCycle('waiting_sell'); // 매수 후 다음은 매도 조건 대기
-        } else if (currentCycle === 'waiting_sell' && signal === "sell") {
+          setCurrentCycle('waiting_sell');
+          console.log('매수 주문 실행 완료');
+        }
+        // 매도 신호 처리
+        else if (currentCycle === 'waiting_sell' && lastSignal.position === 'sell') {
+          console.log('매도 신호 감지:', lastSignal);
           await createOrder({
             market: market,
             side: 'ask',
@@ -237,16 +205,17 @@ export const CreateOrder = forwardRef<
             ord_type: 'limit',
             mode: mode === 'test' ? 'test' : 'live-auto'
           });
-          setCurrentCycle('waiting_buy'); // 매도 후 다음은 매수 조건 대기
+          setCurrentCycle('waiting_buy');
+          console.log('매도 주문 실행 완료');
         }
-      })();
-    }
+      } catch (error) {
+        console.error('거래 신호 처리 중 오류 발생:', error);
+      }
+    };
 
-    if (signal !== lastSignal) {
-      setLastSignal(signal);
-      console.log(signal);
-    }
-  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, lastSignal, maPeriods.forty, maPeriods.oneTwenty, maPeriods.sixty, maPeriods.thirty, maPeriods.threeHundred, maPeriods.nineHundred, market, mode, createOrder]);
+    // 거래 신호 처리 실행
+    handleTradeSignal();
+  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, market, mode, createOrder]);
 
   // 경과 시간 업데이트를 위한 useEffect 수정
   useEffect(() => {
