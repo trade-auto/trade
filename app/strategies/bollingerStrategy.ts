@@ -477,7 +477,59 @@ const bollingerStrategy: BollingerStrategy = {
     console.log('매도 신호:', signals.filter(s => s.position === 'sell').length);
     
     // 현재 상태 확인 및 다음 액션 준비
-    if (currentPosition === 'buy') {
+    if (currentPosition === null) {
+      console.log('\n=== 현재 상태: 매수 대기 중 ===');
+      console.log('→ 다음 액션: 매수 조건 모니터링');
+      
+      // 마지막 캔들 정보 표시
+      const lastCandle = data[data.length - 1];
+      console.log(`마지막 캔들 시간: ${new Date(lastCandle.time as number * 1000).toLocaleString('ko-KR')}`);
+      console.log(`마지막 캔들 가격: ${lastCandle.close.toLocaleString('ko-KR')}원`);
+      
+      // 이동평균선 값 표시
+      const ma60 = data.slice(data.length - 60, data.length).reduce((a, b) => a + b.close, 0) / 60;
+      const ma120 = data.slice(data.length - 120, data.length).reduce((a, b) => a + b.close, 0) / 120;
+      const ma240 = data.slice(data.length - 240, data.length).reduce((a, b) => a + b.close, 0) / 240;
+      const ma900 = data.slice(data.length - 900, data.length).reduce((a, b) => a + b.close, 0) / 900;
+      
+      // 이전 MA900 계산 (MA900 상승세 확인용)
+      const prevMa900 = data.slice(data.length - 901, data.length - 1).reduce((a, b) => a + b.close, 0) / 900;
+      
+      // MA240 상향추세 체크 (5캔들 이상)
+      let ma240UpCount = 0;
+      for (let i = 1; i <= 5; i++) {
+        const idx = data.length - i;
+        if (idx < 240 || idx + 1 < 240) break;
+        
+        const prevMa240 = data.slice(idx - 240, idx).reduce((a, b) => a + b.close, 0) / 240;
+        const currentMa240 = data.slice(idx + 1 - 240, idx + 1).reduce((a, b) => a + b.close, 0) / 240;
+        
+        if (currentMa240 > prevMa240) {
+          ma240UpCount++;
+        } else {
+          break;
+        }
+      }
+      
+      console.log(`MA60: ${ma60.toFixed(3)}`);
+      console.log(`MA120: ${ma120.toFixed(3)}`);
+      console.log(`MA240: ${ma240.toFixed(3)}`);
+      console.log(`MA900: ${ma900.toFixed(3)}`);
+      
+      // 매수 조건 확인 상태 표시
+      const isAbove120 = ma60 > ma120;
+      const isAbove240 = ma60 > ma240;
+      const isBelow900 = ma60 < ma900;
+      const isMA900Upward = ma900 > prevMa900;
+      
+      console.log('\n=== 매수 조건 체크 ===');
+      console.log(`조건 1 (MA240 상향 5봉 이상): ${ma240UpCount >= 5 ? '✅' : '❌'} (${ma240UpCount}/5)`);
+      console.log(`조건 2 (MA60 > MA120): ${isAbove120 ? '✅' : '❌'}`);
+      console.log(`조건 3 (MA60 > MA240): ${isAbove240 ? '✅' : '❌'}`);
+      console.log(`조건 4 (MA900 상승세): ${isMA900Upward ? '✅' : '❌'}`);
+      console.log(`조건 5 (MA60 < MA900): ${isBelow900 ? '✅' : '❌'}`);
+      console.log(`최종 판정: ${(ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
+    } else {
       console.log('\n=== 현재 상태: 매수 완료(매도 대기 중) ===');
       console.log('→ 다음 액션: 매도 조건 모니터링');
       
@@ -494,32 +546,6 @@ const bollingerStrategy: BollingerStrategy = {
         console.log(`현재 가격: ${currentPrice.toLocaleString('ko-KR')}원`);
         console.log(`현재 수익률: ${profitRatio}%`);
       }
-    } else {
-      console.log('\n=== 현재 상태: 매수 대기 중 ===');
-      console.log('→ 다음 액션: 매수 조건 모니터링');
-      
-      // 최근 캔들 정보 표시
-      const latestCandle = data[data.length - 1];
-      const latestTime = new Date(latestCandle.time as number * 1000).toLocaleString('ko-KR');
-      console.log(`마지막 캔들 시간: ${latestTime}`);
-      console.log(`마지막 캔들 가격: ${latestCandle.close.toLocaleString('ko-KR')}원`);
-      
-      // 다음 매수 조건 분석을 위한 지표 계산
-      const ma60 = data.slice(data.length - 1 - 60, data.length - 1).reduce((a, b) => a + b.close, 0) / 60;
-      const ma120 = data.slice(data.length - 1 - 120, data.length - 1).reduce((a, b) => a + b.close, 0) / 120;
-      const ma240 = data.slice(data.length - 1 - 240, data.length - 1).reduce((a, b) => a + b.close, 0) / 240;
-      const ma900 = data.slice(data.length - 1 - 900, data.length - 1).reduce((a, b) => a + b.close, 0) / 900;
-      
-      console.log(`MA60: ${ma60.toLocaleString('ko-KR')}`);
-      console.log(`MA120: ${ma120.toLocaleString('ko-KR')}`);
-      console.log(`MA240: ${ma240.toLocaleString('ko-KR')}`);
-      console.log(`MA900: ${ma900.toLocaleString('ko-KR')}`);
-      
-      // MA60이 MA120과 MA240보다 위에 있는지 체크
-      const isAbove120 = ma60 > ma120;
-      const isAbove240 = ma60 > ma240;
-      console.log(`MA60 > MA120: ${isAbove120 ? '✅' : '❌'}`);
-      console.log(`MA60 > MA240: ${isAbove240 ? '✅' : '❌'}`);
     }
     
     console.log('\n분석 종료 시간:', new Date().toLocaleString('ko-KR'));
