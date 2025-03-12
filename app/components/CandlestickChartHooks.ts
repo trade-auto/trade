@@ -1,10 +1,12 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
-import { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import { IChartApi, ISeriesApi, Time, SeriesMarkerPosition } from 'lightweight-charts';
 import { ExtendedCandlestickData, DateRange, MASettings, SeriesMarker } from './CandlestickChartTypes';
 import { getInitialDateRange, calculateEMA, getChartEndpoint, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
 import { UpbitCandle } from '../types/candlestick';
-import { TradeStrategy, TradeSignal } from '../strategies/types';
+import { TradeStrategy } from '../strategies/types';
+import type { TradeSignal as TradingTradeSignal } from '../types/trading';
+import type { TradeSignal as StrategyTradeSignal } from '../strategies/types';
 
 export const useChartData = (
   symbol: string,
@@ -211,35 +213,51 @@ export const useChartData = (
         // 매매 신호 분석 및 마커 생성
         const selectedStrategy = useUpbitStore.getState().strategies[useUpbitStore.getState().tradeStrategy];
         const analysisResult = selectedStrategy.analyze(allProcessedData);
-        const signals = analysisResult.signals
-          .filter(signal => signal.position !== null)
-          .map(signal => ({
-            ...signal,
-            time: signal.time as unknown as Time,
-            position: signal.position as 'buy' | 'sell',
-            metadata: signal.metadata ? {
-              ...signal.metadata,
-              ma60: signal.metadata.ma60 || 0,
-              ma120: signal.metadata.ma120 || 0,
-              ma240: signal.metadata.ma240 || 0,
-              ma900: signal.metadata.ma900 || 0,
-              upperBand: signal.metadata.upperBand || 0,
-              lowerBand: signal.metadata.lowerBand || 0,
-              deviation: signal.metadata.deviation || 0,
-              isAbove900MA: signal.metadata.isAbove900MA || false
-            } : undefined
-          }));
+        
+        // 신호 필터링 및 변환
+        const signals = (analysisResult.signals as StrategyTradeSignal[])
+          .filter((signal: StrategyTradeSignal) => signal && signal.position && signal.time)
+          .map((signal: StrategyTradeSignal) => {
+            const signalTime = typeof signal.time === 'number' ? 
+              signal.time : 
+              new Date(signal.time).getTime() / 1000;
+            
+            if (isNaN(signalTime)) {
+              console.log('잘못된 시간 형식:', signal.time);
+              return null;
+            }
+
+            return {
+              ...signal,
+              time: signalTime as Time,
+              position: signal.position,
+              metadata: {
+                ...signal.metadata,
+                ma60: signal.metadata?.ma60 || 0,
+                ma120: signal.metadata?.ma120 || 0,
+                ma240: signal.metadata?.ma240 || 0,
+                ma600: signal.metadata?.ma600 || 0,
+                ma900: signal.metadata?.ma900 || 0,
+                timestamp: new Date(signalTime * 1000).toLocaleString('ko-KR')
+              }
+            } as unknown as TradingTradeSignal;
+          })
+          .filter((signal): signal is TradingTradeSignal => signal !== null);
+        
+        // 신호 정렬 (시간순)
+        signals.sort((a, b) => (a.time as number) - (b.time as number));
         
         // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
         const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
         
-        // 로그에 신호 수 출력
-        console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
-        console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
-        
-        const strategyMarkers = createTradeMarkers(limitedSignals);  
-        // 매수/매도 포인트 계산
+        const strategyMarkers = createTradeMarkers(limitedSignals);
         setMarkers(strategyMarkers);
+        
+        // 마커 생성 결과 로그
+        console.log('\n=== 마커 생성 결과 ===');
+        console.log(`생성된 마커 수: ${strategyMarkers.length}`);
+        console.log(`매수 마커: ${strategyMarkers.filter(m => m.position === ('buy' as SeriesMarkerPosition)).length}`);
+        console.log(`매도 마커: ${strategyMarkers.filter(m => m.position === ('sell' as SeriesMarkerPosition)).length}`);
         
         // 백테스트 결과 계산 (전체 신호 사용)
         const backtestResult = calculateBacktestResult(allProcessedData, signals, mode || 'test');
@@ -490,153 +508,34 @@ export const useChartData = (
       
       // 매수 조건 체크 및 로그 출력 (성능 최적화: 3초마다 한 번씩만 수행)
       if (ma60 && ma120 && ma240 && ma600 && Date.now() % 3000 < 1000) {
-        // 조건 1: MA240 상향 연속 봉 체크
-        let ma240UpCount = 0;
+        // 로그 시간 추가
+        const logTime = new Date().toLocaleTimeString('ko-KR');
         
-        // 이전 MA240 값들 가져오기
-        const ma240Values: number[] = [];
-        if (twoFortyEMASeriesRef.current) {
-          const seriesData = twoFortyEMASeriesRef.current.data() as { time: Time; value: number }[];
-          // 최근 10개 값 가져오기 (현재 값 포함)
-          for (let i = Math.max(0, seriesData.length - 10); i < seriesData.length; i++) {
-            ma240Values.push(seriesData[i].value);
-          }
-        }
-        
-        // 현재 값 추가
-        ma240Values.push(ma240.value);
-        
-        // 상승 추세 확인
-        for (let i = 1; i < ma240Values.length; i++) {
-          if (ma240Values[i] > ma240Values[i-1]) {
-            ma240UpCount++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 2: MA60 > MA120 연속 봉 체크
-        let ma60AboveMa120Count = 0;
-        const ma60Values: number[] = [];
-        const ma120Values: number[] = [];
-        
-        if (sixtyEMASeriesRef.current && oneTwentyEMASeriesRef.current) {
-          const ma60Data = sixtyEMASeriesRef.current.data() as { time: Time; value: number }[];
-          const ma120Data = oneTwentyEMASeriesRef.current.data() as { time: Time; value: number }[];
-          
-          // 최근 10개 값 가져오기
-          for (let i = Math.max(0, ma60Data.length - 10); i < ma60Data.length; i++) {
-            ma60Values.push(ma60Data[i].value);
-          }
-          
-          for (let i = Math.max(0, ma120Data.length - 10); i < ma120Data.length; i++) {
-            ma120Values.push(ma120Data[i].value);
-          }
-        }
-        
-        // 현재 값 추가
-        ma60Values.push(ma60.value);
-        ma120Values.push(ma120.value);
-        
-        // MA60 > MA120 연속 봉 체크
-        const minLength = Math.min(ma60Values.length, ma120Values.length);
-        for (let i = 0; i < minLength; i++) {
-          if (ma60Values[ma60Values.length - 1 - i] > ma120Values[ma120Values.length - 1 - i]) {
-            ma60AboveMa120Count++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 3: MA60 > MA240 연속 봉 체크
-        let ma60AboveMa240Count = 0;
-        
-        // MA60 > MA240 연속 봉 체크
-        for (let i = 0; i < Math.min(ma60Values.length, ma240Values.length); i++) {
-          if (ma60Values[ma60Values.length - 1 - i] > ma240Values[ma240Values.length - 1 - i]) {
-            ma60AboveMa240Count++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 4: MA600 상승세 연속 봉 체크
-        let ma600UpCount = 0;
-        const ma600Values: number[] = [];
-        
-        if (sixHundredEMASeriesRef.current) {
-          const ma600Data = sixHundredEMASeriesRef.current.data() as { time: Time; value: number }[];
-          
-          // 최근 10개 값 가져오기
-          for (let i = Math.max(0, ma600Data.length - 10); i < ma600Data.length; i++) {
-            ma600Values.push(ma600Data[i].value);
-          }
-        }
-        
-        // 현재 값 추가
-        ma600Values.push(ma600.value);
-        
-        // MA600 상승세 연속 봉 체크
-        for (let i = 1; i < ma600Values.length; i++) {
-          if (ma600Values[i] > ma600Values[i-1]) {
-            ma600UpCount++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 5: MA60 < MA600 연속 봉 체크
-        let ma60BelowMa600Count = 0;
-        
-        // MA60 < MA600 연속 봉 체크
-        for (let i = 0; i < Math.min(ma60Values.length, ma600Values.length); i++) {
-          if (ma60Values[ma60Values.length - 1 - i] < ma600Values[ma600Values.length - 1 - i]) {
-            ma60BelowMa600Count++;
-          } else {
-            break;
-          }
-        }
-        
-        // 각 조건의 최소 필요 봉 수 설정
-        const minMa240UpCount = 5;
-        const minMa60AboveMa120Count = 3;
-        const minMa60AboveMa240Count = 3;
-        const minMa600UpCount = 2;
-        const minMa60BelowMa600Count = 3;
-        
-        // 각 조건 충족 여부
-        const isMa240UpValid = ma240UpCount >= minMa240UpCount;
-        const isMa60AboveMa120Valid = ma60AboveMa120Count >= minMa60AboveMa120Count;
-        const isMa60AboveMa240Valid = ma60AboveMa240Count >= minMa60AboveMa240Count;
-        const isMa600UpValid = ma600UpCount >= minMa600UpCount;
-        const isMa60BelowMa600Valid = ma60BelowMa600Count >= minMa60BelowMa600Count;
-        
-        // 5번째 조건 사용 여부 체크
-        const { useFifthCondition } = useUpbitStore.getState();
-        const isFifthConditionValid = !useFifthCondition || isMa60BelowMa600Valid;
-        
-        // 모든 조건 로그 출력
-        console.log('\n=== 매수 조건 체크 ===');
-        console.log({
-          '조건 1 (MA240 상향)': `${ma240UpCount}/${minMa240UpCount} 봉 ${isMa240UpValid ? '✅' : '❌'}`,
-          '조건 2 (MA60 > MA120)': `${ma60AboveMa120Count}/${minMa60AboveMa120Count} 봉 ${isMa60AboveMa120Valid ? '✅' : '❌'}`,
-          '조건 3 (MA60 > MA240)': `${ma60AboveMa240Count}/${minMa60AboveMa240Count} 봉 ${isMa60AboveMa240Valid ? '✅' : '❌'}`,
-          '조건 4 (MA600 상승세)': `${ma600UpCount}/${minMa600UpCount} 봉 ${isMa600UpValid ? '✅' : '❌'}`,
-          '조건 5 (MA60 < MA600)': `${ma60BelowMa600Count}/${minMa60BelowMa600Count} 봉 ${isMa60BelowMa600Valid ? '✅' : '❌'} ${!useFifthCondition ? '[비활성화됨]' : ''}`,
-          '최종 판정': (isMa240UpValid && isMa60AboveMa120Valid && isMa60AboveMa240Valid && isMa600UpValid && isFifthConditionValid) ? 
-            '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
-        });
+        // 조건 체크 로그 출력
+        console.group(`=== 매수 조건 분석 (${logTime}) ===`);
         
         // 현재 가격과 주요 이동평균선 값 출력
         const currentPrice = data[data.length - 1].close;
-        console.log('\n=== 현재 가격 및 이동평균선 ===');
-        console.log({
+        console.log('현재 가격 및 이동평균선:', {
+          '시간': logTime,
           '현재 가격': currentPrice.toLocaleString('ko-KR'),
-          'MA60': ma60?.value.toLocaleString('ko-KR'),
-          'MA120': ma120?.value.toLocaleString('ko-KR'),
-          'MA240': ma240?.value.toLocaleString('ko-KR'),
-          'MA600': ma600?.value.toLocaleString('ko-KR')
+          'MA60': ma60?.value.toFixed(2),
+          'MA120': ma120?.value.toFixed(2),
+          'MA240': ma240?.value.toFixed(2),
+          'MA600': ma600?.value.toFixed(2)
         });
+
+        // 매수 조건 상태 출력
+        const strategy = useUpbitStore.getState().strategies[useUpbitStore.getState().tradeStrategy];
+        if (strategy && typeof strategy.analyze === 'function') {
+          const analysisResult = strategy.analyze([data[data.length - 1]]);
+          console.log('매수 조건 상태:', analysisResult);
+        }
+        
+        console.groupEnd();
+
+        // 브라우저 콘솔 보존 설정
+        console.log('%c콘솔 보존 모드가 활성화되었습니다. 페이지를 새로고침해도 로그가 유지됩니다.', 'color: #26a69a; font-weight: bold;');
       }
       
       const endTime = Date.now();
@@ -754,17 +653,34 @@ export const useChartData = (
             const analysisResult = useUpbitStore.getState().analyzeRealtimeData(updatedData);
             
             if (analysisResult && analysisResult.signals) {
-              const signals = analysisResult.signals
-                .filter((signal: any) => signal.position !== null)
-                .map((signal: any) => ({
-                  ...signal,
-                  time: signal.time as unknown as Time,
-                  position: signal.position as 'buy' | 'sell',
-                  metadata: signal.metadata ? {
-                    ...signal.metadata,
-                    ma60: signal.metadata.ma60 || 0
-                  } : undefined
-                }));
+              const signals = (analysisResult.signals as StrategyTradeSignal[])
+                .filter((signal: StrategyTradeSignal) => signal && signal.position && signal.time)
+                .map((signal: StrategyTradeSignal) => {
+                  const signalTime = typeof signal.time === 'number' ? 
+                    signal.time : 
+                    new Date(signal.time).getTime() / 1000;
+                  
+                  if (isNaN(signalTime)) {
+                    console.log('잘못된 시간 형식:', signal.time);
+                    return null;
+                  }
+
+                  return {
+                    ...signal,
+                    time: signalTime as Time,
+                    position: signal.position,
+                    metadata: {
+                      ...signal.metadata,
+                      ma60: signal.metadata?.ma60 || 0,
+                      ma120: signal.metadata?.ma120 || 0,
+                      ma240: signal.metadata?.ma240 || 0,
+                      ma600: signal.metadata?.ma600 || 0,
+                      ma900: signal.metadata?.ma900 || 0,
+                      timestamp: new Date(signalTime * 1000).toLocaleString('ko-KR')
+                    }
+                  } as unknown as TradingTradeSignal;
+                })
+                .filter((signal): signal is TradingTradeSignal => signal !== null);
               
               // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
               const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
@@ -808,17 +724,34 @@ export const useChartData = (
             const analysisResult = useUpbitStore.getState().analyzeRealtimeData(updatedData);
             
             if (analysisResult && analysisResult.signals) {
-              const signals = analysisResult.signals
-                .filter((signal: any) => signal.position !== null)
-                .map((signal: any) => ({
-                  ...signal,
-                  time: signal.time as unknown as Time,
-                  position: signal.position as 'buy' | 'sell',
-                  metadata: signal.metadata ? {
-                    ...signal.metadata,
-                    ma60: signal.metadata.ma60 || 0
-                  } : undefined
-                }));
+              const signals = (analysisResult.signals as StrategyTradeSignal[])
+                .filter((signal: StrategyTradeSignal) => signal && signal.position && signal.time)
+                .map((signal: StrategyTradeSignal) => {
+                  const signalTime = typeof signal.time === 'number' ? 
+                    signal.time : 
+                    new Date(signal.time).getTime() / 1000;
+                  
+                  if (isNaN(signalTime)) {
+                    console.log('잘못된 시간 형식:', signal.time);
+                    return null;
+                  }
+
+                  return {
+                    ...signal,
+                    time: signalTime as Time,
+                    position: signal.position,
+                    metadata: {
+                      ...signal.metadata,
+                      ma60: signal.metadata?.ma60 || 0,
+                      ma120: signal.metadata?.ma120 || 0,
+                      ma240: signal.metadata?.ma240 || 0,
+                      ma600: signal.metadata?.ma600 || 0,
+                      ma900: signal.metadata?.ma900 || 0,
+                      timestamp: new Date(signalTime * 1000).toLocaleString('ko-KR')
+                    }
+                  } as unknown as TradingTradeSignal;
+                })
+                .filter((signal): signal is TradingTradeSignal => signal !== null);
               
               // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
               const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
@@ -996,17 +929,34 @@ export const useChartData = (
         const analysisResult = useUpbitStore.getState().analyzeRealtimeData(combinedData);
         
         if (analysisResult && analysisResult.signals) {
-          const signals = analysisResult.signals
-            .filter((signal: any) => signal.position !== null)
-            .map((signal: any) => ({
-              ...signal,
-              time: signal.time as unknown as Time,
-              position: signal.position as 'buy' | 'sell',
-              metadata: signal.metadata ? {
-                ...signal.metadata,
-                ma60: signal.metadata.ma60 || 0
-              } : undefined
-            }));
+          const signals = (analysisResult.signals as StrategyTradeSignal[])
+            .filter((signal: StrategyTradeSignal) => signal && signal.position && signal.time)
+            .map((signal: StrategyTradeSignal) => {
+              const signalTime = typeof signal.time === 'number' ? 
+                signal.time : 
+                new Date(signal.time).getTime() / 1000;
+              
+              if (isNaN(signalTime)) {
+                console.log('잘못된 시간 형식:', signal.time);
+                return null;
+              }
+
+              return {
+                ...signal,
+                time: signalTime as Time,
+                position: signal.position,
+                metadata: {
+                  ...signal.metadata,
+                  ma60: signal.metadata?.ma60 || 0,
+                  ma120: signal.metadata?.ma120 || 0,
+                  ma240: signal.metadata?.ma240 || 0,
+                  ma600: signal.metadata?.ma600 || 0,
+                  ma900: signal.metadata?.ma900 || 0,
+                  timestamp: new Date(signalTime * 1000).toLocaleString('ko-KR')
+                }
+              } as unknown as TradingTradeSignal;
+            })
+            .filter((signal): signal is TradingTradeSignal => signal !== null);
           
           // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
           const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
@@ -1104,17 +1054,34 @@ export const useChartData = (
       console.log('분석 결과:', analysisResult?.signals?.length ?? 0, '개의 신호 발견');
       
       if (analysisResult && analysisResult.signals) {
-        const signals = analysisResult.signals
-          .filter((signal: any) => signal.position !== null)
-          .map((signal: any) => ({
-            ...signal,
-            time: signal.time as unknown as Time,
-            position: signal.position as 'buy' | 'sell',
-            metadata: signal.metadata ? {
-              ...signal.metadata,
-              ma60: signal.metadata.ma60 || 0
-            } : undefined
-          }));
+        const signals = (analysisResult.signals as StrategyTradeSignal[])
+          .filter((signal: StrategyTradeSignal) => signal && signal.position && signal.time)
+          .map((signal: StrategyTradeSignal) => {
+            const signalTime = typeof signal.time === 'number' ? 
+              signal.time : 
+              new Date(signal.time).getTime() / 1000;
+            
+            if (isNaN(signalTime)) {
+              console.log('잘못된 시간 형식:', signal.time);
+              return null;
+            }
+
+            return {
+              ...signal,
+              time: signalTime as Time,
+              position: signal.position,
+              metadata: {
+                ...signal.metadata,
+                ma60: signal.metadata?.ma60 || 0,
+                ma120: signal.metadata?.ma120 || 0,
+                ma240: signal.metadata?.ma240 || 0,
+                ma600: signal.metadata?.ma600 || 0,
+                ma900: signal.metadata?.ma900 || 0,
+                timestamp: new Date(signalTime * 1000).toLocaleString('ko-KR')
+              }
+            } as unknown as TradingTradeSignal;
+          })
+          .filter((signal): signal is TradingTradeSignal => signal !== null);
         
         // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
         const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
