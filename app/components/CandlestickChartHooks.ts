@@ -354,12 +354,30 @@ export const useChartData = (
 
   // 자동 업데이트 토글 핸들러
   const handleAutoUpdateToggle = useCallback(() => {
-    setIsAutoUpdate(prev => !prev);
+    setIsAutoUpdate(prev => {
+      if (!prev) {
+        // 자동 업데이트를 켤 때 실시간 업데이트는 끔
+        setIsRealtimeAPIEnabled(false);
+        console.log('자동 업데이트 활성화: 실시간 업데이트 비활성화됨');
+      } else {
+        console.log('자동 업데이트 비활성화');
+      }
+      return !prev;
+    });
   }, []);
 
   // 실시간 API 토글 핸들러
   const handleRealtimeAPIToggle = useCallback(() => {
-    setIsRealtimeAPIEnabled(prev => !prev);
+    setIsRealtimeAPIEnabled(prev => {
+      if (!prev) {
+        // 실시간 업데이트를 켤 때 자동 업데이트는 끔
+        setIsAutoUpdate(false);
+        console.log('실시간 업데이트 활성화: 자동 업데이트 비활성화됨');
+      } else {
+        console.log('실시간 업데이트 비활성화');
+      }
+      return !prev;
+    });
   }, []);
 
   // 이동평균선 업데이트 함수 최적화
