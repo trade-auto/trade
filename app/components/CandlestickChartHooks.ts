@@ -506,40 +506,42 @@ export const useChartData = (
         nineHundredEMASeriesRef.current.update(ma900);
       }
       
-      // 매수 조건 체크 및 로그 출력 (성능 최적화: 3초마다 한 번씩만 수행)
-      if (ma60 && ma120 && ma240 && ma600 && Date.now() % 3000 < 1000) {
-        // 로그 시간 추가
+      // 매수 조건 체크 및 로그 출력 (10초마다 한 번씩만 수행)
+      if (ma60 && ma120 && ma240 && ma600 && Date.now() % 10000 < 1000) {
         const logTime = new Date().toLocaleTimeString('ko-KR');
         
         // 조건 체크 로그 출력
-        console.group(`=== 매수 조건 분석 (${logTime}) ===`);
+        console.group(`%c=== 매수 조건 검사 (${logTime}) ===`, 'color: #2196F3; font-weight: bold;');
         
         // 현재 가격과 주요 이동평균선 값 출력
         const currentPrice = data[data.length - 1].close;
-        console.log('현재 가격 및 이동평균선:', {
+        const priceInfo = {
           '시간': logTime,
           '현재 가격': currentPrice.toLocaleString('ko-KR'),
           'MA60': ma60?.value.toFixed(2),
           'MA120': ma120?.value.toFixed(2),
           'MA240': ma240?.value.toFixed(2),
           'MA600': ma600?.value.toFixed(2)
-        });
+        };
+        console.log('%c현재 가격 및 이동평균선:', 'color: #4CAF50; font-weight: bold;', priceInfo);
 
         // 매수 조건 상태 출력
         const strategy = useUpbitStore.getState().strategies[useUpbitStore.getState().tradeStrategy];
         if (strategy && typeof strategy.analyze === 'function') {
           const analysisResult = strategy.analyze([data[data.length - 1]]);
-          console.log('매수 조건 상태:', analysisResult);
+          console.log('%c매수 조건 상태:', 'color: #FF9800; font-weight: bold;', analysisResult);
         }
         
         console.groupEnd();
 
-        // 브라우저 콘솔 보존 설정
-        console.log('%c콘솔 보존 모드가 활성화되었습니다. 페이지를 새로고침해도 로그가 유지됩니다.', 'color: #26a69a; font-weight: bold;');
+        // 브라우저 콘솔 보존 설정 안내 (5분마다 한 번만 표시)
+        if (Date.now() % 300000 < 1000) {
+          console.log(
+            '%c콘솔 보존 모드 안내: 개발자 도구(F12) > Console 탭 > "Preserve log" 체크 시 로그가 유지됩니다.',
+            'color: #26a69a; font-weight: bold; font-size: 12px;'
+          );
+        }
       }
-      
-      const endTime = Date.now();
-      console.log(`이동평균선 업데이트 완료: ${endTime - startTime}ms 소요`);
     } catch (error) {
       console.error('이동평균선 업데이트 오류:', error);
     }
@@ -576,16 +578,9 @@ export const useChartData = (
       const to = new Date().toISOString();
       const endpoint = getChartEndpoint(chartType);
       
-      // API 호출 시작 시간 기록
-      const apiStartTime = Date.now();
-      
       const response = await fetch(
         `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=2`
       );
-      
-      // API 호출 소요 시간 계산
-      const apiTime = Date.now() - apiStartTime;
-      console.log(`API 호출 소요 시간: ${apiTime}ms`);
       
       if (!response.ok) {
         throw new Error('실시간 데이터 로딩 실패');
@@ -692,6 +687,8 @@ export const useChartData = (
               const strategyMarkers = createTradeMarkers(limitedSignals);
               setMarkers(strategyMarkers);
               console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
+            } else {
+              console.log('전략 분석 결과: 신호 없음');
             }
           }
         } else if ((newCandle.time as number) > (lastCandle.time as number)) {
@@ -763,6 +760,8 @@ export const useChartData = (
               const strategyMarkers = createTradeMarkers(limitedSignals);
               setMarkers(strategyMarkers);
               console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
+            } else {
+              console.log('전략 분석 결과: 신호 없음');
             }
           }
         } else {
