@@ -96,7 +96,7 @@ interface UpbitStore {
     maxOrderPrice: number;
   };
   maPeriods: MAType;
-  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred', value: number) => void;
+  updateMAPeriod: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'sixHundred' | 'nineHundred', value: number) => void;
   showMA: {
     thirty: boolean;
     forty: boolean;
@@ -104,12 +104,12 @@ interface UpbitStore {
     oneTwenty: boolean;
     twoForty: boolean;
     threeHundredSixty: boolean;
-    threeHundred: boolean;
+    sixHundred: boolean;
     nineHundred: boolean;
   };
   useFifthCondition: boolean;
   toggleFifthCondition: () => void;
-  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred') => void;
+  updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'sixHundred' | 'nineHundred') => void;
   tradeStrategy: TradeStrategy;
   updateTradeStrategy: (strategy: TradeStrategy) => void;
   dateRange: DateRange;
@@ -149,7 +149,7 @@ const loadMASettings = () => {
           oneTwenty: true,
           twoForty: true,
           threeHundredSixty: true,
-          threeHundred: true,
+          sixHundred: true,
           nineHundred: true,
         },
         maPeriods: savedMAPeriods ? JSON.parse(savedMAPeriods) : {
@@ -159,7 +159,7 @@ const loadMASettings = () => {
           oneTwenty: 120,
           twoForty: 240,
           threeHundredSixty: 360,
-          threeHundred: 300,
+          sixHundred: 600,
           nineHundred: 900,
         },
         useFifthCondition: savedFifthCondition ? JSON.parse(savedFifthCondition) : true
@@ -177,7 +177,7 @@ const loadMASettings = () => {
       oneTwenty: true,
       twoForty: true,
       threeHundredSixty: true,
-      threeHundred: true,
+      sixHundred: true,
       nineHundred: true,
     },
     maPeriods: {
@@ -187,7 +187,7 @@ const loadMASettings = () => {
       oneTwenty: 120,
       twoForty: 240,
       threeHundredSixty: 360,
-      threeHundred: 300,
+      sixHundred: 600,
       nineHundred: 900,
     },
     useFifthCondition: true

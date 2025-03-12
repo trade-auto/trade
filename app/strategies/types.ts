@@ -14,7 +14,7 @@ export interface MAType {
   oneTwenty: number;
   twoForty: number;
   threeHundredSixty: number;
-  threeHundred: number;
+  sixHundred: number;
   nineHundred: number;
 }
 

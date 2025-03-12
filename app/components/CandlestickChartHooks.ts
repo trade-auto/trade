@@ -32,7 +32,7 @@ export const useChartData = (
     oneTwenty: true,
     twoForty: true,
     threeHundredSixty: true,
-    threeHundred: true,
+    sixHundred: true,
     nineHundred: true,
   });
   
@@ -44,7 +44,7 @@ export const useChartData = (
   const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const twoFortyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const threeHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const sixHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const nineHundredEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const markerPluginRef = useRef<any | null>(null);
   
@@ -170,12 +170,12 @@ export const useChartData = (
         setProgress(70);
         
         // EMA 계산 및 설정 - 병렬 처리
-        const [ema60Data, ema120Data, ema240Data, ema360Data, ema300Data, ema900Data] = await Promise.all([
+        const [ema60Data, ema120Data, ema240Data, ema360Data, ema600Data, ema900Data] = await Promise.all([
           Promise.resolve(calculateEMA(allProcessedData, 60)),
           Promise.resolve(calculateEMA(allProcessedData, 120)),
           Promise.resolve(calculateEMA(allProcessedData, 240)),
           Promise.resolve(calculateEMA(allProcessedData, 360)),
-          Promise.resolve(calculateEMA(allProcessedData, 300)),
+          Promise.resolve(calculateEMA(allProcessedData, 600)),
           Promise.resolve(calculateEMA(allProcessedData, 900))
         ]);
         
@@ -184,7 +184,7 @@ export const useChartData = (
           oneTwentyEMASeriesRef.current && 
           twoFortyEMASeriesRef.current && 
           threeHundredSixtyEMASeriesRef.current &&
-          threeHundredEMASeriesRef.current &&
+          sixHundredEMASeriesRef.current &&
           nineHundredEMASeriesRef.current
         ) {
           // EMA 데이터 설정
@@ -192,7 +192,7 @@ export const useChartData = (
           oneTwentyEMASeriesRef.current.setData(ema120Data);
           twoFortyEMASeriesRef.current.setData(ema240Data);
           threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-          threeHundredEMASeriesRef.current.setData(ema300Data);
+          sixHundredEMASeriesRef.current.setData(ema600Data);
           nineHundredEMASeriesRef.current.setData(ema900Data);
           
           // 시리즈 가시성 설정
@@ -200,7 +200,7 @@ export const useChartData = (
           oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
           twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
           threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
-          threeHundredEMASeriesRef.current.applyOptions({ visible: showMA.threeHundred });
+          sixHundredEMASeriesRef.current.applyOptions({ visible: showMA.sixHundred });
           nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
         }
         
@@ -273,7 +273,7 @@ export const useChartData = (
     oneTwentyEMASeries: ISeriesApi<"Line">,
     twoFortyEMASeries: ISeriesApi<"Line">,
     threeHundredSixtyEMASeries: ISeriesApi<"Line">,
-    threeHundredEMASeries: ISeriesApi<"Line">,
+    sixHundredEMASeries: ISeriesApi<"Line">,
     nineHundredEMASeries: ISeriesApi<"Line">
   ) => {
     chartRef.current = chartApi;
@@ -283,7 +283,7 @@ export const useChartData = (
     oneTwentyEMASeriesRef.current = oneTwentyEMASeries;
     twoFortyEMASeriesRef.current = twoFortyEMASeries;
     threeHundredSixtyEMASeriesRef.current = threeHundredSixtyEMASeries;
-    threeHundredEMASeriesRef.current = threeHundredEMASeries;
+    sixHundredEMASeriesRef.current = sixHundredEMASeries;
     nineHundredEMASeriesRef.current = nineHundredEMASeries;
     
     // 볼륨 시리즈 설정
@@ -325,14 +325,14 @@ export const useChartData = (
       oneTwentyEMASeriesRef.current && 
       twoFortyEMASeriesRef.current && 
       threeHundredSixtyEMASeriesRef.current &&
-      threeHundredEMASeriesRef.current &&
+      sixHundredEMASeriesRef.current &&
       nineHundredEMASeriesRef.current
     ) {
       sixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.sixty });
       oneTwentyEMASeriesRef.current.applyOptions({ visible: newShowMA.oneTwenty });
       twoFortyEMASeriesRef.current.applyOptions({ visible: newShowMA.twoForty });
       threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.threeHundredSixty });
-      threeHundredEMASeriesRef.current.applyOptions({ visible: newShowMA.threeHundred });
+      sixHundredEMASeriesRef.current.applyOptions({ visible: newShowMA.sixHundred });
       nineHundredEMASeriesRef.current.applyOptions({ visible: newShowMA.nineHundred });
     }
   }, []);
@@ -432,7 +432,7 @@ export const useChartData = (
       const ma120 = calculateSmoothMA(120, oneTwentyEMASeriesRef);
       const ma240 = calculateSmoothMA(240, twoFortyEMASeriesRef);
       const ma360 = calculateSmoothMA(360, threeHundredSixtyEMASeriesRef);
-      const ma300 = calculateSmoothMA(300, threeHundredEMASeriesRef);
+      const ma600 = calculateSmoothMA(600, sixHundredEMASeriesRef);
       const ma900 = calculateSmoothMA(900, nineHundredEMASeriesRef);
       
       // 이동평균선 차트 업데이트
@@ -452,8 +452,8 @@ export const useChartData = (
         threeHundredSixtyEMASeriesRef.current.update(ma360);
       }
       
-      if (ma300 && threeHundredEMASeriesRef.current) {
-        threeHundredEMASeriesRef.current.update(ma300);
+      if (ma600 && sixHundredEMASeriesRef.current) {
+        sixHundredEMASeriesRef.current.update(ma600);
       }
       
       if (ma900 && nineHundredEMASeriesRef.current) {
@@ -958,7 +958,7 @@ export const useChartData = (
     oneTwentyEMASeriesRef,
     twoFortyEMASeriesRef,
     threeHundredSixtyEMASeriesRef,
-    threeHundredEMASeriesRef,
+    sixHundredEMASeriesRef,
     nineHundredEMASeriesRef,
     markerPluginRef,
     ongoingRequestRef,

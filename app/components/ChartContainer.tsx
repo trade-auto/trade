@@ -37,7 +37,7 @@ interface ChartContainerProps {
     oneTwentyEMASeries: ISeriesApi<"Line">,
     twoFortyEMASeries: ISeriesApi<"Line">,
     threeHundredSixtyEMASeries: ISeriesApi<"Line">,
-    threeHundredEMASeries: ISeriesApi<"Line">,
+    sixHundredEMASeries: ISeriesApi<"Line">,
     nineHundredEMASeries: ISeriesApi<"Line">
   ) => void;
 }
@@ -56,7 +56,7 @@ const MA_COLORS = {
   oneTwenty: '#800080',
   twoForty: '#FFA500',
   threeHundredSixty: '#008000',
-  threeHundred: '#00FFFF',
+  sixHundred: '#00FFFF',
   nineHundred: '#FF00FF',
 } as const;
 
@@ -115,7 +115,7 @@ const getChartOptions = (width: number, height: number, chartType: string) => ({
   },
 });
 
-type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'threeHundredEMA' | 'nineHundredEMA';
+type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'sixHundredEMA' | 'nineHundredEMA';
 
 interface SeriesRefs {
   candle: CandlestickSeriesWithMarkers | null;
@@ -124,7 +124,7 @@ interface SeriesRefs {
   oneTwentyEMA: ISeriesApi<"Line"> | null;
   twoFortyEMA: ISeriesApi<"Line"> | null;
   threeHundredSixtyEMA: ISeriesApi<"Line"> | null;
-  threeHundredEMA: ISeriesApi<"Line"> | null;
+  sixHundredEMA: ISeriesApi<"Line"> | null;
   nineHundredEMA: ISeriesApi<"Line"> | null;
 }
 
@@ -151,7 +151,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     oneTwentyEMA: null,
     twoFortyEMA: null,
     threeHundredSixtyEMA: null,
-    threeHundredEMA: null,
+    sixHundredEMA: null,
     nineHundredEMA: null,
   });
   const { tradeStrategy } = useUpbitStore();
@@ -240,7 +240,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       seriesRefs.current.oneTwentyEMA!,
       seriesRefs.current.twoFortyEMA!,
       seriesRefs.current.threeHundredSixtyEMA!,
-      seriesRefs.current.threeHundredEMA!,
+      seriesRefs.current.sixHundredEMA!,
       seriesRefs.current.nineHundredEMA!
     );
 

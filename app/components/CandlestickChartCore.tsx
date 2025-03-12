@@ -115,7 +115,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     oneTwentyEMASeries: any,
     twoFortyEMASeries: any,
     threeHundredSixtyEMASeries: any,
-    threeHundredEMASeries: any,
+    sixHundredEMASeries: any,
     nineHundredEMASeries: any
   ) => {
     handleBacktestChartReady(
@@ -126,7 +126,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       oneTwentyEMASeries,
       twoFortyEMASeries,
       threeHundredSixtyEMASeries,
-      threeHundredEMASeries,
+      sixHundredEMASeries,
       nineHundredEMASeries,
       importedData,
       tradeStrategy as TradeStrategy,
