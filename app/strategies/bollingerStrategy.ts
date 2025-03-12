@@ -64,9 +64,9 @@ const bollingerStrategy: BollingerStrategy = {
     console.log('\n=== 현재 거래 상태 체크 ===');
     console.log('현재 상태:', store.tradeState);
     
-    // 매수 가능 상태 체크
+    // 매수 가능 상태 체크 - 'wait' 상태일 때만 매수 가능하도록 수정
     // const canBuy = currentState === 'waiting_buy';
-    const canBuy = store.tradeState.theoreticalPosition === 'wait' || store.tradeState.theoreticalPosition === 'bid';
+    const canBuy = store.tradeState.theoreticalPosition === 'wait';
     
     // MA 계산 - 매수 가능 상태와 관계없이 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
@@ -371,6 +371,10 @@ const bollingerStrategy: BollingerStrategy = {
     let currentPosition: 'buy' | null = options?.currentPosition || null;
     let lastTradeId: string | null = options?.lastTradeId || null;
     
+    // 마지막 신호 발생 시간 및 인덱스 추적
+    let lastSignalIndex = options?.lastProcessedIndex ? options.lastProcessedIndex - 30 : 0; // 초기값 설정
+    const minSignalInterval = 30; // 최소 30캔들(30초) 간격
+    
     // 실시간 모드에서 이전 상태 유지
     if (options?.realtime && options?.lastProcessedIndex !== undefined) {
       // 이전 상태 로깅
@@ -437,82 +441,93 @@ const bollingerStrategy: BollingerStrategy = {
     }
 
     for (let i = startIndex; i < endIndex; i++) {
+      // 마지막 신호와의 간격 체크
+      const hasEnoughInterval = i - lastSignalIndex >= minSignalInterval;
+      
       // 매수 조건 분석 (현재 포지션이 없는 경우)
       if (!currentPosition) {
-        const entryResult = this.analyzeEntry?.(data, i);
-        
-        // 매수 신호 발생
-        if (entryResult === 'buy') {
-          const price = data[i].close;
-          const time = data[i].time as number;
-          const id = `BUY_${time}_${price.toFixed(0)}`;
+        // 충분한 간격이 확보되었을 때만 신호 발생
+        if (hasEnoughInterval) {
+          const entryResult = this.analyzeEntry?.(data, i);
           
-          // 트레이딩 신호 생성
-          const signal: TradeSignal = {
-            id,
-            time,
-            position: 'buy',
-            price,
-            strategy: 'BOLLINGER' as TradeStrategy,
-            reason: '매수 조건 충족',
-            metadata: {
-              ma60: data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60,
-            }
-          };
-          
-          signals.push(signal);
-          currentPosition = 'buy';
-          lastTradeId = id;
-          
-          console.log(`\n매수 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
-          console.log(`가격: ${price}`);
-          console.log(`ID: ${id}`);
-        } else {
-          // 매수 신호가 없는 경우에도 매수 대기 중임을 로그로 남김
-          if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)
-            console.log(`캔들 ${i} - 매수 대기 중...`);
-          }
-        }
-      }
-      // 매도 조건 분석 (매수 포지션이 있는 경우)
-      else if (currentPosition === 'buy' && lastTradeId) {
-        const buySignal = signals.find(s => s.id === lastTradeId);
-        
-        if (buySignal) {
-          const entryPrice = buySignal.price;
-          const exitResult = this.analyzeExit?.(data, i, currentPosition, entryPrice);
-          
-          // 매도 신호 발생
-          if (exitResult) {
+          // 매수 신호 발생
+          if (entryResult === 'buy') {
             const price = data[i].close;
             const time = data[i].time as number;
-            const id = `SELL_${time}_${price.toFixed(0)}`;
+            const id = `BUY_${time}_${price.toFixed(0)}`;
             
             // 트레이딩 신호 생성
             const signal: TradeSignal = {
               id,
               time,
-              position: 'sell',
+              position: 'buy',
               price,
               strategy: 'BOLLINGER' as TradeStrategy,
-              relatedTradeId: lastTradeId,
+              reason: '매수 조건 충족',
               metadata: {
                 ma60: data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60,
               }
             };
             
             signals.push(signal);
-          currentPosition = null;
-          lastTradeId = null;
-          
-            console.log(`\n매도 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
+            currentPosition = 'buy';
+            lastTradeId = id;
+            lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
+            
+            console.log(`\n매수 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
             console.log(`가격: ${price}`);
-            console.log(`수익률: ${((price - entryPrice) / entryPrice * 100).toFixed(2)}%`);
             console.log(`ID: ${id}`);
           } else {
-            // 매도 신호가 없는 경우에도 매수 상태임을 로그로 남김
+            // 매수 신호가 없는 경우에도 매수 대기 중임을 로그로 남김
             if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)
-              console.log(`캔들 ${i} - 매수 중(매도 대기 중)...`);
+              console.log(`캔들 ${i} - 매수 대기 중...`);
+            }
+          }
+        }
+      }
+      // 매도 조건 분석 (매수 포지션이 있는 경우)
+      else if (currentPosition === 'buy' && lastTradeId) {
+        // 충분한 간격이 확보되었을 때만 신호 발생 - 단, 매수 후 일정 시간(최소 60초=1분)은 보유
+        if (i - lastSignalIndex >= 60) {
+          const buySignal = signals.find(s => s.id === lastTradeId);
+          
+          if (buySignal) {
+            const entryPrice = buySignal.price;
+            const exitResult = this.analyzeExit?.(data, i, currentPosition, entryPrice);
+            
+            // 매도 신호 발생
+            if (exitResult) {
+              const price = data[i].close;
+              const time = data[i].time as number;
+              const id = `SELL_${time}_${price.toFixed(0)}`;
+              
+              // 트레이딩 신호 생성
+              const signal: TradeSignal = {
+                id,
+                time,
+                position: 'sell',
+                price,
+                strategy: 'BOLLINGER' as TradeStrategy,
+                relatedTradeId: lastTradeId,
+                metadata: {
+                  ma60: data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60,
+                }
+              };
+              
+              signals.push(signal);
+              currentPosition = null;
+              lastTradeId = null;
+              lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
+              
+              console.log(`\n매도 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
+              console.log(`가격: ${price}`);
+              console.log(`수익률: ${((price - entryPrice) / entryPrice * 100).toFixed(2)}%`);
+              console.log(`ID: ${id}`);
+            } else {
+              // 매도 신호가 없는 경우에도 매수 상태임을 로그로 남김
+              if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)
+                console.log(`캔들 ${i} - 매수 중(매도 대기 중)...`);
+              }
             }
           }
         }

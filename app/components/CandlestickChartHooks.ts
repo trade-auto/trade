@@ -4,7 +4,7 @@ import { ExtendedCandlestickData, DateRange, MASettings, SeriesMarker } from './
 import { getInitialDateRange, calculateEMA, getChartEndpoint, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
 import { UpbitCandle } from '../types/candlestick';
-import { TradeStrategy } from '../strategies/types';
+import { TradeStrategy, TradeSignal } from '../strategies/types';
 
 export const useChartData = (
   symbol: string,
@@ -229,11 +229,19 @@ export const useChartData = (
               isAbove900MA: signal.metadata.isAbove900MA || false
             } : undefined
           }));
-        const strategyMarkers = createTradeMarkers(signals);  
+        
+        // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
+        const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
+        
+        // 로그에 신호 수 출력
+        console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
+        console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
+        
+        const strategyMarkers = createTradeMarkers(limitedSignals);  
         // 매수/매도 포인트 계산
         setMarkers(strategyMarkers);
         
-        // 백테스트 결과 계산
+        // 백테스트 결과 계산 (전체 신호 사용)
         const backtestResult = calculateBacktestResult(allProcessedData, signals, mode || 'test');
         setBacktestResult(backtestResult);
         
@@ -662,9 +670,16 @@ export const useChartData = (
                   } : undefined
                 }));
               
-              const strategyMarkers = createTradeMarkers(signals);
+              // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
+              const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
+              
+              // 로그에 신호 수 출력
+              console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
+              console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
+              
+              const strategyMarkers = createTradeMarkers(limitedSignals);
               setMarkers(strategyMarkers);
-              console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+              console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
             }
           }
         } else if ((newCandle.time as number) > (lastCandle.time as number)) {
@@ -709,9 +724,16 @@ export const useChartData = (
                   } : undefined
                 }));
               
-              const strategyMarkers = createTradeMarkers(signals);
+              // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
+              const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
+              
+              // 로그에 신호 수 출력
+              console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
+              console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
+              
+              const strategyMarkers = createTradeMarkers(limitedSignals);
               setMarkers(strategyMarkers);
-              console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+              console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
             }
           }
         } else {
@@ -890,8 +912,15 @@ export const useChartData = (
               } : undefined
             }));
           
-          const strategyMarkers = createTradeMarkers(signals);
-          console.log(`자동 업데이트: 마커 ${strategyMarkers.length}개 생성 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+          // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
+          const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
+          
+          // 로그에 신호 수 출력
+          console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
+          console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
+          
+          const strategyMarkers = createTradeMarkers(limitedSignals);
+          console.log(`자동 업데이트: 마커 ${strategyMarkers.length}개 생성 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
           
           // 마커 업데이트
           setMarkers(strategyMarkers);
@@ -991,8 +1020,15 @@ export const useChartData = (
             } : undefined
           }));
         
-        const strategyMarkers = createTradeMarkers(signals);
-        console.log(`전략 변경 후 마커 ${strategyMarkers.length}개 생성 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+        // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
+        const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
+        
+        // 로그에 신호 수 출력
+        console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
+        console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
+        
+        const strategyMarkers = createTradeMarkers(limitedSignals);
+        console.log(`전략 변경 후 마커 ${strategyMarkers.length}개 생성 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
         
         // 마커 업데이트
         setMarkers(strategyMarkers);
