@@ -379,11 +379,24 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
     // 전략 관련
     tradeStrategy,
     updateTradeStrategy: (strategy) => {
-      set({ tradeStrategy: strategy });
+      // 기존 전략 저장
+      const previousStrategy = get().tradeStrategy;
+      
+      // 새로운 전략으로 업데이트
+      set({ 
+        tradeStrategy: strategy,
+        // 분석 결과 초기화
+        lastAnalysisResult: null
+      });
       
       // 로컬 스토리지에 저장
       if (typeof window !== 'undefined') {
         localStorage.setItem('tradeStrategy', JSON.stringify(strategy));
+      }
+      
+      // 전략이 변경되었으면 로그 출력
+      if (previousStrategy !== strategy) {
+        console.log(`전략이 ${previousStrategy}에서 ${strategy}로 변경되었습니다. 분석 결과가 초기화되었습니다.`);
       }
     },
     dateRange,

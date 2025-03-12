@@ -2,7 +2,7 @@ import React from 'react';
 import { useUpbitWebSocket } from '../hooks/useUpbitWebSocket';
 
 interface ChartPriceProps {
-  chartPrice: number;
+  chartPrice: number | null;
   market: string;
 }
 
@@ -13,10 +13,10 @@ const ChartPrice: React.FC<ChartPriceProps> = ({
   const { currentPrice, lastUpdated, isConnected } = useUpbitWebSocket(market);
 
   // 시세 차이 계산
-  const priceDiff = currentPrice > 0 && chartPrice > 0 
+  const priceDiff = currentPrice > 0 && chartPrice !== null && chartPrice > 0 
     ? currentPrice - chartPrice 
     : 0;
-  const priceDiffPercentage = currentPrice > 0 && chartPrice > 0
+  const priceDiffPercentage = currentPrice > 0 && chartPrice !== null && chartPrice > 0
     ? (priceDiff / chartPrice) * 100
     : 0;
 
@@ -39,7 +39,7 @@ const ChartPrice: React.FC<ChartPriceProps> = ({
       <div className="bg-gray-800 p-4 rounded-lg">
         <div className="text-gray-400 text-sm">차트 시세</div>
         <div className="text-white text-lg font-bold">
-          {chartPrice.toLocaleString()} KRW
+          {chartPrice !== null ? chartPrice.toLocaleString() : '로딩 중...'} KRW
         </div>
       </div>
       <div className="bg-gray-800 p-4 rounded-lg">

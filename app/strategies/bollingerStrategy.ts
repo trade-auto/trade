@@ -2,6 +2,7 @@
 import { BollingerStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult, TradeStrategy } from './types';
 import { calculateStandardDeviation } from './utils';
 import useUpbitStore from '../store/useUpbitStore';
+import { useEffect } from 'react';
 
 type TradeState = 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
 

@@ -4,6 +4,7 @@ import { ExtendedCandlestickData, DateRange, MASettings, SeriesMarker } from './
 import { getInitialDateRange, calculateEMA, getChartEndpoint, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
 import { UpbitCandle } from '../types/candlestick';
+import { TradeStrategy } from '../strategies/types';
 
 export const useChartData = (
   symbol: string,
@@ -14,7 +15,7 @@ export const useChartData = (
   // 차트 상태
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chartHeight, setChartHeight] = useState(500);
-  const [chartPrice, setChartPrice] = useState(0);
+  const [chartPrice, setChartPrice] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
   const [allData, setAllData] = useState<ExtendedCandlestickData[]>([]);
   const [markers, setMarkers] = useState<SeriesMarker<Time>[]>([]);
@@ -24,6 +25,7 @@ export const useChartData = (
   const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
   const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState<boolean>(false);
   const [lastSymbol, setLastSymbol] = useState<string>(symbol);
+  const [currentStrategy, setCurrentStrategy] = useState<TradeStrategy>(useUpbitStore.getState().tradeStrategy);
   
   // 설정 상태
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
@@ -933,6 +935,62 @@ export const useChartData = (
       };
     }
   }, [isAutoUpdate, isRealtimeAPIEnabled, handleAutoUpdate]);
+
+  // 전략 변경 감지를 위한 구독
+  useEffect(() => {
+    // 초기 전략 설정
+    setCurrentStrategy(useUpbitStore.getState().tradeStrategy);
+    
+    // 스토어 구독
+    const unsubscribe = useUpbitStore.subscribe((state) => {
+      const newStrategy = state.tradeStrategy;
+      // 현재 상태에서 최신 값을 가져옴
+      setCurrentStrategy(prevStrategy => {
+        if (newStrategy !== prevStrategy) {
+          console.log(`전략 변경 감지: ${prevStrategy} -> ${newStrategy}`);
+          return newStrategy;
+        }
+        return prevStrategy;
+      });
+    });
+    
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // 전략 변경 시 데이터 재분석
+  useEffect(() => {
+    if (allData.length > 0) {
+      console.log(`전략이 ${currentStrategy}로 변경되어 데이터를 다시 분석합니다.`);
+      
+      // 마커 초기화
+      setMarkers([]);
+      
+      // 데이터 재분석
+      const analysisResult = useUpbitStore.getState().analyzeRealtimeData(allData);
+      
+      if (analysisResult && analysisResult.signals) {
+        const signals = analysisResult.signals
+          .filter((signal: any) => signal.position !== null)
+          .map((signal: any) => ({
+            ...signal,
+            time: signal.time as unknown as Time,
+            position: signal.position as 'buy' | 'sell',
+            metadata: signal.metadata ? {
+              ...signal.metadata,
+              ma60: signal.metadata.ma60 || 0
+            } : undefined
+          }));
+        
+        const strategyMarkers = createTradeMarkers(signals);
+        console.log(`전략 변경 후 마커 ${strategyMarkers.length}개 생성 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+        
+        // 마커 업데이트
+        setMarkers(strategyMarkers);
+      }
+    }
+  }, [currentStrategy, allData]);
 
   return {
     // 상태
