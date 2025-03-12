@@ -550,14 +550,23 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
       // 이전 분석 결과 가져오기
       const prevAnalysisResult = state.lastAnalysisResult;
       
-      // 분석 옵션 설정
+      // 분석 옵션 설정 - 마지막 300개 캔들은 항상 재분석
+      const lookbackCandles = 300;
+      const lastProcessedIndex = prevAnalysisResult?.lastProcessedIndex || 0;
+      const reanalyzeIndex = Math.max(0, data.length - lookbackCandles);
+      const startIndex = Math.min(lastProcessedIndex, reanalyzeIndex);
+      
       const options = {
         realtime: true,
-        lastProcessedIndex: prevAnalysisResult?.lastProcessedIndex || 0,
+        lastProcessedIndex: startIndex,
         currentPosition: prevAnalysisResult?.currentPosition || null,
         lastTradeId: prevAnalysisResult?.lastTradeId || null,
-        signals: prevAnalysisResult?.signals || []
+        signals: prevAnalysisResult?.signals.filter((s: TradeSignal) => 
+          (s.time as number) < (data[startIndex]?.time as number || 0)
+        ) || []
       };
+      
+      console.log(`전략 분석: 인덱스 ${startIndex}부터 재분석 (최근 ${lookbackCandles}개 캔들 포함)`);
       
       // 전략 분석 실행
       const analysisResult = selectedStrategy.analyze(data, options);
