@@ -139,7 +139,11 @@ const bollingerStrategy: BollingerStrategy = {
     // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
     if (index < 360 || position !== 'buy') return false;
 
-    let ma600UpCount = 0; 
+    let ma240DownCount = 0;
+    let ma60Below120Count = 0;
+    let ma60Below240Count = 0;
+    let ma600UpCount = 0;
+    let ma60AboveMa600Count = 0;  // 추가: MA60 > MA600 카운터
     
     // MA 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
@@ -147,51 +151,89 @@ const bollingerStrategy: BollingerStrategy = {
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     
-    // 이전 MA 계산
-    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
-
-    // MA 기울기 계산
-    const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
-    const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
-    const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
-    const ma600Slope = ((ma600 - prevMa600) / prevMa600) * 100;
-
-    // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
-    let ma120DownCount = 0;
-    let ma240DownCount = 0;
-    let ma60Below120Count = 0;
-    let ma60Below240Count = 0;
-    let ma600DownCount = 0;
-
+    // MA240 하향 연속 봉 체크 (최근 10개 봉 확인)
     for (let i = 0; i < 10; i++) {
-      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
-      const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
+      if (index - i < 240 || index - i + 1 < 240) break;
+      
       const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
-      const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
-      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
-      const prevMa60Check = data.slice(index - i - 61, index - i - 1).reduce((a, b) => a + b.close, 0) / 60;
-      const currentMa600 = data.slice(index - i - 600, index - i).reduce((a, b) => a + b.close, 0) / 600;
-      const prevMa600Check = data.slice(index - i - 601, index - i - 1).reduce((a, b) => a + b.close, 0) / 600;
-
-      if (currentMa120 < prevMa120Check) ma120DownCount++;
-      if (currentMa240 < prevMa240Check) ma240DownCount++;
-      if (currentMa60 < currentMa120) ma60Below120Count++;
-      if (currentMa60 < currentMa240) ma60Below240Count++;
-      if (currentMa600 < prevMa600Check) ma600DownCount++;
-      if (currentMa600 > prevMa600Check) ma600UpCount++; 
+      const prevMa240 = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
+      
+      if (currentMa240 < prevMa240) {
+        ma240DownCount++;
+      } else {
+        break;
+      }
     }
 
-    // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
-    const isMA120240Downward = ma120DownCount >= 10 && ma240DownCount >= 10;
-    const isMA600Downward = ma600DownCount >= 10;
-    const isMA600Upward = ma600UpCount >= 10;
+    // MA60 < MA120 연속 봉 체크 (최근 10개 봉 확인)
+    for (let i = 0; i < 10; i++) {
+      if (index - i < 120) break;
+      
+      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
+      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
+      
+      if (currentMa60 < currentMa120) {
+        ma60Below120Count++;
+      } else {
+        break;
+      }
+    }
 
-    // 60MA가 120MA와 240MA보다 아래에 있는지 확인
-    const isBelow120 = ma60 < ma120;
-    const isBelow240 = ma60 < ma240;
+    // MA60 < MA240 연속 봉 체크 (최근 10개 봉 확인)
+    for (let i = 0; i < 10; i++) {
+      if (index - i < 240) break;
+      
+      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
+      const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
+      
+      if (currentMa60 < currentMa240) {
+        ma60Below240Count++;
+      } else {
+        break;
+      }
+    }
+
+    // MA600 상승세 연속 봉 체크 (최근 10개 봉 확인)
+    for (let i = 0; i < 10; i++) {
+      if (index - i < 600 || index - i + 1 < 600) break;
+      
+      const currentMa600 = data.slice(index - i - 600, index - i).reduce((a, b) => a + b.close, 0) / 600;
+      const prevMa600 = data.slice(index - i - 601, index - i - 1).reduce((a, b) => a + b.close, 0) / 600;
+      
+      if (currentMa600 > prevMa600) {
+        ma600UpCount++;
+      } else {
+        break;
+      }
+    }
+
+    // MA60 > MA600 연속 봉 체크 (최근 10개 봉 확인)
+    for (let i = 0; i < 10; i++) {
+      if (index - i < 600) break;
+      
+      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
+      const currentMa600 = data.slice(index - i - 600, index - i).reduce((a, b) => a + b.close, 0) / 600;
+      
+      if (currentMa60 > currentMa600) {
+        ma60AboveMa600Count++;
+      } else {
+        break;
+      }
+    }
+
+    // 각 조건의 최소 필요 봉 수 설정
+    const minMa240DownCount = 3;
+    const minMa60Below120Count = 2;
+    const minMa60Below240Count = 2;
+    const minMa600UpCount = 1;
+    const minMa60AboveMa600Count = 2;
+
+    // 각 조건 충족 여부
+    const isMa240DownValid = ma240DownCount >= minMa240DownCount;
+    const isMa60Below120Valid = ma60Below120Count >= minMa60Below120Count;
+    const isMa60Below240Valid = ma60Below240Count >= minMa60Below240Count;
+    const isMa600UpValid = ma600UpCount >= minMa600UpCount;
+    const isMa60AboveMa600Valid = ma60AboveMa600Count >= minMa60AboveMa600Count;
 
     // 현재 가격과 매수 가격의 차이 계산 (수익률)
     const currentPrice = data[index].close;
@@ -210,12 +252,7 @@ const bollingerStrategy: BollingerStrategy = {
         hour12: false
       })
     });
-    console.log('MA 기울기:', {
-      MA60: ma60Slope.toFixed(4) + '%',
-      MA120: ma120Slope.toFixed(4) + '%',
-      MA240: ma240Slope.toFixed(4) + '%',
-      MA600: ma600Slope.toFixed(4) + '%'
-    });
+
     console.log('매도 조건:', {
       '체크 시간': new Date().toLocaleString('ko-KR', {
         day: '2-digit',
@@ -224,17 +261,16 @@ const bollingerStrategy: BollingerStrategy = {
         second: '2-digit',
         hour12: false
       }),
-      'MA120 하향 지속 봉수': ma120DownCount + '봉',
-      'MA240 하향 지속 봉수': ma240DownCount + '봉',
-      'MA120/240 하향(10봉)': isMA120240Downward,
-      'MA600 하향': isMA600Downward,
-      'MA60이 MA120 아래': isBelow120,
-      'MA60이 MA240 아래': isBelow240,
+      'MA240 하향 연속 봉수': `${ma240DownCount}/${minMa240DownCount} 봉 ${isMa240DownValid ? '✅' : '❌'}`,
+      'MA60이 MA120 아래 연속 봉수': `${ma60Below120Count}/${minMa60Below120Count} 봉 ${isMa60Below120Valid ? '✅' : '❌'}`,
+      'MA60이 MA240 아래 연속 봉수': `${ma60Below240Count}/${minMa60Below240Count} 봉 ${isMa60Below240Valid ? '✅' : '❌'}`,
+      'MA600 상승 연속 봉수': `${ma600UpCount}/${minMa600UpCount} 봉 ${isMa600UpValid ? '✅' : '❌'}`,
+      'MA60이 MA600 위 연속 봉수': `${ma60AboveMa600Count}/${minMa60AboveMa600Count} 봉 ${isMa60AboveMa600Valid ? '✅' : '❌'}`,
       '현재 수익률': profitPercent.toFixed(2) + '%'
     });
 
     // 매도 시그널 생성 - 기본 조건
-    if (ma240DownCount >= 5 && isBelow120 && isBelow240 && isMA600Upward) {
+    if (isMa240DownValid && isMa60Below120Valid && isMa60Below240Valid && isMa600UpValid && isMa60AboveMa600Valid) {
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({
@@ -247,25 +283,12 @@ const bollingerStrategy: BollingerStrategy = {
           second: '2-digit',
           hour12: false
         }),
-        'MA240 하향 5봉 이상': ma240DownCount >= 5 ? '✅' : '❌',
-        'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
-        'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
-        'MA600 상향': isMA600Upward ? '✅' : '❌',
+        'MA240 하향 연속 봉수': `${ma240DownCount}/${minMa240DownCount} 봉 ${isMa240DownValid ? '✅' : '❌'}`,
+        'MA60이 MA120 아래 연속 봉수': `${ma60Below120Count}/${minMa60Below120Count} 봉 ${isMa60Below120Valid ? '✅' : '❌'}`,
+        'MA60이 MA240 아래 연속 봉수': `${ma60Below240Count}/${minMa60Below240Count} 봉 ${isMa60Below240Valid ? '✅' : '❌'}`,
+        'MA600 상승 연속 봉수': `${ma600UpCount}/${minMa600UpCount} 봉 ${isMa600UpValid ? '✅' : '❌'}`,
+        'MA60이 MA600 위 연속 봉수': `${ma60AboveMa600Count}/${minMa60AboveMa600Count} 봉 ${isMa60AboveMa600Valid ? '✅' : '❌'}`,
         '최종 판정': '✅ 매도 신호 발생!'
-      });
-      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
-    }
-
-    // 추가 매도 조건 - MA60 하락 추세이고 MA120 아래로 내려간 경우
-    if (ma60Slope < 0 && isBelow120 && ma60Below120Count >= 5) {
-      console.log('\n=== 추가 매도 조건 충족 여부 ===');
-      console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
-      console.log({
-        '체크 시간': new Date().toLocaleString('ko-KR'),
-        'MA60 하락 추세': ma60Slope < 0 ? '✅' : '❌',
-        'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
-        'MA60이 MA120 아래 지속 봉수': ma60Below120Count + '봉',
-        '최종 판정': '✅ 추가 매도 신호 발생!'
       });
       return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
@@ -372,8 +395,8 @@ const bollingerStrategy: BollingerStrategy = {
     let lastTradeId: string | null = options?.lastTradeId || null;
     
     // 마지막 신호 발생 시간 및 인덱스 추적
-    let lastSignalIndex = options?.lastProcessedIndex ? options.lastProcessedIndex - 30 : 0; // 초기값 설정
-    const minSignalInterval = 30; // 최소 30캔들(30초) 간격
+    let lastSignalIndex = options?.lastProcessedIndex ? options.lastProcessedIndex - 15 : 0; // 30 -> 15
+    const minSignalInterval = 15; // 30 -> 15 (최소 15캔들 간격)
     
     // 실시간 모드에서 이전 상태 유지
     if (options?.realtime && options?.lastProcessedIndex !== undefined) {
