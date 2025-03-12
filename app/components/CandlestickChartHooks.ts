@@ -849,7 +849,9 @@ export const useChartData = (
       
       // 차트 업데이트 - 통합된 데이터 사용
       if (candleSeriesRef.current) {
+        // 전체 데이터로 캔들 차트 업데이트 (setData는 기존 데이터를 대체함)
         candleSeriesRef.current.setData(combinedData);
+        console.log('캔들 차트 업데이트 완료: 통합 데이터 사용');
       }
       
       // 볼륨 업데이트 - 통합된 데이터 사용
@@ -860,16 +862,17 @@ export const useChartData = (
           color: d.close >= d.open ? '#26a69a' : '#ef5350',
         }));
         volumeSeriesRef.current.setData(volumeData);
+        console.log('볼륨 차트 업데이트 완료: 통합 데이터 사용');
       }
       
       // 이동평균선 업데이트 - 통합된 데이터 사용
       updateMovingAverages(combinedData);
       
-      // 전략 분석 실행 및 마커 업데이트
+      // 통합 데이터로 분석 및 마커 업데이트
       if (combinedData.length > 900) {
         console.log('자동 업데이트: 전략 분석 실행 및 마커 업데이트...');
         
-        // 전체 데이터로 분석 실행
+        // 전체 통합 데이터로 분석 실행
         const analysisResult = useUpbitStore.getState().analyzeRealtimeData(combinedData);
         
         if (analysisResult && analysisResult.signals) {
@@ -886,29 +889,28 @@ export const useChartData = (
             }));
           
           const strategyMarkers = createTradeMarkers(signals);
+          console.log(`자동 업데이트: 마커 ${strategyMarkers.length}개 생성 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
+          
+          // 마커 업데이트
           setMarkers(strategyMarkers);
-          console.log(`자동 업데이트: 마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
         }
-        
-        // 데이터 저장
-        setAllData(combinedData);
-      } else {
-        // 분석할 데이터가 충분하지 않은 경우에만 데이터 저장
-        setAllData(processedData);
       }
+      
+      // 통합 데이터를 차트에 저장
+      setAllData(combinedData);
       
       // 현재 가격 업데이트
-      if (processedData.length > 0) {
-        setChartPrice(processedData[processedData.length - 1].close);
+      if (combinedData.length > 0) {
+        setChartPrice(combinedData[combinedData.length - 1].close);
       }
       
-      console.log('자동 업데이트 완료');
+      console.log('자동 업데이트 완료: 차트와 마커가 업데이트되었습니다.');
     } catch (error) {
       console.error('자동 업데이트 오류:', error);
     } finally {
       ongoingRequestRef.current = false;
     }
-  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, symbol, updateMovingAverages]);
+  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, symbol, allData, updateMovingAverages, setAllData, setMarkers, setChartPrice]);
   
   // 자동 업데이트 타이머 설정
   useEffect(() => {
