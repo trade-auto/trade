@@ -460,17 +460,17 @@ const bollingerStrategy: BollingerStrategy = {
             const signal: TradeSignal = {
               id,
               time,
-              position: 'buy',
+            position: 'buy',
               price,
               strategy: 'BOLLINGER' as TradeStrategy,
-              reason: '매수 조건 충족',
+            reason: '매수 조건 충족',
               metadata: {
                 ma60: data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60,
               }
             };
             
             signals.push(signal);
-            currentPosition = 'buy';
+          currentPosition = 'buy';
             lastTradeId = id;
             lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
             
@@ -505,7 +505,7 @@ const bollingerStrategy: BollingerStrategy = {
               const signal: TradeSignal = {
                 id,
                 time,
-                position: 'sell',
+            position: 'sell',
                 price,
                 strategy: 'BOLLINGER' as TradeStrategy,
                 relatedTradeId: lastTradeId,
@@ -515,8 +515,8 @@ const bollingerStrategy: BollingerStrategy = {
               };
               
               signals.push(signal);
-              currentPosition = null;
-              lastTradeId = null;
+          currentPosition = null;
+          lastTradeId = null;
               lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
               
               console.log(`\n매도 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);

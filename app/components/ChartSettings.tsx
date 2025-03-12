@@ -39,7 +39,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
               {useFifthCondition ? '5번째 조건 활성화됨' : '5번째 조건 비활성화됨'}
             </button>
             <div className="text-xs text-gray-400 mt-1">
-              5번째 조건: MA60 &lt; MA900 {useFifthCondition ? '(필수)' : '(무시됨)'}
+              5번째 조건: MA60 &lt; MA600 {useFifthCondition ? '(필수)' : '(무시됨)'}
             </div>
           </div>
         </div>

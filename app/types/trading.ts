@@ -1,4 +1,4 @@
-import { Time } from 'lightweight-charts';
+import { Time, CandlestickData } from 'lightweight-charts';
 
 export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
@@ -76,6 +76,21 @@ export interface TradeSignal {
   reason?: string;
   metadata?: ExtendedMetadata;
   relatedTradeId?: string;
+}
+
+interface IndicatorSettings {
+  maPeriods?: {
+    short?: number;
+    long?: number;
+  };
+  // 기타 인디케이터 설정 추가 가능
+}
+
+interface RiskManagement {
+  stopLossPercent?: number;
+  takeProfitPercent?: number;
+  positionSizePercent?: number;
+  // 기타 리스크 관리 설정 추가 가능
 }
 
 export interface TradingStrategy {
