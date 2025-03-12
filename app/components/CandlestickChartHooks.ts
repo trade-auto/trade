@@ -827,14 +827,34 @@ export const useChartData = (
         volume: candle.candle_acc_trade_volume,
       })).reverse(); // 시간 순으로 정렬
       
-      // 차트 업데이트
+      // 기존 데이터와 새 데이터를 결합하여 연속성 유지
+      // 중복 제거를 위해 시간별로 그룹화
+      const timeMap = new Map();
+      
+      // 기존 데이터 추가
+      allData.forEach(candle => {
+        timeMap.set(candle.time, candle);
+      });
+      
+      // 새 데이터 추가 (덮어쓰기)
+      processedData.forEach(candle => {
+        timeMap.set(candle.time, candle);
+      });
+      
+      // 맵을 배열로 변환하고 시간순으로 정렬
+      const combinedData = Array.from(timeMap.values())
+        .sort((a, b) => (a.time as number) - (b.time as number));
+      
+      console.log(`통합 데이터: 총 ${combinedData.length}개 캔들 (기존: ${allData.length}, 새로운: ${processedData.length})`);
+      
+      // 차트 업데이트 - 통합된 데이터 사용
       if (candleSeriesRef.current) {
-        candleSeriesRef.current.setData(processedData);
+        candleSeriesRef.current.setData(combinedData);
       }
       
-      // 볼륨 업데이트
+      // 볼륨 업데이트 - 통합된 데이터 사용
       if (volumeSeriesRef.current) {
-        const volumeData = processedData.map((d) => ({
+        const volumeData = combinedData.map((d) => ({
           time: d.time,
           value: d.volume,
           color: d.close >= d.open ? '#26a69a' : '#ef5350',
@@ -842,13 +862,15 @@ export const useChartData = (
         volumeSeriesRef.current.setData(volumeData);
       }
       
-      // 이동평균선 업데이트
-      updateMovingAverages(processedData);
+      // 이동평균선 업데이트 - 통합된 데이터 사용
+      updateMovingAverages(combinedData);
       
       // 전략 분석 실행 및 마커 업데이트
-      if (processedData.length > 900) {
+      if (combinedData.length > 900) {
         console.log('자동 업데이트: 전략 분석 실행 및 마커 업데이트...');
-        const analysisResult = useUpbitStore.getState().analyzeRealtimeData(processedData);
+        
+        // 전체 데이터로 분석 실행
+        const analysisResult = useUpbitStore.getState().analyzeRealtimeData(combinedData);
         
         if (analysisResult && analysisResult.signals) {
           const signals = analysisResult.signals
@@ -867,15 +889,18 @@ export const useChartData = (
           setMarkers(strategyMarkers);
           console.log(`자동 업데이트: 마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${signals.filter((s: any) => s.position === 'buy').length}개, 매도: ${signals.filter((s: any) => s.position === 'sell').length}개)`);
         }
+        
+        // 데이터 저장
+        setAllData(combinedData);
+      } else {
+        // 분석할 데이터가 충분하지 않은 경우에만 데이터 저장
+        setAllData(processedData);
       }
       
       // 현재 가격 업데이트
       if (processedData.length > 0) {
         setChartPrice(processedData[processedData.length - 1].close);
       }
-      
-      // 데이터 저장
-      setAllData(processedData);
       
       console.log('자동 업데이트 완료');
     } catch (error) {

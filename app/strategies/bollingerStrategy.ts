@@ -65,16 +65,8 @@ const bollingerStrategy: BollingerStrategy = {
     
     // 매수 가능 상태 체크
     const canBuy = currentState === 'waiting_buy';
-    if (!canBuy) {
-      console.log('\n=== ❌ 매수 불가 상태 ===');
-      console.log('매수 가능 상태가 아닙니다. (waiting_buy 상태여야 함)');
-      return null;
-    }
-
-    console.log('✅ 매수 가능 상태 확인');
     
-    // MA 계산
-    // MA 60, 120, 240, 900 계산
+    // MA 계산 - 매수 가능 상태와 관계없이 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
@@ -114,6 +106,15 @@ const bollingerStrategy: BollingerStrategy = {
       '조건 5 (MA60 < MA900)': isBelow900 ? '✅' : '❌',
       '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
+    
+    // 매수 가능 상태가 아닌 경우
+    if (!canBuy) {
+      console.log('\n=== ❌ 매수 불가 상태 ===');
+      console.log('매수 가능 상태가 아닙니다. (waiting_buy 상태여야 함)');
+      return null;
+    }
+
+    console.log('✅ 매수 가능 상태 확인');
 
     // 매수 시그널 생성 - 기본 조건
     if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) {
