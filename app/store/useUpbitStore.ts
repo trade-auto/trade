@@ -107,6 +107,8 @@ interface UpbitStore {
     threeHundred: boolean;
     nineHundred: boolean;
   };
+  useFifthCondition: boolean;
+  toggleFifthCondition: () => void;
   updateShowMA: (type: 'thirty' | 'forty' | 'sixty' | 'oneTwenty' | 'twoForty' | 'threeHundredSixty' | 'threeHundred' | 'nineHundred') => void;
   tradeStrategy: TradeStrategy;
   updateTradeStrategy: (strategy: TradeStrategy) => void;
@@ -137,6 +139,7 @@ const loadMASettings = () => {
     try {
       const savedShowMA = localStorage.getItem('showMA');
       const savedMAPeriods = localStorage.getItem('maPeriods');
+      const savedFifthCondition = localStorage.getItem('useFifthCondition');
       
       return {
         showMA: savedShowMA ? JSON.parse(savedShowMA) : {
@@ -158,32 +161,11 @@ const loadMASettings = () => {
           threeHundredSixty: 360,
           threeHundred: 300,
           nineHundred: 900,
-        }
+        },
+        useFifthCondition: savedFifthCondition ? JSON.parse(savedFifthCondition) : true
       };
     } catch (error) {
       console.error('MA 설정 로드 중 오류 발생:', error);
-      return {
-        showMA: {
-          thirty: true,
-          forty: true,
-          sixty: true,
-          oneTwenty: true,
-          twoForty: true,
-          threeHundredSixty: true,
-          threeHundred: true,
-          nineHundred: true,
-        },
-        maPeriods: {
-          thirty: 30,
-          forty: 40,
-          sixty: 60,
-          oneTwenty: 120,
-          twoForty: 240,
-          threeHundredSixty: 360,
-          threeHundred: 300,
-          nineHundred: 900,
-        }
-      };
     }
   }
   
@@ -207,7 +189,8 @@ const loadMASettings = () => {
       threeHundredSixty: 360,
       threeHundred: 300,
       nineHundred: 900,
-    }
+    },
+    useFifthCondition: true
   };
 };
 
@@ -269,7 +252,7 @@ const loadDateRange = (): DateRange => {
 // Zustand 스토어 생성
 const useUpbitStore = create<UpbitStore>((set, get) => {
   // 초기 설정 로드
-  const { showMA, maPeriods } = loadMASettings();
+  const { showMA, maPeriods, useFifthCondition } = loadMASettings();
   const trades = loadTrades();
   const tradeStrategy = loadTradeStrategy();
   const dateRange = loadDateRange();
@@ -367,6 +350,16 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
       });
     },
     showMA,
+    useFifthCondition,
+    toggleFifthCondition: () => {
+      const newValue = !get().useFifthCondition;
+      set({ useFifthCondition: newValue });
+      
+      // 로컬 스토리지에 저장
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('useFifthCondition', JSON.stringify(newValue));
+      }
+    },
     updateShowMA: (type) => {
       set((state) => {
         const newShowMA = {

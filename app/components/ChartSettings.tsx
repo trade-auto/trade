@@ -1,5 +1,6 @@
 import React from 'react';
 import { MASettings } from '../types/candlestick';
+import useUpbitStore from '../store/useUpbitStore';
 
 interface ChartSettingsProps {
   showMA: MASettings;
@@ -14,6 +15,9 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
   chartHeight,
   handleHeightChange
 }) => {
+  // 스토어에서 5번째 조건 상태와 토글 함수 가져오기
+  const { useFifthCondition, toggleFifthCondition } = useUpbitStore();
+  
   // MA 토글 함수
   const toggleMA = (key: keyof MASettings) => {
     const updatedShowMA = { ...showMA };
@@ -23,6 +27,24 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
 
   return (
     <div className="mb-4 space-y-4">
+      {/* 전략 설정 패널 */}
+      <div className="grid grid-cols-1 gap-4 bg-gray-800 p-4 rounded-lg">
+        <div className="bg-gray-700 p-3 rounded-lg">
+          <div className="text-gray-400 text-sm mb-2">전략 설정</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={toggleFifthCondition}
+              className={`px-3 py-1 rounded text-sm ${useFifthCondition ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+            >
+              {useFifthCondition ? '5번째 조건 활성화됨' : '5번째 조건 비활성화됨'}
+            </button>
+            <div className="text-xs text-gray-400 mt-1">
+              5번째 조건: MA60 &lt; MA900 {useFifthCondition ? '(필수)' : '(무시됨)'}
+            </div>
+          </div>
+        </div>
+      </div>
+      
       {/* MA 설정 패널 */}
       <div className="grid grid-cols-1 gap-4 bg-gray-800 p-4 rounded-lg">
         <div className="bg-gray-700 p-3 rounded-lg">

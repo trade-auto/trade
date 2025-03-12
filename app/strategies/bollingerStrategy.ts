@@ -81,6 +81,9 @@ const bollingerStrategy: BollingerStrategy = {
     const isBelow900 = ma60 < ma900;
     const isMA900Upward = ma900 > prevMa900;
     
+    // 5번째 조건 사용 여부 체크
+    const { useFifthCondition } = useUpbitStore.getState();
+    
     // MA240 상향추세 체크 (5캔들 이상)
     let ma240UpCount = 0;
     for (let i = 1; i <= 5; i++) {
@@ -103,8 +106,8 @@ const bollingerStrategy: BollingerStrategy = {
       '조건 2 (MA60 > MA120)': isAbove120 ? '✅' : '❌',
       '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
       '조건 4 (MA900 상승세)': isMA900Upward ? '✅' : '❌',
-      '조건 5 (MA60 < MA900)': isBelow900 ? '✅' : '❌',
-      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '조건 5 (MA60 < MA900)': isBelow900 ? '✅' : '❌' + (useFifthCondition ? '' : ' [비활성화됨]'),
+      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && (isBelow900 || !useFifthCondition)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
     
     // 매수 가능 상태가 아닌 경우
@@ -116,9 +119,12 @@ const bollingerStrategy: BollingerStrategy = {
 
     console.log('✅ 매수 가능 상태 확인');
 
-    // 매수 시그널 생성 - 기본 조건
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && isBelow900) {
+    // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
+    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA900Upward && (isBelow900 || !useFifthCondition)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
+      if (!useFifthCondition && !isBelow900) {
+        console.log('5번째 조건(MA60 < MA900)이 비활성화되어 있어 통과하였습니다.');
+      }
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
     }
