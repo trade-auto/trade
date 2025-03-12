@@ -963,12 +963,20 @@ export const useChartData = (
   useEffect(() => {
     if (allData.length > 0) {
       console.log(`전략이 ${currentStrategy}로 변경되어 데이터를 다시 분석합니다.`);
+      console.log(`분석할 데이터 크기: ${allData.length}개 캔들`);
+      
+      if (currentStrategy === 'BOLLINGER') {
+        console.log('볼링거 전략은 최소 900개의 캔들이 필요합니다.');
+        console.log('5번째 조건(MA60 < MA900) 상태:', useUpbitStore.getState().useFifthCondition ? '활성화' : '비활성화');
+      }
       
       // 마커 초기화
       setMarkers([]);
       
       // 데이터 재분석
       const analysisResult = useUpbitStore.getState().analyzeRealtimeData(allData);
+      
+      console.log('분석 결과:', analysisResult?.signals?.length ?? 0, '개의 신호 발견');
       
       if (analysisResult && analysisResult.signals) {
         const signals = analysisResult.signals

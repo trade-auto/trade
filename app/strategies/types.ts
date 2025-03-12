@@ -28,11 +28,13 @@ export interface ExtendedMetadata {
   ma240?: number;
   ma300?: number;
   ma360?: number;
+  ma600?: number;
   ma900?: number;
   rsi?: number;
   macd?: number;
   momentum?: number;
   ma300Slope?: number;
+  ma600Slope?: number;
   ma900Slope?: number;
   ma60Slope?: number;
   ma120Slope?: number;
@@ -40,11 +42,14 @@ export interface ExtendedMetadata {
   upperBand?: number;
   lowerBand?: number;
   isAbove360MA?: boolean;
+  isAbove600MA?: boolean;
   isAbove900MA?: boolean;
   ma120UpCount?: number;
   ma240UpCount?: number;
+  ma600UpCount?: number;
   ma900UpCount?: number;
   isMA120240Upward?: boolean;
+  isMA600Upward?: boolean;
   isMA900Upward?: boolean;
   isAbove120?: boolean;
   isAbove240?: boolean;
