@@ -78,6 +78,19 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   // 백테스트 마커 추출
   const backtestMarkers = csvBacktestResult?.markers || [];
   
+  // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
+  useEffect(() => {
+    const now = new Date();
+    let startDate: Date;
+    
+    if (chartType.startsWith('seconds/')) {
+      // 초봉: 최근 2시간 데이터로 명시적 설정
+      startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      console.log('초봉 차트 - 시작 날짜를 2시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
+      setDateRange(prev => ({ ...prev, startDate }));
+    }
+  }, [chartType, setDateRange]);
+  
   // 초봉 차트일 경우 자동 업데이트 및 실시간 API 효과
   useEffect(() => {
     if (chartType === 'seconds/60') {

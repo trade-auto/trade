@@ -24,9 +24,8 @@ export const getInitialDateRange = (type: string): DateRange => {
   let startDate: Date;
   
   if (type.startsWith('seconds/')) {
-    // 초봉: 최근 30분 데이터
-     // 초봉: 최근 1시간 데이터
-    startDate = new Date(now.getTime() - 60 * 60 * 1000); // 30분 -> 1시간
+    // 초봉: 최근 2시간 데이터
+    startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 1시간 -> 2시간
   } else if (type.startsWith('minutes/')) {
     // 1분봉: 최근 2시간 데이터
     startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
