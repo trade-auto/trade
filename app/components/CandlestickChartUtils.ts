@@ -8,35 +8,35 @@ import { getInitialDateRange, formatDate, calculateEMA, getChartEndpoint, calcul
  */
 export function createTradeMarkers(signals: TradeSignal[]): SeriesMarker<Time>[] {
   // 중복 신호 제거: 같은 시간에 같은 포지션을 가진 신호는 하나만 유지
-  const uniqueSignals: TradeSignal[] = [];
   const signalMap = new Map<string, TradeSignal>();
   
-  // 신호를 시간 기준으로 정렬 (최신 신호가 우선)
-  const sortedSignals = [...signals].sort((a, b) => {
-    const timeA = typeof a.time === 'number' ? a.time : (typeof a.time === 'string' ? new Date(a.time).getTime() / 1000 : 0);
-    const timeB = typeof b.time === 'number' ? b.time : (typeof b.time === 'string' ? new Date(b.time).getTime() / 1000 : 0);
-    return timeB - timeA;
+  signals.forEach(signal => {
+    const key = `${signal.time}_${signal.position}`;
+    signalMap.set(key, signal);
   });
   
-  // 중복 제거 (같은 시간과 포지션을 가진 신호 중 최신 것만 유지)
-  for (const signal of sortedSignals) {
-    const timeKey = String(signal.time);
-    const positionKey = String(signal.position);
-    const key = `${timeKey}:${positionKey}`;
-    
-    if (!signalMap.has(key)) {
-      signalMap.set(key, signal);
+  const uniqueSignals = Array.from(signalMap.values());
+  
+  // 전략별 시그널 수 로깅
+  const strategyCount: Record<string, { buy: number, sell: number }> = {};
+  
+  uniqueSignals.forEach(signal => {
+    const strategy = signal.strategy;
+    if (!strategyCount[strategy]) {
+      strategyCount[strategy] = { buy: 0, sell: 0 };
     }
-  }
+    
+    if (signal.position === 'buy') {
+      strategyCount[strategy].buy++;
+    } else if (signal.position === 'sell') {
+      strategyCount[strategy].sell++;
+    }
+  });
   
-  // Map에서 고유한 신호만 추출
-  uniqueSignals.push(...signalMap.values());
-  
-  // 다시 시간순으로 정렬 (오래된 순)
-  uniqueSignals.sort((a, b) => {
-    const timeA = typeof a.time === 'number' ? a.time : (typeof a.time === 'string' ? new Date(a.time).getTime() / 1000 : 0);
-    const timeB = typeof b.time === 'number' ? b.time : (typeof b.time === 'string' ? new Date(b.time).getTime() / 1000 : 0);
-    return timeA - timeB;
+  // 전략별 카운트 로깅
+  console.log('=== 전략별 시그널 카운트 ===');
+  Object.entries(strategyCount).forEach(([strategy, counts]) => {
+    console.log(`${strategy}: 매수=${counts.buy}, 매도=${counts.sell}`);
   });
   
   console.log(`마커 생성: 총 ${signals.length}개 신호 중 중복 제거 후 ${uniqueSignals.length}개 남음`);

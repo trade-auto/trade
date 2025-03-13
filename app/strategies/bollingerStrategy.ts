@@ -16,7 +16,7 @@ const bollingerStrategy: BollingerStrategy = {
   tags: ['trend', 'moving-average', 'bollinger'],
   
   indicators: {
-    maPeriods: { short: 60, long: 240 }
+    maPeriods: { short: 60, medium: 120, long: 240 }
   },
   
   riskManagement: {
@@ -104,12 +104,12 @@ const bollingerStrategy: BollingerStrategy = {
     // 로그 출력
     console.log('\n=== 매수 조건 검사 ===');
     console.log({
-      '조건 1 (MA240 상향 5봉 이상)': ma240UpCount >= 5 ? '✅' : '❌',
+      '조건 1 (MA240 상향 5봉 이상)': ma240UpCount >= 1 ? '✅' : '❌',
       '조건 2 (MA60 > MA120)': isAbove120 ? '✅' : '❌',
       '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
       '조건 4 (MA600 상승세)': isMA600Upward ? '✅' : '❌',
       '조건 5 (MA60 < MA600)': isBelow600 ? '✅' : '❌' + (useFifthCondition ? '' : ' [비활성화됨]'),
-      '최종 판정': (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA600Upward && (isBelow600 || !useFifthCondition)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '최종 판정': (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow600 || !useFifthCondition)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
     
     // 매수 가능 상태가 아닌 경우
@@ -122,7 +122,7 @@ const bollingerStrategy: BollingerStrategy = {
     console.log('✅ 매수 가능 상태 확인');
 
     // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
-    if (ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA600Upward && (isBelow600 || !useFifthCondition)) {
+    if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow600 || !useFifthCondition)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
       if (!useFifthCondition && !isBelow600) {
         console.log('5번째 조건(MA60 < MA600)이 비활성화되어 있어 통과하였습니다.');
@@ -193,6 +193,9 @@ const bollingerStrategy: BollingerStrategy = {
     const isBelow120 = ma60 < ma120;
     const isBelow240 = ma60 < ma240;
 
+    // MA600이 하락 추세인지 확인 (현재 MA600 < 이전 MA600)
+    const isMA600Falling = ma600 < prevMa600;
+
     // 현재 가격과 매수 가격의 차이 계산 (수익률)
     const currentPrice = data[index].close;
     const profitPercent = ((currentPrice / entryPrice) - 1) * 100;
@@ -227,14 +230,14 @@ const bollingerStrategy: BollingerStrategy = {
       'MA120 하향 지속 봉수': ma120DownCount + '봉',
       'MA240 하향 지속 봉수': ma240DownCount + '봉',
       'MA120/240 하향(10봉)': isMA120240Downward,
-      'MA600 하향': isMA600Downward,
+      'MA600 하향': isMA600Falling,
       'MA60이 MA120 아래': isBelow120,
       'MA60이 MA240 아래': isBelow240,
       '현재 수익률': profitPercent.toFixed(2) + '%'
     });
 
-    // 매도 시그널 생성 - 기본 조건
-    if (ma240DownCount >= 5 && isBelow120 && isBelow240 && isMA600Upward) {
+    // 매도 시그널 생성 - 기본 조건 (README 기준으로 수정)
+    if (ma240DownCount >= 5 && isBelow120 && isBelow240 && isMA600Falling) {
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({
@@ -250,7 +253,7 @@ const bollingerStrategy: BollingerStrategy = {
         'MA240 하향 5봉 이상': ma240DownCount >= 5 ? '✅' : '❌',
         'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
         'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
-        'MA600 상향': isMA600Upward ? '✅' : '❌',
+        'MA600 하강세': isMA600Falling ? '✅' : '❌',
         '최종 판정': '✅ 매도 신호 발생!'
       });
       return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
@@ -355,12 +358,12 @@ const bollingerStrategy: BollingerStrategy = {
     const isMA600Upward = ma600 > prevMa600;
       
     console.log('\n=== 매수 조건 체크 ===');
-    console.log(`조건 1 (MA240 상향 5봉 이상): ${ma240UpCount >= 5 ? '✅' : '❌'} (${ma240UpCount}/5)`);
+    console.log(`조건 1 (MA240 상향 5봉 이상): ${ma240UpCount >= 1 ? '✅' : '❌'} (${ma240UpCount}/5)`);
     console.log(`조건 2 (MA60 > MA120): ${isAbove120 ? '✅' : '❌'}`);
     console.log(`조건 3 (MA60 > MA240): ${isAbove240 ? '✅' : '❌'}`);
     console.log(`조건 4 (MA600 상승세): ${isMA600Upward ? '✅' : '❌'}`);
     console.log(`조건 5 (MA60 < MA600): ${isBelow600 ? '✅' : '❌'}`);
-    console.log(`최종 판정: ${(ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA600Upward && isBelow600) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
+    console.log(`최종 판정: ${(ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && isBelow600) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
     
     return metadata;
   },
@@ -586,12 +589,12 @@ const bollingerStrategy: BollingerStrategy = {
       const isMA600Upward = ma600 > prevMa600;
       
       console.log('\n=== 매수 조건 체크 ===');
-      console.log(`조건 1 (MA240 상향 5봉 이상): ${ma240UpCount >= 5 ? '✅' : '❌'} (${ma240UpCount}/5)`);
+      console.log(`조건 1 (MA240 상향 5봉 이상): ${ma240UpCount >= 1 ? '✅' : '❌'} (${ma240UpCount}/5)`);
       console.log(`조건 2 (MA60 > MA120): ${isAbove120 ? '✅' : '❌'}`);
       console.log(`조건 3 (MA60 > MA240): ${isAbove240 ? '✅' : '❌'}`);
       console.log(`조건 4 (MA600 상승세): ${isMA600Upward ? '✅' : '❌'}`);
       console.log(`조건 5 (MA60 < MA600): ${isBelow600 ? '✅' : '❌'}`);
-      console.log(`최종 판정: ${(ma240UpCount >= 5 && isAbove120 && isAbove240 && isMA600Upward && isBelow600) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
+      console.log(`최종 판정: ${(ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && isBelow600) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
     } else {
       console.log('\n=== 현재 상태: 매수 완료(매도 대기 중) ===');
       console.log('→ 다음 액션: 매도 조건 모니터링');

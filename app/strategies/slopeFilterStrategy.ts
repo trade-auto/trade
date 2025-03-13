@@ -1,199 +1,265 @@
-import { CandlestickData, Time } from 'lightweight-charts';
-import { TradingStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult } from './types';
+﻿import { CandlestickData, Time } from 'lightweight-charts';
+import { TradingStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult, TradeStrategy } from './types';
 import { calculateEMA, createTempCandleData, calculateRSI } from './utils';
+import useUpbitStore from '../store/useUpbitStore';
+import { useEffect } from 'react';
 
-// 기울기 필터 전략
+type TradeState = 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
+
+// A15 기울기 필터 전략
 const slopeFilterStrategy: TradingStrategy = {
   name: 'SLOPE_FILTER',
   timeframe: '1m',
-  description: '통합 기술적 분석 전략 (MA/MACD/RSI/BB)',
+  description: '기울기 필터 기반 A15 전략 (MA/RSI/기울기)',
   author: 'System',
-  version: '1.0.0',
-  tags: ['trend', 'momentum', 'oscillator'],
+  version: '2.0.0',
+  tags: ['trend', 'momentum', 'slope', 'filter'],
   
   indicators: {
-    maPeriods: { short: 60, long: 120 },
-    bollinger: { period: 20, stdDev: 2 },
-    rsi: { period: 14, overbought: 70, oversold: 30 },
-    macd: { fast: 12, slow: 26, signal: 9 }
+    maPeriods: { short: 40, medium: 60, long: 120 },
+    rsi: { period: 14, overbought: 70, oversold: 30 }
+  },
+  
+  riskManagement: {
+    stopLossPercent: 1.5,
+    takeProfitPercent: 3.0,
+    positionSizePercent: 40
   },
   
   // 진입 조건 분석
-  analyzeEntry(data, index) {
-    // 기본 파라미터 설정
-    const ma60Period = 60;
-    const ma120Period = 120;
-    const ma240Period = 240;
-    const ma300Period = 300;
-    const ma360Period = 360;
-    const ma900Period = 900;
-    const rsiPeriod = 14;
-    const macdFast = 12;
-    const macdSlow = 26;
-    const macdSignal = 9;
-    const bbandsLength = 20;
-    const bbandsStdDev = 2;
-    
-    // 최소 필요 데이터 포인트 확인
-    const minDataPoints = Math.max(ma900Period, rsiPeriod, macdSlow + macdSignal);
-    if (index < minDataPoints) return null;
-    
-    const prices = data.slice(0, index + 1).map(d => d.close);
-    
-    // 이동평균선 계산
-    const ma60 = prices.slice(-ma60Period).reduce((a, b) => a + b, 0) / ma60Period;
-    const ma120 = prices.slice(-ma120Period).reduce((a, b) => a + b, 0) / ma120Period;
-    const ma240 = prices.slice(-ma240Period).reduce((a, b) => a + b, 0) / ma240Period;
-    const ma300 = prices.slice(-ma300Period).reduce((a, b) => a + b, 0) / ma300Period;
-    const ma360 = prices.slice(-ma360Period).reduce((a, b) => a + b, 0) / ma360Period;
-    const ma900 = prices.slice(-ma900Period).reduce((a, b) => a + b, 0) / ma900Period;
-    
-    // 이전 이동평균선 계산 (교차 확인용)
-    const prevMa60 = prices.slice(-ma60Period-1, -1).reduce((a, b) => a + b, 0) / ma60Period;
-    const prevMa120 = prices.slice(-ma120Period-1, -1).reduce((a, b) => a + b, 0) / ma120Period;
-    
-    // MACD 계산
-    const emaFast = calculateEMA(data.slice(0, index + 1), macdFast).slice(-1)[0]?.value || 0;
-    const emaSlow = calculateEMA(data.slice(0, index + 1), macdSlow).slice(-1)[0]?.value || 0;
-    const macd = emaFast - emaSlow;
-    const macdSignalLine = calculateEMA(
-      data.slice(0, index + 1).map(d => createTempCandleData(d.time, 
-        calculateEMA([createTempCandleData(d.time, d.close)], macdFast)[0]?.value - 
-        calculateEMA([createTempCandleData(d.time, d.close)], macdSlow)[0]?.value || 0
-      )),
-      macdSignal
-    ).slice(-1)[0]?.value || 0;
-    const macdHistogram = macd - macdSignalLine;
-    const prevMacdHistogram = calculateEMA(
-      data.slice(0, index).map(d => createTempCandleData(d.time,
-        calculateEMA([createTempCandleData(d.time, d.close)], macdFast)[0]?.value -
-        calculateEMA([createTempCandleData(d.time, d.close)], macdSlow)[0]?.value || 0
-      )),
-      macdSignal
-    ).slice(-1)[0]?.value || 0;
-    
-    // RSI 계산
-    const rsi = calculateRSI(prices);
-    const prevRsi = index > 0 ? calculateRSI(prices.slice(0, -1)) : rsi;
-    
-    // 볼린저 밴드 계산
-    const bbandsSlice = prices.slice(-bbandsLength);
-    const bbandsMA = bbandsSlice.reduce((a, b) => a + b, 0) / bbandsLength;
-    const bbandsStd = Math.sqrt(
-      bbandsSlice.reduce((a, b) => a + Math.pow(b - bbandsMA, 2), 0) / bbandsLength
-    );
-    const lowerBand = bbandsMA - (bbandsStdDev * bbandsStd);
-    
-    // 매수 조건 확인
-    const isLongCondition = 
-      // 이동평균선 정렬 및 교차 조건
-      ma60 > ma120 && ma120 > ma240 && ma240 > ma300 && ma300 > ma360 && ma360 > ma900 &&
-      prevMa60 <= prevMa120 && ma60 > ma120 && // MA60이 MA120 상향 돌파
-      
-      // 기술적 지표 조건
-      rsi < 70 && rsi > 30 && // RSI가 과매수/과매도 영역이 아님
-      rsi > prevRsi && // RSI 상승 중
-      macdHistogram > 0 && prevMacdHistogram < 0 && // MACD 히스토그램 상향 돌파
-      data[index].close < lowerBand; // 현재 가격이 볼린저 밴드 하단 아래
-    
-    if (isLongCondition) {
-      return 'buy';
+  analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | null {
+    const entryDateTime = new Date(data[index].time as number * 1000);
+    console.log('\n=== 📊 A15 진입 분석 함수 호출 ===');
+    console.log('분석 시작 시간:', entryDateTime.toLocaleString('ko-KR'));
+    console.log('캔들 인덱스:', index);
+
+    // 필요한 최소 데이터 검사
+    const requiredData = 120; // MA120 계산에 필요
+    const isCollecting = index < requiredData;
+    if (isCollecting) {
+      console.log(`초기 데이터 수집 중... (필요: ${requiredData}초)`);
+      console.log(`현재: ${index}초 / ${requiredData}초 (${((index/requiredData)*100).toFixed(1)}%)`);
+      return null;
     }
+
+    // 충분한 데이터가 있는지 검사
+    if (data.length < requiredData || index < requiredData) {
+      console.log('충분한 데이터가 없습니다.');
+      console.log(`필요한 데이터: ${requiredData}초`);
+      console.log(`현재 데이터 길이: ${data.length}초`);
+      console.log(`현재 인덱스: ${index}`);
+      return null;
+    }
+
+    // 이전 데이터 무결성 검사
+    const dataSlice = data.slice(index - requiredData, index);
+    if (dataSlice.some(d => d === undefined || d.close === undefined)) {
+      console.log('이전 데이터에 누락된 값이 있습니다.');
+      return null;
+    }
+
+    // 현재 거래 상태 체크
+    const store = useUpbitStore.getState();
     
-    return null;
+    console.log('\n=== 현재 거래 상태 체크 ===');
+    console.log('현재 상태:', store.tradeState);
+    
+    // 매수 가능 상태 체크 - 'wait' 상태일 때만 매수 가능하도록 수정
+    const canBuy = store.tradeState.theoreticalPosition === 'wait';
+    
+    // MA 계산 - 매수 가능 상태와 관계없이 계산
+    const ma40 = data.slice(index - 40, index).reduce((a, b) => a + b.close, 0) / 40;
+    const prevMa40 = data.slice(index - 41, index - 1).reduce((a, b) => a + b.close, 0) / 40;
+
+    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
+
+    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+    
+    // 기울기 계산
+    const slope40 = ma40 - prevMa40;
+    const slope60 = ma60 - prevMa60;
+    
+    // A15 매수 조건: 120MA 아래의 40MA와 60MA의 기울기가 양수일 때
+    const isBelow120MA = ma40 < ma120 && ma60 < ma120;
+    const isPositiveSlope = slope40 > 0.005 && slope60 > 0.005; // 기울기 임계값 설정
+    
+    // 로그 출력
+    console.log('\n=== A15 매수 조건 검사 ===');
+    console.log({
+      'MA40': ma40.toFixed(2),
+      'MA60': ma60.toFixed(2),
+      'MA120': ma120.toFixed(2),
+      '40MA 기울기': slope40.toFixed(5),
+      '60MA 기울기': slope60.toFixed(5),
+      '조건 1 (120MA 아래)': isBelow120MA ? '✅' : '❌',
+      '조건 2 (기울기 양수)': isPositiveSlope ? '✅' : '❌',
+      '최종 판정': (isBelow120MA && isPositiveSlope) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+    });
+    
+    // 매수 가능 상태가 아닌 경우
+    if (!canBuy) {
+      console.log('\n=== ❌ 매수 불가 상태 ===');
+      console.log('매수 가능 상태가 아닙니다. (waiting_buy 상태여야 함)');
+      return null;
+    }
+
+    console.log('✅ 매수 가능 상태 확인');
+
+    // 매수 시그널 생성
+    if (isBelow120MA && isPositiveSlope) {
+      console.log('\n=== ✅ A15 매수 조건 충족! ===');
+      console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
+      return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
+    }
+
+    return null;  // 매수 조건 불충족
   },
   
   // 청산 조건 분석
-  analyzeExit(data, index, position, entryPrice) {
-    if (index < 900 || position !== 'buy') return false;
+  analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
+    // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
+    if (index < 120 || position !== 'buy') return false;
     
-    const ma60Period = 60;
-    const ma120Period = 120;
-    const ma240Period = 240;
-    const ma360Period = 360;
-    const ma900Period = 900;
-    const rsiPeriod = 14;
+    // MA 계산
+    const ma40 = data.slice(index - 40, index).reduce((a, b) => a + b.close, 0) / 40;
+    const prevMa40 = data.slice(index - 41, index - 1).reduce((a, b) => a + b.close, 0) / 40;
     
-    const prices = data.slice(0, index + 1).map(d => d.close);
+    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     
-    // 이동평균선 계산
-    const ma60 = prices.slice(-ma60Period).reduce((a, b) => a + b, 0) / ma60Period;
-    const ma120 = prices.slice(-ma120Period).reduce((a, b) => a + b, 0) / ma120Period;
-    const ma240 = prices.slice(-ma240Period).reduce((a, b) => a + b, 0) / ma240Period;
-    const ma360 = prices.slice(-ma360Period).reduce((a, b) => a + b, 0) / ma360Period;
+    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     
-    // 이전 이동평균선 계산
-    const prevMa60 = prices.slice(-ma60Period-1, -1).reduce((a, b) => a + b, 0) / ma60Period;
-    const prevMa120 = prices.slice(-ma120Period-1, -1).reduce((a, b) => a + b, 0) / ma120Period;
+    // 기울기 계산
+    const slope40 = ma40 - prevMa40;
+    const slope60 = ma60 - prevMa60;
     
-    // RSI 계산
-    const rsi = calculateRSI(prices);
-    const prevRsi = index > 0 ? calculateRSI(prices.slice(0, -1)) : rsi;
+    // A15 매도 조건: 120MA 위의 40MA와 60MA의 기울기가 음수일 때
+    const isAbove120MA = ma40 > ma120 && ma60 > ma120;
+    const isNegativeSlope = slope40 < -0.005 && slope60 < -0.005; // 기울기 임계값 설정
+
+    // 현재 가격과 매수 가격의 차이 계산 (수익률)
+    const currentPrice = data[index].close;
+    const profitPercent = ((currentPrice / entryPrice) - 1) * 100;
+
+    console.log('\n=== A15 매도 신호 분석 ===');
+    console.log('현재 거래 상태:', {
+      '매도 가능 여부': position === 'buy',
+      '마지막 매수 시간': new Date().toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      })
+    });
+
+    // 매도 조건 확인 및 로그 출력
+    console.log('매도 조건:', {
+      'MA40': ma40.toFixed(2),
+      'MA60': ma60.toFixed(2),
+      'MA120': ma120.toFixed(2),
+      '40MA 기울기': slope40.toFixed(5),
+      '60MA 기울기': slope60.toFixed(5),
+      '조건 1 (120MA 위)': isAbove120MA ? '✅' : '❌',
+      '조건 2 (기울기 음수)': isNegativeSlope ? '✅' : '❌',
+      '현재 수익률': profitPercent.toFixed(2) + '%'
+    });
+
+    // 매도 시그널 생성 - 둘 중 하나라도 충족하면 매도
+    const sellCondition = (isAbove120MA && isNegativeSlope) || profitPercent <= -1.5;
     
-    // 매도 조건 확인
-    const isExitCondition = 
-      // 이동평균선 조건
-      (ma60 < ma120 || ma120 < ma240) || // MA 정렬 붕괴
-      (prevMa60 >= prevMa120 && ma60 < ma120) || // MA60이 MA120 하향 돌파
-      
-      // 기술적 지표 조건
-      rsi > 80 || // RSI 과매수
-      rsi < prevRsi || // RSI 하락 중
-      
-      // 수익률 기반 조건
-      (data[index].close / entryPrice - 1) * 100 >= 3.0 || // 3% 이상 수익
-      (data[index].close / entryPrice - 1) * 100 <= -1.0; // 1% 이상 손실
-    
-    return isExitCondition;
+    if (sellCondition) {
+      const reason = profitPercent <= -1.5 ? '손절 조건 충족' : 'A15 매도 조건 충족';
+      console.log('\n=== 매도 조건 충족 여부 ===');
+      console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
+      console.log(`✅ 매도 시그널 발생: ${reason}`);
+      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
+    }
+
+    console.log('\n=== 매도 조건 충족 여부 ===');
+    console.log('상태 유지: waiting_sell (매도 대기)');
+    return false;  // 매도 대기 상태 유지 (waiting_sell)
   },
   
   // 지표 계산 함수
   calculateIndicators(data, index) {
-    if (index < 900) {
+    if (index < 120) {
       return {} as ExtendedMetadata;
     }
     
-    const prices = data.slice(0, index + 1).map(d => d.close);
+    // MA 계산
+    const ma40 = data.slice(index - 40, index).reduce((a, b) => a + b.close, 0) / 40;
+    const prevMa40 = data.slice(index - 41, index - 1).reduce((a, b) => a + b.close, 0) / 40;
     
-    // 이동평균선 계산
-    const ma60 = prices.slice(-60).reduce((a, b) => a + b, 0) / 60;
-    const ma120 = prices.slice(-120).reduce((a, b) => a + b, 0) / 120;
-    const ma240 = prices.slice(-240).reduce((a, b) => a + b, 0) / 240;
-    const ma360 = prices.slice(-360).reduce((a, b) => a + b, 0) / 360;
+    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     
-    // MACD 계산
-    const macdFast = 12;
-    const macdSlow = 26;
-    const emaFast = calculateEMA(data.slice(0, index + 1), macdFast).slice(-1)[0]?.value || 0;
-    const emaSlow = calculateEMA(data.slice(0, index + 1), macdSlow).slice(-1)[0]?.value || 0;
-    const macdValue = emaFast - emaSlow;
+    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+    
+    // 기울기 계산
+    const slope40 = ma40 - prevMa40;
+    const slope60 = ma60 - prevMa60;
     
     // RSI 계산
+    const prices = data.slice(0, index + 1).map(d => d.close);
     const rsiValue = calculateRSI(prices);
     
     const metadata: ExtendedMetadata = {
+      ma40,
       ma60,
       ma120,
-      ma240,
-      ma360,
-      deviation: Math.abs(data[index].close - ma60) / ma60,
-      isAbove360MA: data[index].close > ma360,
+      slope40,
+      slope60,
       rsi: rsiValue,
-      macd: macdValue
+      isAbove120MA: data[index].close > ma120
     };
     
     return metadata;
   },
   
-  // 기존 분석 함수
+  // 분석 함수
   analyze(data, options?: AnalyzeOptions): AnalysisResult {
     const signals: TradeSignal[] = [];
-    let currentPosition: 'buy' | null = null;
-    let lastTradeId: string | null = null;
+    let currentPosition: 'buy' | null = options?.currentPosition || null;
+    let lastTradeId: string | null = options?.lastTradeId || null;
     
-    // 충분한 데이터가 있는지 확인
-    const minDataPoints = 900;
-    if (data.length < minDataPoints) {
+    // 마지막 신호 발생 시간 및 인덱스 추적
+    let lastSignalIndex = options?.lastProcessedIndex ? options.lastProcessedIndex - 30 : 0; // 초기값 설정
+    const minSignalInterval = 30; // 최소 30캔들(30초) 간격
+    
+    // 실시간 모드에서 이전 상태 유지
+    if (options?.realtime && options?.lastProcessedIndex !== undefined) {
+      // 이전 상태 로깅
+      console.log('\n=== 이전 상태 확인 ===');
+      console.log('이전 처리 인덱스:', options.lastProcessedIndex);
+      console.log('이전 포지션:', options.currentPosition || '없음');
+      console.log('이전 거래 ID:', options.lastTradeId || '없음');
+      
+      // 이전 상태 유지
+      if (options.currentPosition) {
+        currentPosition = options.currentPosition;
+        console.log('이전 포지션 유지:', currentPosition);
+      }
+      
+      if (options.lastTradeId) {
+        lastTradeId = options.lastTradeId;
+        console.log('이전 거래 ID 유지:', lastTradeId);
+      }
+      
+      // 이전 신호 복원 (필요한 경우)
+      if (options.signals && options.signals.length > 0) {
+        signals.push(...options.signals);
+        console.log('이전 신호 복원:', options.signals.length, '개');
+      }
+    }
+    
+    // MA120 계산을 위해 최소 120초의 데이터가 필요
+    if (data.length < 120) {
+      console.log('데이터가 충분하지 않습니다. 최소 120개의 캔들이 필요합니다. (2분)');
+      console.log('현재 데이터 길이:', data.length, '초');
       return {
         signals,
         lastProcessedIndex: data.length - 1,
@@ -202,81 +268,229 @@ const slopeFilterStrategy: TradingStrategy = {
       };
     }
     
-    const self = this; // this 컨텍스트 저장
+    console.log('\n=== A15 기울기 필터 전략 분석 시작 ===');
+    console.log('데이터 길이:', data.length, '초');
+    console.log('분석 시작 시간:', new Date().toLocaleString('ko-KR'));
+    console.log('실시간 모드:', options?.realtime ? '✅' : '❌');
+    console.log('현재 포지션:', currentPosition || '없음');
     
-    // 각 봉마다 분석
-    for (let i = minDataPoints; i < data.length; i++) {
-      // 현재 포지션이 없는 경우에만 매수 신호 확인
-      if (currentPosition === null) {
-        const entrySignal = self.analyzeEntry?.(data, i);
-        
-        if (entrySignal === 'buy') {
-          const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          signals.push({
-            id: tradeId,
-            time: data[i].time as number,
-            position: 'buy',
-            price: data[i].close,
-            strategy: 'SLOPE_FILTER',
-            reason: '이동평균선 정렬 및 지표 조건 충족',
-            metadata: self.calculateIndicators?.(data, i)
-          });
-          currentPosition = 'buy';
-          lastTradeId = tradeId;
-          console.log('✅ 매수 신호 생성 (SLOPE_FILTER):', {
-            시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
-            가격: data[i].close.toLocaleString('ko-KR') + '원',
-            '현재 포지션': currentPosition,
-            '거래 ID': tradeId
-          });
+    // 실시간 모드인 경우 마지막 캔들만 분석
+    let startIndex = 0; // 처음부터 데이터 수집
+    let endIndex = data.length;
+    
+    if (options?.realtime) {
+      if (options?.lastProcessedIndex !== undefined) {
+        // 이미 초기화가 완료된 경우
+        if (options.lastProcessedIndex >= 120) {
+        startIndex = options.lastProcessedIndex + 1;
+          console.log(`실시간 모드: 신규 데이터만 분석 (인덱스 ${startIndex}부터 ${endIndex - 1}까지)`);
+        } else {
+          // 아직 초기화가 필요한 경우이지만, 분석은 계속 진행
+          console.log('실시간 모드: 초기 데이터 수집 및 분석 중...');
+          console.log(`현재: ${options.lastProcessedIndex}초 / 120초 (${((options.lastProcessedIndex/120)*100).toFixed(1)}%)`);
+          startIndex = 0;  // 처음부터 분석
         }
-      } 
-      // 현재 롱 포지션인 경우, 청산 조건 확인
-      else if (currentPosition === 'buy') {
-        // 마지막 롱 진입 신호의 인덱스 찾기
-        const entrySignalIndex = signals.findIndex(signal => 
-          signal.id === lastTradeId && signal.position === 'buy');
-        
-        if (entrySignalIndex >= 0) {
-          const entryPrice = signals[entrySignalIndex].price;
-          const shouldExit = self.analyzeExit?.(data, i, 'buy', entryPrice);
+      }
+    } else {
+      console.log(`전체 데이터 분석: 인덱스 ${startIndex}부터 ${endIndex - 1}까지`);
+    }
+
+    for (let i = startIndex; i < endIndex; i++) {
+      // 마지막 신호와의 간격 체크
+      const hasEnoughInterval = i - lastSignalIndex >= minSignalInterval;
+      
+      // 매수 조건 분석 (현재 포지션이 없는 경우)
+      if (!currentPosition) {
+        // 충분한 간격이 확보되었을 때만 신호 발생
+        if (hasEnoughInterval) {
+          const entryResult = this.analyzeEntry?.(data, i);
           
-          if (shouldExit) {
-            const exitTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            signals.push({
-              id: exitTradeId,
-              time: data[i].time as number,
-              position: 'sell',
-              price: data[i].close,
-              strategy: 'SLOPE_FILTER',
-              reason: '기술적 조건 붕괴 또는 한계 도달',
-              relatedTradeId: lastTradeId || undefined,
-              metadata: self.calculateIndicators?.(data, i)
-            });
-            currentPosition = null;
-            lastTradeId = null;
-            console.log('✅ 매도 신호 생성 (SLOPE_FILTER):', {
-              시간: new Date(data[i].time as number).toLocaleString('ko-KR'),
-              가격: data[i].close.toLocaleString('ko-KR') + '원',
-              '이전 포지션': 'buy',
-              '매수가': entryPrice.toLocaleString('ko-KR') + '원',
-              '수익률': ((data[i].close / entryPrice - 1) * 100).toFixed(2) + '%',
-              '거래 ID': exitTradeId,
-              '관련 매수 ID': lastTradeId,
-              '다음 매수 준비': '완료'
-            });
+          // 매수 신호 발생
+          if (entryResult === 'buy') {
+            const price = data[i].close;
+            const time = data[i].time as number;
+            const id = `BUY_${time}_${price.toFixed(0)}`;
+            
+            // 트레이딩 신호 생성
+            const signal: TradeSignal = {
+              id,
+              time,
+              position: 'buy',
+              price,
+              strategy: 'SLOPE_FILTER' as TradeStrategy,
+              reason: '120MA 아래에서 40MA와 60MA의 기울기가 양수',
+              metadata: {
+                ma40: data.slice(i - 40, i).reduce((a, b) => a + b.close, 0) / 40,
+                ma60: data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60,
+                ma120: data.slice(i - 120, i).reduce((a, b) => a + b.close, 0) / 120
+              }
+            };
+            
+            signals.push(signal);
+            currentPosition = 'buy';
+            lastTradeId = id;
+            lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
+            
+            console.log(`\n매수 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
+            console.log(`가격: ${price}`);
+            console.log(`ID: ${id}`);
+          } else {
+            // 매수 신호가 없는 경우에도 매수 대기 중임을 로그로 남김
+            if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)
+              console.log(`캔들 ${i} - 매수 대기 중...`);
+            }
+          }
+        }
+      }
+      // 매도 조건 분석 (매수 포지션이 있는 경우)
+      else if (currentPosition === 'buy' && lastTradeId) {
+        // 충분한 간격이 확보되었을 때만 신호 발생 - 단, 매수 후 일정 시간(최소 60초=1분)은 보유
+        if (i - lastSignalIndex >= 60) {
+          const buySignal = signals.find(s => s.id === lastTradeId);
+          
+          if (buySignal) {
+            const entryPrice = buySignal.price;
+            const exitResult = this.analyzeExit?.(data, i, currentPosition, entryPrice);
+            
+            // 매도 신호 발생
+            if (exitResult) {
+              const price = data[i].close;
+              const time = data[i].time as number;
+              const id = `SELL_${time}_${price.toFixed(0)}`;
+              
+              // 현재 및 이전 MA 계산
+              const ma40 = data.slice(i - 40, i).reduce((a, b) => a + b.close, 0) / 40;
+              const prevMa40 = data.slice(i - 41, i - 1).reduce((a, b) => a + b.close, 0) / 40;
+              const ma60 = data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60;
+              const prevMa60 = data.slice(i - 61, i - 1).reduce((a, b) => a + b.close, 0) / 60;
+              const ma120 = data.slice(i - 120, i).reduce((a, b) => a + b.close, 0) / 120;
+              
+              const slope40 = ma40 - prevMa40;
+              const slope60 = ma60 - prevMa60;
+              
+              const isAbove120MA = ma40 > ma120 && ma60 > ma120;
+              const isNegativeSlope = slope40 < -0.005 && slope60 < -0.005;
+              
+              // 매도 이유 결정
+              let exitReason = '';
+              const profitPercent = ((price / entryPrice) - 1) * 100;
+              
+              if (profitPercent <= -1.5) {
+                exitReason = `손절: 수익률 ${profitPercent.toFixed(2)}%`;
+              } else if (isAbove120MA && isNegativeSlope) {
+                exitReason = '120MA 위에서 40MA와 60MA의 기울기가 음수';
+              } else {
+                exitReason = 'A15 매도 조건 충족';
+              }
+              
+              // 트레이딩 신호 생성
+              const signal: TradeSignal = {
+                id,
+                time,
+                position: 'sell',
+                price,
+                strategy: 'SLOPE_FILTER' as TradeStrategy,
+                relatedTradeId: lastTradeId,
+                reason: exitReason,
+                metadata: {
+                  ma40,
+                  ma60,
+                  ma120,
+                  slope40,
+                  slope60
+                }
+              };
+              
+              signals.push(signal);
+              currentPosition = null;
+              lastTradeId = null;
+              lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
+              
+              console.log(`\n매도 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
+              console.log(`가격: ${price}`);
+              console.log(`수익률: ${profitPercent.toFixed(2)}%`);
+              console.log(`매도 이유: ${exitReason}`);
+              console.log(`ID: ${id}`);
+            } else {
+              // 매도 신호가 없는 경우에도 매수 상태임을 로그로 남김
+              if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)
+                console.log(`캔들 ${i} - 매수 중(매도 대기 중)...`);
+              }
+            }
           }
         }
       }
     }
     
+    console.log('\n=== A15 기울기 필터 전략 분석 완료 ===');
+    console.log('총 신호 개수:', signals.length);
+    console.log('매수 신호:', signals.filter(s => s.position === 'buy').length);
+    console.log('매도 신호:', signals.filter(s => s.position === 'sell').length);
+    
+    // 현재 상태 확인 및 다음 액션 준비
+    if (currentPosition === null) {
+      console.log('\n=== 현재 상태: 매수 대기 중 ===');
+      console.log('→ 다음 액션: 매수 조건 모니터링');
+      
+      // 마지막 캔들 정보 표시
+      const lastCandle = data[data.length - 1];
+      console.log(`마지막 캔들 시간: ${new Date(lastCandle.time as number * 1000).toLocaleString('ko-KR')}`);
+      console.log(`마지막 캔들 가격: ${lastCandle.close.toLocaleString('ko-KR')}원`);
+      
+      // 이동평균선 값 표시
+      const ma40 = data.slice(data.length - 40, data.length).reduce((a, b) => a + b.close, 0) / 40;
+      const prevMa40 = data.slice(data.length - 41, data.length - 1).reduce((a, b) => a + b.close, 0) / 40;
+      const ma60 = data.slice(data.length - 60, data.length).reduce((a, b) => a + b.close, 0) / 60;
+      const prevMa60 = data.slice(data.length - 61, data.length - 1).reduce((a, b) => a + b.close, 0) / 60;
+      const ma120 = data.slice(data.length - 120, data.length).reduce((a, b) => a + b.close, 0) / 120;
+      
+      // 기울기 계산
+      const slope40 = ma40 - prevMa40;
+      const slope60 = ma60 - prevMa60;
+      
+      // 매수 조건 체크
+      const isBelow120MA = ma40 < ma120 && ma60 < ma120;
+      const isPositiveSlope = slope40 > 0.005 && slope60 > 0.005;
+      
+      console.log(`MA40: ${ma40.toFixed(3)}`);
+      console.log(`MA60: ${ma60.toFixed(3)}`);
+      console.log(`MA120: ${ma120.toFixed(3)}`);
+      console.log(`40MA 기울기: ${slope40.toFixed(5)}`);
+      console.log(`60MA 기울기: ${slope60.toFixed(5)}`);
+      
+      // 매수 조건 확인 상태 표시
+      console.log('\n=== 매수 조건 체크 ===');
+      console.log(`조건 1 (120MA 아래): ${isBelow120MA ? '✅' : '❌'}`);
+      console.log(`조건 2 (기울기 양수): ${isPositiveSlope ? '✅' : '❌'}`);
+      console.log(`최종 판정: ${(isBelow120MA && isPositiveSlope) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
+    } else {
+      console.log('\n=== 현재 상태: 매수 완료(매도 대기 중) ===');
+      console.log('→ 다음 액션: 매도 조건 모니터링');
+      
+      // 매수 정보 표시
+      const buySignal = signals.find(s => s.id === lastTradeId);
+      if (buySignal) {
+        const buyTime = new Date(buySignal.time * 1000).toLocaleString('ko-KR');
+        console.log(`매수 시간: ${buyTime}`);
+        console.log(`매수 가격: ${buySignal.price.toLocaleString('ko-KR')}원`);
+        
+        // 현재 수익률 계산
+        const currentPrice = data[data.length - 1].close;
+        const profitRatio = ((currentPrice - buySignal.price) / buySignal.price * 100).toFixed(2);
+        console.log(`현재 가격: ${currentPrice.toLocaleString('ko-KR')}원`);
+        console.log(`현재 수익률: ${profitRatio}%`);
+      }
+    }
+    
+    console.log('\n분석 종료 시간:', new Date().toLocaleString('ko-KR'));
+    
     return {
       signals,
-      lastProcessedIndex: data.length - 1,
+      lastProcessedIndex: endIndex - 1,
       currentPosition,
       lastTradeId
     };
   }
 };
 
-export default slopeFilterStrategy; 
+export default slopeFilterStrategy;

@@ -1,7 +1,7 @@
 import { CandlestickData, Time } from 'lightweight-charts';
 
 // 전략 유형 정의
-export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' ;
 
 // 포지션 유형 정의
 export type PositionType = 'buy' | 'sell' | null;
@@ -16,6 +16,7 @@ export interface MAType {
   threeHundredSixty: number;
   sixHundred: number;
   nineHundred: number;
+  medium: number;
 }
 
 // 확장 메타데이터 인터페이스
@@ -23,6 +24,7 @@ export interface ExtendedMetadata {
   deviation?: number;
   slope?: number;
   ma30?: number;
+  ma40?: number;
   ma60?: number;
   ma120?: number;
   ma240?: number;
@@ -39,6 +41,8 @@ export interface ExtendedMetadata {
   ma60Slope?: number;
   ma120Slope?: number;
   ma240Slope?: number;
+  slope40?: number;
+  slope60?: number;
   upperBand?: number;
   lowerBand?: number;
   isAbove360MA?: boolean;
@@ -52,6 +56,7 @@ export interface ExtendedMetadata {
   isMA600Upward?: boolean;
   isMA900Upward?: boolean;
   isAbove120?: boolean;
+  isAbove120MA?: boolean;
   isAbove240?: boolean;
   ma60Above120Count?: number;
   ma60Above240Count?: number;
@@ -123,7 +128,7 @@ export interface RiskManagement {
 
 // 지표 설정 인터페이스
 export interface IndicatorSettings {
-  maPeriods?: { short: number; long: number; };  // MA 기간 설정
+  maPeriods?: { short: number; medium: number; long: number; };  // MA 기간 설정
   bollinger?: { period: number; stdDev: number; };  // 볼린저 밴드 설정
   rsi?: { period: number; overbought: number; oversold: number; };  // RSI 설정
   macd?: { fast: number; slow: number; signal: number; };  // MACD 설정
