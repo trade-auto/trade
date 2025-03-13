@@ -75,6 +75,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   // 업비트 스토어
   const { tradeStrategy, updateTradeStrategy } = useUpbitStore();
   
+  // 백테스트 마커 추출
+  const backtestMarkers = csvBacktestResult?.markers || [];
+  
   // 초봉 차트일 경우 자동 업데이트 및 실시간 API 효과
   useEffect(() => {
     if (chartType === 'seconds/60') {

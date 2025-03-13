@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 트레이딩 차트 애플리케이션
 
-## Getting Started
+## 개요
+이 애플리케이션은 암호화폐 트레이딩을 위한 차트 및 분석 도구를 제공합니다. 볼린저 밴드 전략을 기반으로 매수/매도 신호를 분석하고 시각화합니다.
 
-First, run the development server:
+## 주요 기능
+- 실시간 캔들스틱 차트 표시
+- 이동평균선(MA) 표시 및 설정
+- 자동 업데이트 및 실시간 API 연동
+- 백테스트 기능 (CSV 데이터 임포트/내보내기)
+- 트레이딩 전략 분석 및 신호 표시
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 컴포넌트 구조
+
+### CandlestickChartCore
+메인 차트 컴포넌트로, 다음 기능을 제공합니다:
+- 차트 데이터 표시 및 관리
+- 자동 업데이트 설정
+- 백테스트 결과 표시
+- CSV 데이터 관리
+
+### 주요 훅(Hooks)
+- `useChartData`: 차트 데이터 및 기능 관리
+- `useCsvFunctions`: CSV 데이터 임포트/내보내기 기능
+- `useBacktestChart`: 백테스트 차트 관리
+
+### 트레이딩 전략
+- `bollingerStrategy`: 볼린저 밴드 기반 트레이딩 전략 구현
+
+## 최근 수정사항
+
+### backtestMarkers 문제 해결
+백테스트 차트에서 마커(매수/매도 신호)를 표시하기 위한 `backtestMarkers` 변수가 정의되지 않아 발생한 오류를 수정했습니다.
+
+```javascript
+// 백테스트 마커 추출
+const backtestMarkers = csvBacktestResult?.markers || [];
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+이 코드는 CSV 백테스트 결과에서 마커 데이터를 추출하거나, 결과가 없는 경우 빈 배열을 사용합니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 콘솔 로그 관리
+차트 업데이트 중 콘솔 창이 리셋되는 문제가 있을 수 있습니다. 이는 많은 로그 출력으로 인한 것으로, 필요한 경우 로그 출력을 제한하거나 특정 로그만 표시하도록 설정할 수 있습니다.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 사용 방법
+1. 차트 타입 및 종목 선택
+2. 자동 업데이트 또는 실시간 API 활성화
+3. 이동평균선 표시 설정
+4. 백테스트를 위한 CSV 데이터 임포트/내보내기
+5. 트레이딩 신호 분석 및 확인
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 개발 환경
+- Next.js
+- TypeScript
+- Lightweight Charts 라이브러리
+- Zustand (상태 관리)
