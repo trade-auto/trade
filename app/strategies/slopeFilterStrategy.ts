@@ -80,6 +80,10 @@ const slopeFilterStrategy: TradingStrategy = {
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
     const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
 
+    const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
+    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+    const slope600 = ma600 - prevMa600;
+
     // 기울기 계산
     const slope60 = ma60 - prevMa60;
     const slope120 = ma120 - prevMa120;
@@ -92,6 +96,7 @@ const slopeFilterStrategy: TradingStrategy = {
     const isNarrowDeviation = Math.abs(ma60 - ma120) < 0.01 && ma60 > ma120 && slope60 > 0;
     const isPerfectAlignment = ma60 > ma120 && ma120 > ma240 && ma60 > ma120;
     const isNotReverseAlignment = !(ma60 < ma120 && ma120 < ma240);
+    const isMA600Upward = slope600 > 0;
 
     // 로그 출력
     console.log('\n=== A15 매수 조건 검사 ===');
@@ -99,8 +104,10 @@ const slopeFilterStrategy: TradingStrategy = {
       'MA60': ma60.toFixed(2),
       'MA120': ma120.toFixed(2),
       'MA240': ma240.toFixed(2),
+      'MA600': ma600.toFixed(2),
       '60MA 기울기': slope60.toFixed(5),
       '120MA 기울기': slope120.toFixed(5),
+      '600MA 기울기': slope600.toFixed(5),
       '조건 1 (마지막 거래가 매수가 아님)': isNotLastBuy ? '✅' : '❌',
       '조건 2 (기울기 급변)': isSlopeChange ? '✅' : '❌',
       '조건 3 (60MA와 120MA가 모두 하강 기울기가 아님)': isNotBothDownward ? '✅' : '❌',
@@ -108,7 +115,8 @@ const slopeFilterStrategy: TradingStrategy = {
       '조건 5 (이격도 좁고 상승 기울기)': isNarrowDeviation ? '✅' : '❌',
       '조건 6 (완전 정배열)': isPerfectAlignment ? '✅' : '❌',
       '조건 7 (역배열 아님)': isNotReverseAlignment ? '✅' : '❌',
-      '최종 판정': (isNotLastBuy && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '조건 8 (600MA 상승세)': isMA600Upward ? '✅' : '❌',
+      '최종 판정': (isNotLastBuy && isMA600Upward && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
     
     // 매수 가능 상태가 아닌 경우
@@ -121,7 +129,7 @@ const slopeFilterStrategy: TradingStrategy = {
     console.log('✅ 매수 가능 상태 확인');
 
     // 매수 시그널 생성
-    if (isNotLastBuy && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) {
+    if (isNotLastBuy && isMA600Upward && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) {
       console.log('\n=== ✅ A15 매수 조건 충족! ===');
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
@@ -146,9 +154,11 @@ const slopeFilterStrategy: TradingStrategy = {
     // 기울기 계산
     const slope60 = ma60 - prevMa60;
     
+    const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     // 매도 조건
     const isNarrowDeviation = Math.abs(ma60 - ma120) < 0.01 && ma60 < ma120 && slope60 < 0;
     const isPerfectReverseAlignment = ma60 < ma120 && ma120 < ma240 && ma60 < ma120;
+    const isBelow600MA = ma60 < ma600;
     const isAbove360MA = data[index].close > ma360;
 
     // 로그 출력
@@ -178,7 +188,7 @@ const slopeFilterStrategy: TradingStrategy = {
     });
 
     // 매도 시그널 생성 - 둘 중 하나라도 충족하면 매도
-    const sellCondition = (isNarrowDeviation || isPerfectReverseAlignment) && !isAbove360MA;
+    const sellCondition = (isNarrowDeviation || isPerfectReverseAlignment || isBelow600MA) && !isAbove360MA;
     
     if (sellCondition) {
       console.log('\n=== 매도 조건 충족 여부 ===');
