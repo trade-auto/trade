@@ -4,7 +4,10 @@ import { calculateEMA, createTempCandleData, calculateRSI } from './utils';
 import useUpbitStore from '../store/useUpbitStore';
 import { useEffect } from 'react';
 
-type TradeState = 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
+type TradeState = {
+  state: 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
+  lastTrade?: 'buy' | 'sell' | null;
+};
 
 // A15 기울기 필터 전략
 const slopeFilterStrategy: TradingStrategy = {
@@ -34,7 +37,7 @@ const slopeFilterStrategy: TradingStrategy = {
     console.log('캔들 인덱스:', index);
 
     // 필요한 최소 데이터 검사
-    const requiredData = 120; // MA120 계산에 필요
+    const requiredData = 360; // MA360 계산에 필요
     const isCollecting = index < requiredData;
     if (isCollecting) {
       console.log(`초기 데이터 수집 중... (필요: ${requiredData}초)`);
@@ -68,33 +71,44 @@ const slopeFilterStrategy: TradingStrategy = {
     const canBuy = store.tradeState.theoreticalPosition === 'wait';
     
     // MA 계산 - 매수 가능 상태와 관계없이 계산
-    const ma40 = data.slice(index - 40, index).reduce((a, b) => a + b.close, 0) / 40;
-    const prevMa40 = data.slice(index - 41, index - 1).reduce((a, b) => a + b.close, 0) / 40;
-
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
 
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
-    
+    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+
+    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
+
     // 기울기 계산
-    const slope40 = ma40 - prevMa40;
     const slope60 = ma60 - prevMa60;
+    const slope120 = ma120 - prevMa120;
     
-    // A15 매수 조건: 120MA 아래의 40MA와 60MA의 기울기가 양수일 때
-    const isBelow120MA = ma40 < ma120 && ma60 < ma120;
-    const isPositiveSlope = slope40 > 0.005 && slope60 > 0.005; // 기울기 임계값 설정
-    
+    // 매수 조건
+    const isNotLastBuy = store.tradeState.lastTradeType !== 'bid';
+    const isSlopeChange = slope60 < -0.005 && slope60 > 0.005;
+    const isNotBothDownward = !(slope60 < 0 && slope120 < 0);
+    const isCrossAbove120 = prevMa60 <= prevMa120 && ma60 > ma120;
+    const isNarrowDeviation = Math.abs(ma60 - ma120) < 0.01 && ma60 > ma120 && slope60 > 0;
+    const isPerfectAlignment = ma60 > ma120 && ma120 > ma240 && ma60 > ma120;
+    const isNotReverseAlignment = !(ma60 < ma120 && ma120 < ma240);
+
     // 로그 출력
     console.log('\n=== A15 매수 조건 검사 ===');
     console.log({
-      'MA40': ma40.toFixed(2),
       'MA60': ma60.toFixed(2),
       'MA120': ma120.toFixed(2),
-      '40MA 기울기': slope40.toFixed(5),
+      'MA240': ma240.toFixed(2),
       '60MA 기울기': slope60.toFixed(5),
-      '조건 1 (120MA 아래)': isBelow120MA ? '✅' : '❌',
-      '조건 2 (기울기 양수)': isPositiveSlope ? '✅' : '❌',
-      '최종 판정': (isBelow120MA && isPositiveSlope) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '120MA 기울기': slope120.toFixed(5),
+      '조건 1 (마지막 거래가 매수가 아님)': isNotLastBuy ? '✅' : '❌',
+      '조건 2 (기울기 급변)': isSlopeChange ? '✅' : '❌',
+      '조건 3 (60MA와 120MA가 모두 하강 기울기가 아님)': isNotBothDownward ? '✅' : '❌',
+      '조건 4 (60MA가 120MA를 상방 관통)': isCrossAbove120 ? '✅' : '❌',
+      '조건 5 (이격도 좁고 상승 기울기)': isNarrowDeviation ? '✅' : '❌',
+      '조건 6 (완전 정배열)': isPerfectAlignment ? '✅' : '❌',
+      '조건 7 (역배열 아님)': isNotReverseAlignment ? '✅' : '❌',
+      '최종 판정': (isNotLastBuy && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
     
     // 매수 가능 상태가 아닌 경우
@@ -107,7 +121,7 @@ const slopeFilterStrategy: TradingStrategy = {
     console.log('✅ 매수 가능 상태 확인');
 
     // 매수 시그널 생성
-    if (isBelow120MA && isPositiveSlope) {
+    if (isNotLastBuy && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) {
       console.log('\n=== ✅ A15 매수 조건 충족! ===');
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
@@ -119,29 +133,25 @@ const slopeFilterStrategy: TradingStrategy = {
   // 청산 조건 분석
   analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
     // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
-    if (index < 120 || position !== 'buy') return false;
+    if (index < 360 || position !== 'buy') return false;
     
     // MA 계산
-    const ma40 = data.slice(index - 40, index).reduce((a, b) => a + b.close, 0) / 40;
-    const prevMa40 = data.slice(index - 41, index - 1).reduce((a, b) => a + b.close, 0) / 40;
-    
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
     
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     
     // 기울기 계산
-    const slope40 = ma40 - prevMa40;
     const slope60 = ma60 - prevMa60;
     
-    // A15 매도 조건: 120MA 위의 40MA와 60MA의 기울기가 음수일 때
-    const isAbove120MA = ma40 > ma120 && ma60 > ma120;
-    const isNegativeSlope = slope40 < -0.005 && slope60 < -0.005; // 기울기 임계값 설정
+    // 매도 조건
+    const isNarrowDeviation = Math.abs(ma60 - ma120) < 0.01 && ma60 < ma120 && slope60 < 0;
+    const isPerfectReverseAlignment = ma60 < ma120 && ma120 < ma240 && ma60 < ma120;
+    const isAbove360MA = data[index].close > ma360;
 
-    // 현재 가격과 매수 가격의 차이 계산 (수익률)
-    const currentPrice = data[index].close;
-    const profitPercent = ((currentPrice / entryPrice) - 1) * 100;
-
+    // 로그 출력
     console.log('\n=== A15 매도 신호 분석 ===');
     console.log('현재 거래 상태:', {
       '매도 가능 여부': position === 'buy',
@@ -158,24 +168,22 @@ const slopeFilterStrategy: TradingStrategy = {
 
     // 매도 조건 확인 및 로그 출력
     console.log('매도 조건:', {
-      'MA40': ma40.toFixed(2),
       'MA60': ma60.toFixed(2),
       'MA120': ma120.toFixed(2),
-      '40MA 기울기': slope40.toFixed(5),
+      'MA240': ma240.toFixed(2),
       '60MA 기울기': slope60.toFixed(5),
-      '조건 1 (120MA 위)': isAbove120MA ? '✅' : '❌',
-      '조건 2 (기울기 음수)': isNegativeSlope ? '✅' : '❌',
-      '현재 수익률': profitPercent.toFixed(2) + '%'
+      '조건 1 (이격도 좁고 하락 기울기)': isNarrowDeviation ? '✅' : '❌',
+      '조건 2 (완전 역배열)': isPerfectReverseAlignment ? '✅' : '❌',
+      '조건 3 (360MA 위)': isAbove360MA ? '❌ 매도하지 않음' : '✅ 매도 가능'
     });
 
     // 매도 시그널 생성 - 둘 중 하나라도 충족하면 매도
-    const sellCondition = (isAbove120MA && isNegativeSlope) || profitPercent <= -1.5;
+    const sellCondition = (isNarrowDeviation || isPerfectReverseAlignment) && !isAbove360MA;
     
     if (sellCondition) {
-      const reason = profitPercent <= -1.5 ? '손절 조건 충족' : 'A15 매도 조건 충족';
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
-      console.log(`✅ 매도 시그널 발생: ${reason}`);
+      console.log('✅ 매도 시그널 발생');
       return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
 
