@@ -128,7 +128,7 @@ export interface RiskManagement {
 
 // 지표 설정 인터페이스
 export interface IndicatorSettings {
-  maPeriods?: { short: number; long: number; };  // MA 기간 설정
+  maPeriods?: { short: number; medium: number; long: number; };  // MA 기간 설정
   bollinger?: { period: number; stdDev: number; };  // 볼린저 밴드 설정
   rsi?: { period: number; overbought: number; oversold: number; };  // RSI 설정
   macd?: { fast: number; slow: number; signal: number; };  // MACD 설정

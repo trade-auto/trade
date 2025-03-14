@@ -19,7 +19,7 @@ const slopeFilterStrategy: TradingStrategy = {
   tags: ['trend', 'momentum', 'slope', 'filter'],
   
   indicators: {
-    maPeriods: { short: 40,   long: 120 },
+    maPeriods: { short: 40, medium: 60, long: 120 },
     rsi: { period: 14, overbought: 70, oversold: 30 }
   },
   
@@ -37,7 +37,7 @@ const slopeFilterStrategy: TradingStrategy = {
     console.log('캔들 인덱스:', index);
 
     // 필요한 최소 데이터 검사
-    const requiredData = 360; // MA360 계산에 필요
+    const requiredData = 600; // MA600 계산에 필요
     const isCollecting = index < requiredData;
     if (isCollecting) {
       console.log(`초기 데이터 수집 중... (필요: ${requiredData}초)`);
@@ -80,9 +80,28 @@ const slopeFilterStrategy: TradingStrategy = {
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
     const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
 
+    // MA600 계산 추가
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
     const slope600 = ma600 - prevMa600;
+    
+    // 기울기를 각도로 변환 (라디안 -> 도)
+    // 1초당 변화량을 각도로 변환 (아크탄젠트 사용)
+    // 분모를 1로 설정하면 1초당 변화량을 기준으로 각도 계산
+    const angle600Raw = Math.atan(slope600);
+    const angle600 = angle600Raw * (180 / Math.PI);
+    
+    // 디버깅을 위한 추가 계산
+    const percentChange600 = (slope600 / prevMa600) * 100;
+    
+    console.log('\n=== 각도 계산 디버깅 ===');
+    console.log('MA600:', ma600);
+    console.log('이전 MA600:', prevMa600);
+    console.log('MA600 변화량:', slope600);
+    console.log('MA600 변화율(%):', percentChange600.toFixed(6) + '%');
+    console.log('MA600 각도(라디안):', angle600Raw);
+    console.log('MA600 각도(도):', angle600.toFixed(2) + '°');
+    console.log('MA600 안정 상태 여부:', Math.abs(angle600) < 10 ? '✅ 안정적' : '❌ 불안정');
 
     // 기울기 계산
     const slope60 = ma60 - prevMa60;
@@ -90,13 +109,13 @@ const slopeFilterStrategy: TradingStrategy = {
     
     // 매수 조건
     const isNotLastBuy = store.tradeState.lastTradeType !== 'bid';
-    const isSlopeChange = slope60 < -0.005 && slope60 > 0.005;
+    const isSlopeChange = slope60 < -0.005 || slope60 > 0.005;
     const isNotBothDownward = !(slope60 < 0 && slope120 < 0);
     const isCrossAbove120 = prevMa60 <= prevMa120 && ma60 > ma120;
     const isNarrowDeviation = Math.abs(ma60 - ma120) < 0.01 && ma60 > ma120 && slope60 > 0;
     const isPerfectAlignment = ma60 > ma120 && ma120 > ma240 && ma60 > ma120;
-    const isNotReverseAlignment = !(ma60 < ma120 && ma120 < ma240);
-    const isMA600Upward = slope600 > 0;
+    const isReverseAlignment = ma60 < ma120 && ma120 < ma240;
+    const isMa600Stable = Math.abs(angle600) < 10;  // 10도 미만의 변화만 허용
 
     // 로그 출력
     console.log('\n=== A15 매수 조건 검사 ===');
@@ -108,15 +127,17 @@ const slopeFilterStrategy: TradingStrategy = {
       '60MA 기울기': slope60.toFixed(5),
       '120MA 기울기': slope120.toFixed(5),
       '600MA 기울기': slope600.toFixed(5),
+      '600MA 각도 (원시값)': angle600Raw,
+      '600MA 각도 (도)': angle600.toFixed(2) + '°',
       '조건 1 (마지막 거래가 매수가 아님)': isNotLastBuy ? '✅' : '❌',
       '조건 2 (기울기 급변)': isSlopeChange ? '✅' : '❌',
       '조건 3 (60MA와 120MA가 모두 하강 기울기가 아님)': isNotBothDownward ? '✅' : '❌',
       '조건 4 (60MA가 120MA를 상방 관통)': isCrossAbove120 ? '✅' : '❌',
       '조건 5 (이격도 좁고 상승 기울기)': isNarrowDeviation ? '✅' : '❌',
       '조건 6 (완전 정배열)': isPerfectAlignment ? '✅' : '❌',
-      '조건 7 (역배열 아님)': isNotReverseAlignment ? '✅' : '❌',
-      '조건 8 (600MA 상승세)': isMA600Upward ? '✅' : '❌',
-      '최종 판정': (isNotLastBuy && isMA600Upward && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '조건 7 (역배열 아님)': !isReverseAlignment ? '✅' : '❌',
+      '조건 8 (600MA가 안정 상태)': isMa600Stable ? '✅' : '❌',
+      '최종 판정': (isNotLastBuy && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment))) && !isReverseAlignment && isMa600Stable) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
     
     // 매수 가능 상태가 아닌 경우
@@ -129,7 +150,12 @@ const slopeFilterStrategy: TradingStrategy = {
     console.log('✅ 매수 가능 상태 확인');
 
     // 매수 시그널 생성
-    if (isNotLastBuy && isMA600Upward && (isSlopeChange || (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment)) && isNotReverseAlignment)) {
+    if (isNotLastBuy && 
+        (isSlopeChange || 
+         (isNotBothDownward && (isCrossAbove120 || isNarrowDeviation || isPerfectAlignment))
+        ) && 
+        !isReverseAlignment && 
+        isMa600Stable) {
       console.log('\n=== ✅ A15 매수 조건 충족! ===');
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
@@ -155,11 +181,31 @@ const slopeFilterStrategy: TradingStrategy = {
     const slope60 = ma60 - prevMa60;
     
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
+    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+    const slope600 = ma600 - prevMa600;
+
+    // 기울기를 각도로 변환 (라디안 -> 도)
+    const angle600Raw = Math.atan(slope600);
+    const angle600 = angle600Raw * (180 / Math.PI);
+    
+    // 디버깅을 위한 추가 계산
+    const percentChange600 = (slope600 / prevMa600) * 100;
+    
+    console.log('\n=== 매도 각도 계산 디버깅 ===');
+    console.log('MA600:', ma600);
+    console.log('이전 MA600:', prevMa600);
+    console.log('MA600 변화량:', slope600);
+    console.log('MA600 변화율(%):', percentChange600.toFixed(6) + '%');
+    console.log('MA600 각도(라디안):', angle600Raw);
+    console.log('MA600 각도(도):', angle600.toFixed(2) + '°');
+    console.log('MA600 안정 상태 여부:', Math.abs(angle600) < 10 ? '✅ 안정적' : '❌ 불안정');
+
     // 매도 조건
     const isNarrowDeviation = Math.abs(ma60 - ma120) < 0.01 && ma60 < ma120 && slope60 < 0;
     const isPerfectReverseAlignment = ma60 < ma120 && ma120 < ma240 && ma60 < ma120;
     const isBelow600MA = ma60 < ma600;
     const isAbove360MA = data[index].close > ma360;
+    const isMa600Stable = Math.abs(angle600) < 10;  // 10도 미만의 변화만 허용
 
     // 로그 출력
     console.log('\n=== A15 매도 신호 분석 ===');
@@ -181,14 +227,18 @@ const slopeFilterStrategy: TradingStrategy = {
       'MA60': ma60.toFixed(2),
       'MA120': ma120.toFixed(2),
       'MA240': ma240.toFixed(2),
+      'MA600': ma600.toFixed(2),
       '60MA 기울기': slope60.toFixed(5),
+      '600MA 기울기': slope600.toFixed(5),
+      '600MA 각도': angle600.toFixed(2) + '°',
       '조건 1 (이격도 좁고 하락 기울기)': isNarrowDeviation ? '✅' : '❌',
       '조건 2 (완전 역배열)': isPerfectReverseAlignment ? '✅' : '❌',
-      '조건 3 (360MA 위)': isAbove360MA ? '❌ 매도하지 않음' : '✅ 매도 가능'
+      '조건 3 (360MA 위)': isAbove360MA ? '❌ 매도하지 않음' : '✅ 매도 가능',
+      '조건 4 (600MA가 안정 상태)': isMa600Stable ? '✅' : '❌'
     });
 
     // 매도 시그널 생성 - 둘 중 하나라도 충족하면 매도
-    const sellCondition = (isNarrowDeviation || isPerfectReverseAlignment || isBelow600MA) && !isAbove360MA;
+    const sellCondition = (isNarrowDeviation || isPerfectReverseAlignment || isBelow600MA) && !isAbove360MA && isMa600Stable;
     
     if (sellCondition) {
       console.log('\n=== 매도 조건 충족 여부 ===');
@@ -333,7 +383,7 @@ const slopeFilterStrategy: TradingStrategy = {
             const signal: TradeSignal = {
               id,
               time,
-              position: 'buy',
+            position: 'buy',
               price,
               strategy: 'SLOPE_FILTER' as TradeStrategy,
               reason: '120MA 아래에서 40MA와 60MA의 기울기가 양수',
@@ -345,7 +395,7 @@ const slopeFilterStrategy: TradingStrategy = {
             };
             
             signals.push(signal);
-            currentPosition = 'buy';
+          currentPosition = 'buy';
             lastTradeId = id;
             lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
             
@@ -405,7 +455,7 @@ const slopeFilterStrategy: TradingStrategy = {
               const signal: TradeSignal = {
                 id,
                 time,
-                position: 'sell',
+              position: 'sell',
                 price,
                 strategy: 'SLOPE_FILTER' as TradeStrategy,
                 relatedTradeId: lastTradeId,
@@ -420,8 +470,8 @@ const slopeFilterStrategy: TradingStrategy = {
               };
               
               signals.push(signal);
-              currentPosition = null;
-              lastTradeId = null;
+            currentPosition = null;
+            lastTradeId = null;
               lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
               
               console.log(`\n매도 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
@@ -511,4 +561,4 @@ const slopeFilterStrategy: TradingStrategy = {
   }
 };
 
-export default slopeFilterStrategy;
+export default slopeFilterStrategy; 
