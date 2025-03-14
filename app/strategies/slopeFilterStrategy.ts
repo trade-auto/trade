@@ -16,7 +16,7 @@ const slopeFilterStrategy: TradingStrategy = {
   tags: ['trend', 'momentum', 'slope', 'filter'],
   
   indicators: {
-    maPeriods: { short: 40, medium: 60, long: 120 },
+    maPeriods: { short: 40,   long: 120 },
     rsi: { period: 14, overbought: 70, oversold: 30 }
   },
   

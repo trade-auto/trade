@@ -11,7 +11,7 @@ const maCrossDeviationStrategy: TradingStrategy = {
   tags: ['trend', 'moving-average', 'deviation'],
   
   indicators: {
-    maPeriods: { short: 60, medium: 120, long: 240 }
+    maPeriods: { short: 60,   long: 240 }
   },
   
   riskManagement: {
