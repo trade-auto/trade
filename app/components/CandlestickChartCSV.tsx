@@ -145,12 +145,23 @@ export const useCsvFunctions = (symbol: string) => {
       const link = document.createElement('a');
       link.setAttribute('href', url);
       link.setAttribute('download', `${symbol}_1sec_${formatDate(csvDateRange.startDate)}_to_${formatDate(csvDateRange.endDate || new Date())}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
       
-      setCsvProgress(100);
+      // 링크를 화면에 표시하고 클릭 이벤트를 발생시키기 위한 수정
+      document.body.appendChild(link);
+      
+      // 브라우저 보안 정책으로 인한 문제 해결을 위해 setTimeout 사용
+      setTimeout(() => {
+        link.click();
+        
+        // 클릭 후 URL 객체 해제 및 링크 제거
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          setCsvProgress(100);
+          setCsvLoading(false);
+        }, 100);
+      }, 100);
+      
     } catch (error) {
       console.error('CSV 생성 오류:', error);
       let errorMessage = '알 수 없는 오류가 발생했습니다';
@@ -164,8 +175,6 @@ export const useCsvFunctions = (symbol: string) => {
       }
       
       alert(`CSV 파일 생성 중 오류가 발생했습니다.\n${errorMessage}`);
-    } finally {
-      setCsvLoading(false);
     }
   }, [csvDateRange, symbol, csvLoading]);
 
