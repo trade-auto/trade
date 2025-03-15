@@ -72,6 +72,7 @@ const bollingerStrategy: BollingerStrategy = {
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     
     // 이전 MA600 계산 (MA600 상승세 확인용)
@@ -80,7 +81,7 @@ const bollingerStrategy: BollingerStrategy = {
     // MA 조건 검사
     const isAbove120 = ma60 > ma120;
     const isAbove240 = ma60 > ma240;
-    const isBelow600 = ma60 < ma600;
+    const isBelow360 = ma60 < ma360;
     const isMA600Upward = ma600 > prevMa600;
     
     // 5번째 조건 사용 여부 체크
@@ -108,8 +109,8 @@ const bollingerStrategy: BollingerStrategy = {
       '조건 2 (MA60 > MA120)': isAbove120 ? '✅' : '❌',
       '조건 3 (MA60 > MA240)': isAbove240 ? '✅' : '❌',
       '조건 4 (MA600 상승세)': isMA600Upward ? '✅' : '❌',
-      '조건 5 (MA60 < MA600)': isBelow600 ? '✅' : '❌' + (useFifthCondition ? '' : ' [비활성화됨]'),
-      '최종 판정': (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow600 || !useFifthCondition)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
+      '조건 5 (MA60 < MA360)': isBelow360 ? '✅' : '❌' + (useFifthCondition ? '' : ' [비활성화됨]'),
+      '최종 판정': (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
     
     // 매수 가능 상태가 아닌 경우
@@ -122,10 +123,10 @@ const bollingerStrategy: BollingerStrategy = {
     console.log('✅ 매수 가능 상태 확인');
 
     // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
-    if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow600 || !useFifthCondition)) {
+    if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
-      if (!useFifthCondition && !isBelow600) {
-        console.log('5번째 조건(MA60 < MA600)이 비활성화되어 있어 통과하였습니다.');
+      if (!useFifthCondition && !isBelow360) {
+        console.log('5번째 조건(MA60 < MA360)이 비활성화되어 있어 통과하였습니다.');
       }
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
@@ -145,6 +146,7 @@ const bollingerStrategy: BollingerStrategy = {
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     
     // 이전 MA 계산
@@ -192,6 +194,8 @@ const bollingerStrategy: BollingerStrategy = {
     // 60MA가 120MA와 240MA보다 아래에 있는지 확인
     const isBelow120 = ma60 < ma120;
     const isBelow240 = ma60 < ma240;
+    const isBelow360 = ma60 < ma360;
+    const isBelow600 = ma60 < ma600;
 
     // MA600이 하락 추세인지 확인 (현재 MA600 < 이전 MA600)
     const isMA600Falling = ma600 < prevMa600;
@@ -227,17 +231,14 @@ const bollingerStrategy: BollingerStrategy = {
         second: '2-digit',
         hour12: false
       }),
-      'MA120 하향 지속 봉수': ma120DownCount + '봉',
-      'MA240 하향 지속 봉수': ma240DownCount + '봉',
-      'MA120/240 하향(10봉)': isMA120240Downward,
-      'MA600 하향': isMA600Falling,
-      'MA60이 MA120 아래': isBelow120,
-      'MA60이 MA240 아래': isBelow240,
+      'MA60이 MA600 아래': isBelow600,
+      'MA60 값': ma60.toFixed(2),
+      'MA600 값': ma600.toFixed(2),
       '현재 수익률': profitPercent.toFixed(2) + '%'
     });
 
     // 매도 시그널 생성 - 기본 조건 (README 기준으로 수정)
-    if (ma240DownCount >= 5 && isBelow120 && isBelow240 && isMA600Falling) {
+    if (isBelow600) {
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({
@@ -250,38 +251,10 @@ const bollingerStrategy: BollingerStrategy = {
           second: '2-digit',
           hour12: false
         }),
-        'MA240 하향 5봉 이상': ma240DownCount >= 5 ? '✅' : '❌',
-        'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
-        'MA60이 MA240 아래': isBelow240 ? '✅' : '❌',
-        'MA600 하강세': isMA600Falling ? '✅' : '❌',
+        'MA60이 MA600 아래': isBelow600 ? '✅' : '❌',
+        'MA60 값': ma60.toFixed(2),
+        'MA600 값': ma600.toFixed(2),
         '최종 판정': '✅ 매도 신호 발생!'
-      });
-      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
-    }
-
-    // 추가 매도 조건 - MA60 하락 추세이고 MA120 아래로 내려간 경우
-    if (ma60Slope < 0 && isBelow120 && ma60Below120Count >= 5) {
-      console.log('\n=== 추가 매도 조건 충족 여부 ===');
-      console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
-      console.log({
-        '체크 시간': new Date().toLocaleString('ko-KR'),
-        'MA60 하락 추세': ma60Slope < 0 ? '✅' : '❌',
-        'MA60이 MA120 아래': isBelow120 ? '✅' : '❌',
-        'MA60이 MA120 아래 지속 봉수': ma60Below120Count + '봉',
-        '최종 판정': '✅ 추가 매도 신호 발생!'
-      });
-      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
-    }
-
-    // 손절 조건 - 수익률이 -1.5% 이하인 경우
-    if (profitPercent <= -1.5) {
-      console.log('\n=== 손절 조건 충족 여부 ===');
-      console.log('상태 변경: waiting_sell → sell (손절 매도 실행)');
-      console.log({
-        '체크 시간': new Date().toLocaleString('ko-KR'),
-        '현재 수익률': profitPercent.toFixed(2) + '%',
-        '손절 기준': '-1.5%',
-        '최종 판정': '✅ 손절 신호 발생!'
       });
       return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
@@ -301,6 +274,7 @@ const bollingerStrategy: BollingerStrategy = {
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
     const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     
     // 이전 MA600 계산 (MA600 상승세 확인용)
@@ -337,6 +311,7 @@ const bollingerStrategy: BollingerStrategy = {
       ma60,
       ma120,
       ma240,
+      ma360,
       ma600,
       upperBand,
       lowerBand,
@@ -349,12 +324,13 @@ const bollingerStrategy: BollingerStrategy = {
     console.log(`MA60: ${ma60.toFixed(3)}`);
     console.log(`MA120: ${ma120.toFixed(3)}`);
     console.log(`MA240: ${ma240.toFixed(3)}`);
+    console.log(`MA360: ${ma360.toFixed(3)}`);
     console.log(`MA600: ${ma600.toFixed(3)}`);
       
     // 매수 조건 확인 상태 표시
     const isAbove120 = ma60 > ma120;
     const isAbove240 = ma60 > ma240;
-    const isBelow600 = ma60 < ma600;
+    const isBelow360 = ma60 < ma360;
     const isMA600Upward = ma600 > prevMa600;
       
     console.log('\n=== 매수 조건 체크 ===');
@@ -362,8 +338,8 @@ const bollingerStrategy: BollingerStrategy = {
     console.log(`조건 2 (MA60 > MA120): ${isAbove120 ? '✅' : '❌'}`);
     console.log(`조건 3 (MA60 > MA240): ${isAbove240 ? '✅' : '❌'}`);
     console.log(`조건 4 (MA600 상승세): ${isMA600Upward ? '✅' : '❌'}`);
-    console.log(`조건 5 (MA60 < MA600): ${isBelow600 ? '✅' : '❌'}`);
-    console.log(`최종 판정: ${(ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && isBelow600) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
+    console.log(`조건 5 (MA60 < MA360): ${isBelow360 ? '✅' : '❌'}`);
+    console.log(`최종 판정: ${(ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && isBelow360) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
     
     return metadata;
   },
@@ -556,6 +532,7 @@ const bollingerStrategy: BollingerStrategy = {
       const ma60 = data.slice(data.length - 60, data.length).reduce((a, b) => a + b.close, 0) / 60;
       const ma120 = data.slice(data.length - 120, data.length).reduce((a, b) => a + b.close, 0) / 120;
       const ma240 = data.slice(data.length - 240, data.length).reduce((a, b) => a + b.close, 0) / 240;
+      const ma360 = data.slice(data.length - 360, data.length).reduce((a, b) => a + b.close, 0) / 360;
       const ma600 = data.slice(data.length - 600, data.length).reduce((a, b) => a + b.close, 0) / 600;
       
       // 이전 MA600 계산 (MA600 상승세 확인용)
@@ -580,12 +557,13 @@ const bollingerStrategy: BollingerStrategy = {
       console.log(`MA60: ${ma60.toFixed(3)}`);
       console.log(`MA120: ${ma120.toFixed(3)}`);
       console.log(`MA240: ${ma240.toFixed(3)}`);
+      console.log(`MA360: ${ma360.toFixed(3)}`);
       console.log(`MA600: ${ma600.toFixed(3)}`);
       
       // 매수 조건 확인 상태 표시
       const isAbove120 = ma60 > ma120;
       const isAbove240 = ma60 > ma240;
-      const isBelow600 = ma60 < ma600;
+      const isBelow360 = ma60 < ma360;
       const isMA600Upward = ma600 > prevMa600;
       
       console.log('\n=== 매수 조건 체크 ===');
@@ -593,8 +571,8 @@ const bollingerStrategy: BollingerStrategy = {
       console.log(`조건 2 (MA60 > MA120): ${isAbove120 ? '✅' : '❌'}`);
       console.log(`조건 3 (MA60 > MA240): ${isAbove240 ? '✅' : '❌'}`);
       console.log(`조건 4 (MA600 상승세): ${isMA600Upward ? '✅' : '❌'}`);
-      console.log(`조건 5 (MA60 < MA600): ${isBelow600 ? '✅' : '❌'}`);
-      console.log(`최종 판정: ${(ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && isBelow600) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
+      console.log(`조건 5 (MA60 < MA360): ${isBelow360 ? '✅' : '❌'}`);
+      console.log(`최종 판정: ${(ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && isBelow360) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
     } else {
       console.log('\n=== 현재 상태: 매수 완료(매도 대기 중) ===');
       console.log('→ 다음 액션: 매도 조건 모니터링');
