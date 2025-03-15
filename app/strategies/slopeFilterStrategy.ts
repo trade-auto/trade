@@ -162,6 +162,9 @@ const slopeFilterStrategy: TradingStrategy = {
     // 정배열 조건
     const isPerfectAlignment = ma60 > ma120 && ma120 > ma240;
     
+    // 역배열에서 정배열로 변경 조건 추가
+    const isReverseToPerfectAlignment = prevMa60 < prevMa120 && prevMa120 < prevMa240 && ma60 > ma120 && ma120 > ma240;
+    
     // 새로운 매수 조건 조합
     // 관통 조건 또는 이미 위에 있는 조건
     const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360;
@@ -170,27 +173,15 @@ const slopeFilterStrategy: TradingStrategy = {
     // MA900 기울기가 양수인 조건 추가
     const isMA900Rising = slope900 > 0;
     
-    // MA360 기울기가 양수인 조건 추가
-    const isMA360Rising = ma360 > prevMa360 && prevMa360 > data.slice(index - 365, index - 5).reduce((a, b) => a + b.close, 0) / 360;
-    
-    // 디버깅을 위한 로그 추가
-    console.log('\n=== MA900 기울기 디버깅 ===');
-    console.log('MA900 기울기 값:', slope900);
-    console.log('MA900 기울기 양수 여부:', isMA900Rising ? '✅ 양수' : '❌ 음수');
-    console.log('MA900 기울기 정확한 값:', slope900.toFixed(10));
-    
-    console.log('\n=== MA600 기울기 디버깅 ===');
-    console.log('MA600 기울기 값:', slope600);
-    console.log('MA600 기울기 양수 여부:', isMA360Rising ? '✅ 양수' : '❌ 음수');
-    console.log('MA600 기울기 정확한 값:', slope600.toFixed(10));
+    // MA600 기울기가 양수인 조건 추가
+    const isMA600Rising = slope600 > 0;
     
     // MA가 가까이 있는 조건 추가
     const conditionA = isPerfectAlignment && isAllPositiveSlopeConditions && isAllAboveConditions;
     const conditionB = isAllMAClose && isAllPositiveSlopeConditions && isAbove120;
-    //const additionalConditions = isBelow600  ;
-    const additionalConditions = isBelow600 && isMA360Rising;
+    const additionalConditions = isBelow600 && isMA900Rising;
 
-    const isNewBuyCondition = (conditionA || conditionB) && additionalConditions;
+    const isNewBuyCondition = (conditionA  || isReverseToPerfectAlignment) && additionalConditions;
     
     // 디버깅을 위한 로그 추가
     console.log('\n=== 매수 조건 디버깅 ===');
@@ -233,7 +224,7 @@ const slopeFilterStrategy: TradingStrategy = {
       '조건 3-3 (MA240과 MA360이 가까움)': isMA240And360Close ? '✅' : '❌',
       '조건 3-4 (모든 MA가 가까움)': isAllMAClose ? '✅' : '❌',
       '조건 4 (MA60이 MA600 아래)': isBelow600 ? '✅' : '❌',
-      '조건 5 (MA600 기울기 상승)': isMA360Rising ? '✅' : '❌',
+      '조건 5 (MA600 기울기 상승)': isMA600Rising ? '✅' : '❌',
       '최종 판정': (isNotLastBuy && isNewBuyCondition) ? '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
     });
     
@@ -287,7 +278,11 @@ const slopeFilterStrategy: TradingStrategy = {
     
     // 디버깅을 위한 추가 계산
     const percentChange600 = (slope600 / prevMa600) * 100;
-    
+    // 기울기 계산
+//const slope60 = ma60 - prevMa60;
+const slope120 = ma120 - prevMa120;
+const slope240 = ma240 - prevMa240;
+//const slope360 = ma360 - prevMa360;
     // 하방 관통 조건을 단순 비교로 변경
     const isBelow120 = ma60 < ma120;
     const isBelow240 = ma60 < ma240;
@@ -295,13 +290,13 @@ const slopeFilterStrategy: TradingStrategy = {
     const isBelow600 = ma60 < ma600;
     
     // 역배열 조건
-    const isPerfectReverseAlignment = ma60 < ma120 && ma120 < ma240&& ma240 < ma360;
+    const isPerfectReverseAlignment = ma60 < ma120 && ma120 < ma240 && ma240 < ma360 && slope120 < 0 && slope240 < 0;//;
     
     // 정배열 조건
-    const isPerfectAlignment = ma60 > ma120 && ma120 > ma240&& ma240 > ma360;
+    const isPerfectAlignment = ma60 > ma120 && ma120 > ma240 && ma240 > ma360;
     
     // 정배열이면서 하방 관통 조건
-    const isPerfectAlignmentWithCrossBelow = isPerfectAlignment && !isBelow120 && !isBelow240 && !isBelow360 ;//&& !isBelow600;
+    const isPerfectAlignmentWithCrossBelow = isPerfectAlignment && isBelow120 && isBelow240 && isBelow360  && slope120 < 0 && slope240 < 0;
     
     // MA600 하락 조건
     const isMa600Declining = angle600 < 0;  // MA600이 하락할 때만 매도
