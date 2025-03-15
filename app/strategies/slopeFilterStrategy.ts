@@ -301,7 +301,7 @@ const slopeFilterStrategy: TradingStrategy = {
     const isPerfectAlignment = ma60 > ma120 && ma120 > ma240&& ma240 > ma360;
     
     // 정배열이면서 하방 관통 조건
-    const isPerfectAlignmentWithCrossBelow = isPerfectAlignment && !isBelow120 && !isBelow240 && !isBelow360 && !isBelow600;
+    const isPerfectAlignmentWithCrossBelow = isPerfectAlignment && !isBelow120 && !isBelow240 && !isBelow360 ;//&& !isBelow600;
     
     // MA600 하락 조건
     const isMa600Declining = angle600 < 0;  // MA600이 하락할 때만 매도
