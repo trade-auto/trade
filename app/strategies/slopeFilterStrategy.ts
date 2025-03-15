@@ -24,7 +24,6 @@ const slopeFilterStrategy: TradingStrategy = {
   },
   
   riskManagement: {
-    stopLossPercent: 1.5,
     takeProfitPercent: 3.0,
     positionSizePercent: 40
   },
@@ -288,10 +287,11 @@ const slopeFilterStrategy: TradingStrategy = {
     // 디버깅을 위한 추가 계산
     const percentChange600 = (slope600 / prevMa600) * 100;
     
-    // 하방 관통 조건
-    const isCrossBelow120 = prevMa60 >= prevMa120 && ma60 < ma120;
-    const isCrossBelow240 = prevMa60 >= prevMa240 && ma60 < ma240;
-    const isCrossBelow360 = prevMa60 >= prevMa360 && ma60 < ma360;
+    // 하방 관통 조건을 단순 비교로 변경
+    const isBelow120 = ma60 < ma120;
+    const isBelow240 = ma60 < ma240;
+    const isBelow360 = ma60 < ma360;
+    const isBelow600 = ma60 < ma600;
     
     // 역배열 조건
     const isPerfectReverseAlignment = ma60 < ma120 && ma120 < ma240;
@@ -300,7 +300,7 @@ const slopeFilterStrategy: TradingStrategy = {
     const isPerfectAlignment = ma60 > ma120 && ma120 > ma240;
     
     // 정배열이면서 하방 관통 조건
-    const isPerfectAlignmentWithCrossBelow = isPerfectAlignment && isCrossBelow120 && isCrossBelow240 && isCrossBelow360;
+    const isPerfectAlignmentWithCrossBelow = isPerfectAlignment && isBelow120 && isBelow240 && isBelow360 && isBelow600;
     
     // MA600 하락 조건
     const isMa600Declining = angle600 < 0;  // MA600이 하락할 때만 매도
@@ -342,19 +342,39 @@ const slopeFilterStrategy: TradingStrategy = {
       '600MA 각도': angle600.toFixed(2) + '°',
       '조건 1-1 (완전 역배열)': isPerfectReverseAlignment ? '✅' : '❌',
       '조건 1-2 (정배열이면서 하방 관통)': isPerfectAlignmentWithCrossBelow ? '✅' : '❌',
-      '조건 1-2-1 (MA60이 MA120 하방 관통)': isCrossBelow120 ? '✅' : '❌',
-      '조건 1-2-2 (MA60이 MA240 하방 관통)': isCrossBelow240 ? '✅' : '❌',
-      '조건 1-2-3 (MA60이 MA360 하방 관통)': isCrossBelow360 ? '✅' : '❌',
+      '조건 1-2-1 (MA60이 MA120 아래에 위치)': isBelow120 ? '✅' : '❌',
+      '조건 1-2-2 (MA60이 MA240 아래에 위치)': isBelow240 ? '✅' : '❌',
+      '조건 1-2-3 (MA60이 MA360 아래에 위치)': isBelow360 ? '✅' : '❌',
+      '조건 1-2-4 (MA60이 MA600 아래에 위치)': isBelow600 ? '✅' : '❌',
       '조건 2 (MA600 하락 중)': isMa600Declining ? '✅' : '❌'
     });
 
     // 매도 시그널 생성
     const sellCondition = (isPerfectReverseAlignment || isPerfectAlignmentWithCrossBelow) || isMa600Declining;
     
+    // 매도 조건 상세 로그 추가
+    console.log('\n=== 매도 조건 상세 분석 ===');
+    console.log('완전 역배열 조건:', isPerfectReverseAlignment ? '✅ 충족' : '❌ 불충족');
+    console.log('정배열이면서 하방 관통 조건:', isPerfectAlignmentWithCrossBelow ? '✅ 충족' : '❌ 불충족');
+    console.log('MA600 하락 조건:', isMa600Declining ? '✅ 충족' : '❌ 불충족');
+    
+    if (isPerfectAlignmentWithCrossBelow) {
+      console.log('\n정배열이면서 하방 관통 조건 상세:');
+      console.log('- 정배열 (MA60 > MA120 > MA240):', isPerfectAlignment ? '✅' : '❌');
+      console.log('- MA60이 MA120 아래에 위치:', isBelow120 ? '✅' : '❌');
+      console.log('- MA60이 MA240 아래에 위치:', isBelow240 ? '✅' : '❌');
+      console.log('- MA60이 MA360 아래에 위치:', isBelow360 ? '✅' : '❌');
+      console.log('- MA60이 MA600 아래에 위치:', isBelow600 ? '✅' : '❌');
+    }
+    
     if (sellCondition) {
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log('✅ 매도 시그널 발생');
+      console.log('매도 이유:', 
+        isPerfectReverseAlignment ? '완전 역배열' : 
+        isPerfectAlignmentWithCrossBelow ? '정배열이면서 하방 관통' : 
+        isMa600Declining ? 'MA600 하락 중' : '알 수 없음');
       return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
 
@@ -554,9 +574,7 @@ const slopeFilterStrategy: TradingStrategy = {
               let exitReason = '';
               const profitPercent = ((price / entryPrice) - 1) * 100;
               
-              if (profitPercent <= -1.5) {
-                exitReason = `손절: 수익률 ${profitPercent.toFixed(2)}%`;
-              } else if (isAbove120MA && isNegativeSlope) {
+              if (isAbove120MA && isNegativeSlope) {
                 exitReason = '120MA 위에서 40MA와 60MA의 기울기가 음수';
               } else {
                 exitReason = 'A15 매도 조건 충족';
