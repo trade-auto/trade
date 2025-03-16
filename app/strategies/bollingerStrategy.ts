@@ -254,11 +254,11 @@ const bollingerStrategy: BollingerStrategy = {
     const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
 
     // MA 기울기 계산
-    const ma60Slope = ((ma60 - prevMa60) / prevMa60) * 100;
-    const ma120Slope = ((ma120 - prevMa120) / prevMa120) * 100;
-    const ma240Slope = ((ma240 - prevMa240) / prevMa240) * 100;
-    const ma600Slope = ((ma600 - prevMa600) / prevMa600) * 100;
-
+    const ma60Slope = Math.abs((ma60 - prevMa60) / prevMa60 * 100);
+    const ma120Slope = Math.abs((ma120 - prevMa120) / prevMa120 * 100);
+    const ma240Slope = Math.abs((ma240 - prevMa240) / prevMa240 * 100);
+   // const ma600Slope = ((ma600 - prevMa600) / prevMa600) * 100;
+    const ma600Slope = Math.abs((ma600 - prevMa600) / prevMa600 * 100);
     // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
     let ma120DownCount = 0;
     let ma240DownCount = 0;
@@ -320,19 +320,17 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
 
     // MA600이 하락 추세인지 확인 (현재 MA600 < 이전 MA600)
     const isMA600Falling = ma600 < prevMa600;
-
+    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
     // 횡보장 감지를 위한 변수들 정의
-    const ma900Slope = Math.abs((ma600 - prevMa600) / prevMa600 * 100);
+
     const closeToMA60 = Math.abs(data[index].close - ma60) / ma60 < 0.1; // 10% 이내
     const closeToMA600 = Math.abs(data[index].close - ma600) / ma600 < 0.1; // 10% 이내
-    const ma600ma900Close = Math.abs(ma600 - ma600) / ma600 < 0.10; // 10% 이내
+   const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.10; // 10% 이내
     const isRisingSideways =
-    ma900Slope > 0 && ma900Slope < 5 &&
-    closeToMA60 &&
-    closeToMA600 &&
-    ma600ma900Close;// 상승 횡보장 조건: 이동평균선의 상승 기울기는 0% 이상 5% 미만이고, 가격과 MA들이 서로 10% 이내 차이일 경우
-    const isPriceStuck = closeToMA60 || closeToMA600;
-    const isChoppyMarket = (isRisingSideways || isPriceStuck || ma600ma900Close);
+    ma600Slope > 0 && ma600Slope < 5 ;// 상승 횡보장 조건: 이동평균선의 상승 기울기는 0% 이상 5% 미만이고, 가격과 MA들이 서로 10% 이내 차이일 경우
+   // const isPriceStuck = closeToMA60 || closeToMA600;
+   //const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.15; // 15% 이내
+    const isChoppyMarket = (isRisingSideways && ma600ma900Close);
 
     // 현재 가격과 매수 가격의 차이 계산 (수익률)
     const currentPrice = data[index].close;
@@ -353,7 +351,7 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
     });
  
     // 매도 시그널 생성 - 기본 조건 (README 기준으로 수정)
-    if ((isBelow600 && isBelow360 && !( isRisingSideways && ma600ma900Close ))) {//(isBelow360 &&  !isMA900Rising && !isChoppyMarket)||
+    if ((isBelow600 && isBelow360 && !(isChoppyMarket ))) {//(isBelow360 &&  !isMA900Rising && !isChoppyMarket)||
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({
