@@ -106,8 +106,8 @@ const bollingerStrategy: BollingerStrategy = {
         const ma900Slope = Math.abs((ma900 - prevMa900) / prevMa900 * 100);
         
         // 횡보 판단 기준 3: 가격이 MA60과 MA120 사이에서 오르내림을 반복하는지 확인
-        const closeToMA60 = Math.abs(data[index].close - ma60) / ma60 < 0.1; // 30% 이내
-        const closeToMA900 = Math.abs(data[index].close - ma900) / ma900 < 0.1; // 30% 이내
+        const closeToMA60 = Math.abs(data[index].close - ma60) / ma60 < 0.1; // 10% 이내
+        const closeToMA900 = Math.abs(data[index].close - ma600) / ma600 < 0.1; // 10% 이내
         
         // 횡보 판단 기준 4: MA600과 MA900이 서로 가까이 있는지 확인
         const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.15; // 15% 이내
@@ -180,7 +180,7 @@ const bollingerStrategy: BollingerStrategy = {
     const isBelow600 = ma60 < ma600;
     const isBelow900 = ma60 < ma900;
     const isMA600Upward = ma600 > prevMa600;
-    const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 && isAbove600;
+    const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 ;
  
 
     const isPositiveSlope120 = slope120 > 0.1763*1;
@@ -220,6 +220,7 @@ const bollingerStrategy: BollingerStrategy = {
     console.log('✅ 매수 가능 상태 확인');
     if (isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition) && !isChoppyMarket) {
     // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
+    
    // if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
       if (!useFifthCondition && !additionalConditions) {
@@ -308,8 +309,8 @@ const slope6 = ma900_6 - ma900_7;
 const slope7 = ma900_7 - ma900_8;
 const slope8 = ma900_8 - ma900_9; 
 // 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
-//const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slope4 > 0 && slope5 > 0 && slope6 > 0 && slope7 > 0 && slope8 > 0; 
-const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
+const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slope4 > 0 && slope5 > 0 && slope6 > 0 && slope7 > 0 && slope8 > 0; 
+// isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
 
     // 60MA가 120MA와 240MA보다 아래에 있는지 확인
     const isBelow120 = ma60 < ma120;
@@ -319,6 +320,19 @@ const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && s
 
     // MA600이 하락 추세인지 확인 (현재 MA600 < 이전 MA600)
     const isMA600Falling = ma600 < prevMa600;
+
+    // 횡보장 감지를 위한 변수들 정의
+    const ma900Slope = Math.abs((ma600 - prevMa600) / prevMa600 * 100);
+    const closeToMA60 = Math.abs(data[index].close - ma60) / ma60 < 0.1; // 10% 이내
+    const closeToMA600 = Math.abs(data[index].close - ma600) / ma600 < 0.1; // 10% 이내
+    const ma600ma900Close = Math.abs(ma600 - ma600) / ma600 < 0.10; // 10% 이내
+    const isRisingSideways =
+    ma900Slope > 0 && ma900Slope < 5 &&
+    closeToMA60 &&
+    closeToMA600 &&
+    ma600ma900Close;// 상승 횡보장 조건: 이동평균선의 상승 기울기는 0% 이상 5% 미만이고, 가격과 MA들이 서로 10% 이내 차이일 경우
+    const isPriceStuck = closeToMA60 || closeToMA600;
+    const isChoppyMarket = (isRisingSideways || isPriceStuck || ma600ma900Close);
 
     // 현재 가격과 매수 가격의 차이 계산 (수익률)
     const currentPrice = data[index].close;
@@ -338,10 +352,8 @@ const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && s
       })
     });
  
- 
-
     // 매도 시그널 생성 - 기본 조건 (README 기준으로 수정)
-    if (isBelow600 &&  !isMA900Rising) {
+    if ((isBelow600 && isBelow360 && !( isRisingSideways && ma600ma900Close ))) {//(isBelow360 &&  !isMA900Rising && !isChoppyMarket)||
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({

@@ -675,3 +675,8 @@ A16
     매도 
     const sellCondition = (isAllNegativeSlopeConditions || isAllBelowConditions)  ;
                               120,240,360                    120,240,360,600
+                              
+    매수 
+        if (isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition) && !isChoppyMarket)
+                                 120,240,360                120,240,360,600              600 rising
+    =============================
