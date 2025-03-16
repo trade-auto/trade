@@ -134,8 +134,23 @@ const slopeFilterStrategy: TradingStrategy = {
       
       // 매수 조건
       const isNotLastBuy = store.tradeState.lastTradeType !== 'bid';
-      
-      // 상방 관통 조건
+      const ma600_current = ma600; // data.slice(index - 600, index)로 계산한 현재 600MA
+const ma600_1 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_2 = data.slice(index - 602, index - 2).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_3 = data.slice(index - 603, index - 3).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_4 = data.slice(index - 604, index - 4).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_5 = data.slice(index - 605, index - 5).reduce((a, b) => a + b.close, 0) / 600;
+
+// 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
+const slope0 = ma600_current - ma600_1;
+const slope1 = ma600_1 - ma600_2;
+const slope2 = ma600_2 - ma600_3;
+const slope3 = ma600_3 - ma600_4;
+const slope4 = ma600_4 - ma600_5;
+// 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
+const isMA600Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
+const additionalConditions =   isMA600Rising;
+// 상방 관통 조건
       const isCrossAbove120 = prevMa60 <= prevMa120 && ma60 > ma120;
       const isCrossAbove240 = prevMa60 <= prevMa240 && ma60 > ma240;
       const isCrossAbove360 = prevMa60 <= prevMa360 && ma60 > ma360;
@@ -176,13 +191,13 @@ const slopeFilterStrategy: TradingStrategy = {
       // MA900 기울기가 양수인 조건 추가
       const isMA900Rising = slope900 > 0.1763*3;
       // MA600 기울기가 양수인 조건 추가
-      const isMA600Rising = slope600 > 0.1763*1; //10도 
+      //const isMA600Rising = slope600 > 0.1763*1; //10도 
       // MA가 가까이 있는 조건 추가
       const conditionA = isPerfectAlignment && isAllPositiveSlopeConditions && isAllAboveConditions;
       const conditionB = isAllMAClose && isAllPositiveSlopeConditions && isAbove120;
-      const additionalConditions = isBelow600 && isMA600Rising;
+     // const additionalConditions = isBelow600 && isMA600Rising;
       const isNewBuyCondition = ( isAllPositiveSlopeConditions && isAllAboveConditions ) && additionalConditions;  //isPerfectAlignment || isReverseToPerfectAlignment
-      
+      const { useFifthCondition } = useUpbitStore.getState();
       // 디버깅을 위한 로그 추가
       console.log('\n=== 매수 조건 디버깅 ===');
       console.log('조건 A (정배열 조건):', conditionA ? '✅ 충족' : '❌ 불충족');
@@ -193,18 +208,7 @@ const slopeFilterStrategy: TradingStrategy = {
       // 로그 출력
       console.log('\n=== A15 매수 조건 검사 ===');
       console.log({
-        // 'MA60': ma60.toFixed(2),
-        // 'MA120': ma120.toFixed(2),
-        // 'MA240': ma240.toFixed(2),
-        // 'MA360': ma360.toFixed(2),
-        // 'MA600': ma600.toFixed(2),
-        // 'MA900': ma900.toFixed(2),
-        // '60MA 기울기': slope60.toFixed(5),
-        // '120MA 기울기': slope120.toFixed(5),
-        // '240MA 기울기': slope240.toFixed(5),
-        // '360MA 기울기': slope360.toFixed(5),
-        // '600MA 기울기': slope600.toFixed(5),
-        // '900MA 기울기': slope900.toFixed(5),
+ 
         '600MA 각도 (원시값)': angle600Raw,
         '600MA 각도 (도)': angle600.toFixed(2) + '°',
         '600MA 각도 방향': angle600 > 0 ? '✅ 상승' : '❌ 하강',
@@ -238,11 +242,16 @@ const slopeFilterStrategy: TradingStrategy = {
       console.log('✅ 매수 가능 상태 확인');
   
       // 매수 시그널 생성
-      if (isNotLastBuy && isNewBuyCondition) {
-        console.log('\n=== ✅ A15 매수 조건 충족! ===');
-        console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
-        return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
-      }
+      if (isNotLastBuy && ( isAllPositiveSlopeConditions && isAllAboveConditions ) && (additionalConditions || !useFifthCondition)) {
+        // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
+       // if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
+          console.log('\n=== ✅ 매수 조건 충족! ===');
+          if (!useFifthCondition && !additionalConditions) {
+            console.log('5번째 조건(MA60 < MA360)이 비활성화되어 있어 통과하였습니다.');
+          }
+          console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
+          return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
+        }
   
       return null;  // 매수 조건 불충족
     } catch (error) {

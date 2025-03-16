@@ -60,14 +60,17 @@ const bollingerStrategy: BollingerStrategy = {
     // 현재 거래 상태 체크
     const store = useUpbitStore.getState();
     // const currentState = store.tradeState as unknown as TradeState;
-    
+    const isNotLastBuy = store.tradeState.lastTradeType !== 'bid';
     console.log('\n=== 현재 거래 상태 체크 ===');
     console.log('현재 상태:', store.tradeState);
     
     // 매수 가능 상태 체크 - 'wait' 상태일 때만 매수 가능하도록 수정
     // const canBuy = currentState === 'waiting_buy';
     const canBuy = store.tradeState.theoreticalPosition === 'wait';
-    
+    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
+    const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
+    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
     // MA 계산 - 매수 가능 상태와 관계없이 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
@@ -76,16 +79,49 @@ const bollingerStrategy: BollingerStrategy = {
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     
     // 이전 MA600 계산 (MA600 상승세 확인용)
-    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+    // 600MA의 최근 6개 값을 계산 (현재 및 이전 5봉)
+const ma600_current = ma600; // data.slice(index - 600, index)로 계산한 현재 600MA
+const ma600_1 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_2 = data.slice(index - 602, index - 2).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_3 = data.slice(index - 603, index - 3).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_4 = data.slice(index - 604, index - 4).reduce((a, b) => a + b.close, 0) / 600;
+const ma600_5 = data.slice(index - 605, index - 5).reduce((a, b) => a + b.close, 0) / 600;
 
+// 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
+const slope0 = ma600_current - ma600_1;
+const slope1 = ma600_1 - ma600_2;
+const slope2 = ma600_2 - ma600_3;
+const slope3 = ma600_3 - ma600_4;
+const slope4 = ma600_4 - ma600_5;
+
+// 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
+const isMA600Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
+    //const slope60 = ma60 - prevMa60;
+    const slope120 = ma120 - prevMa120;
+    const slope240 = ma240 - prevMa240;
+    const slope360 = ma360 - prevMa360;
+    const slope600 = ma600 - prevMa600;
+    
     // MA 조건 검사
     const isAbove120 = ma60 > ma120;
     const isAbove240 = ma60 > ma240;
+    const isAbove360 = ma60 > ma360;
+    const isAbove600 = ma60 > ma600;
     const isBelow360 = ma60 < ma360;
+    const isBelow600 = ma60 < ma600;
     const isMA600Upward = ma600 > prevMa600;
-    
+    const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 && isAbove600;
+//    const isMA600Rising = slope600 > 0.1763*1; 
+
+    const isPositiveSlope120 = slope120 > 0.1763*1;
+    const isPositiveSlope240 = slope240 > 0.1763*1;
+    const isPositiveSlope360 = slope360 > 0.1763*1;
+
+    const additionalConditions =   isMA600Rising;
+    const isAllPositiveSlopeConditions = isPositiveSlope120 && isPositiveSlope240 && isPositiveSlope360;
     // 5번째 조건 사용 여부 체크
     const { useFifthCondition } = useUpbitStore.getState();
+    const isNewBuyCondition = ( isAllPositiveSlopeConditions && isAllAboveConditions ) && additionalConditions;  //isPerfectAlignment || isReverseToPerfectAlignment
     
     // MA240 상향추세 체크 (5캔들 이상)
     let ma240UpCount = 0;
@@ -121,11 +157,11 @@ const bollingerStrategy: BollingerStrategy = {
     }
 
     console.log('✅ 매수 가능 상태 확인');
-
+    if (isNotLastBuy && ( isAllPositiveSlopeConditions && isAllAboveConditions ) && (additionalConditions || !useFifthCondition)) {
     // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
-    if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
+   // if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
-      if (!useFifthCondition && !isBelow360) {
+      if (!useFifthCondition && !additionalConditions) {
         console.log('5번째 조건(MA60 < MA360)이 비활성화되어 있어 통과하였습니다.');
       }
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
