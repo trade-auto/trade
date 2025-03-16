@@ -69,6 +69,7 @@ export interface ExtendedMetadata {
   isBelow240?: boolean;
   ma60Below120Count?: number;
   ma60Below240Count?: number;
+  lastSellTime?: number; // 마지막 매도 시간 (밀리초)
 }
 
 // 트레이드 신호 타입
@@ -142,6 +143,7 @@ export interface AnalysisResult {
   currentPosition: 'buy' | null;
   lastTradeId: string | null;
   entryPrice?: number;
+  metadata?: ExtendedMetadata;
 }
 
 // 분석 옵션 인터페이스 추가
@@ -152,6 +154,7 @@ export interface AnalyzeOptions {
   lastTradeId?: string | null;
   entryPrice?: number;
   signals?: TradeSignal[];
+  metadata?: ExtendedMetadata;
 }
 
 // 트레이딩 전략 인터페이스

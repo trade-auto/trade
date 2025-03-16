@@ -83,6 +83,7 @@ interface UpbitStore {
   updateTickerData: (symbol: string, data: TickerData) => void;
   tradeState: TradeState;
   updateTradeState: (update: Partial<TradeState>) => void;
+  lastSellTime: number;
   createOrder: (params: {
     market: string;
     side: 'bid' | 'ask';
@@ -581,7 +582,8 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
       set({ lastAnalysisResult: analysisResult });
       
       return analysisResult;
-    }
+    },
+    lastSellTime: 0
   };
 });
 

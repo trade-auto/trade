@@ -149,17 +149,17 @@ const slope3 = ma600_3 - ma600_4;
 const slope4 = ma600_4 - ma600_5;
 // 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
 const isMA600Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
-const additionalConditions =   isMA600Rising;
- 
-      
+
       // MA60이 다른 MA보다 위에 있는 조건 추가
       const isAbove120 = ma60 > ma120;
       const isAbove240 = ma60 > ma240;
       const isAbove360 = ma60 > ma360;
       const isAbove600 = ma60 > ma600;
-      
-      // MA60이 MA600 아래에 있는 조건 추가
+      const isAbove900 = ma60 > ma900;
       const isBelow600 = ma60 < ma600;
+      const additionalConditions = isBelow600&&  isMA600Rising;
+            // MA60이 MA600 아래에 있는 조건 추가
+
       
       // MA들이 서로 가까이 있는 조건 추가
       const maxDeviation = 0.005; // 0.5% 이내의 편차를 가까운 것으로 간주
@@ -186,7 +186,7 @@ const additionalConditions =   isMA600Rising;
       const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 && isAbove600;
       const isAllPositiveSlopeConditions = isPositiveSlope120 && isPositiveSlope240 && isPositiveSlope360;
       // MA900 기울기가 양수인 조건 추가
-      const isMA900Rising = slope900 > 0.1763*3;
+      const isMA900Rising = slope900 > 0.1763*1;
       // MA600 기울기가 양수인 조건 추가
       //const isMA600Rising = slope600 > 0.1763*1; //10도 
       // MA가 가까이 있는 조건 추가
@@ -219,12 +219,11 @@ const additionalConditions =   isMA600Rising;
       return null;
     }
   },
-  
+
   // 청산 조건 분석
   analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
     // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
-    if (index < 360 || position !== 'buy') return false;
-    
+    if (index < 360 || position !== 'buy') return false;    
     // MA 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
@@ -237,25 +236,60 @@ const additionalConditions =   isMA600Rising;
     
     const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
-    
  
-    
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
-    const slope600 = ma600 - prevMa600;
 
+    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
+    const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
+ 
+    const ma900_current = ma900; // data.slice(index - 600, index)로 계산한 현재 600MA
+
+    const ma900_1 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_2 = data.slice(index - 902, index - 2).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_3 = data.slice(index - 903, index - 3).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_4 = data.slice(index - 904, index - 4).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_5 = data.slice(index - 905, index - 5).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_6 = data.slice(index - 906, index - 6).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_7 = data.slice(index - 907, index - 7).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_8 = data.slice(index - 908, index - 8).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_9 = data.slice(index - 909, index - 9).reduce((a, b) => a + b.close, 0) / 900;
+    // 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
+    const slope0 = ma900_current - ma900_1;
+    const slope1 = ma900_1 - ma900_2;
+    const slope2 = ma900_2 - ma900_3;
+    const slope3 = ma900_3 - ma900_4;
+    const slope4 = ma900_4 - ma900_5;
+    const slope5 = ma900_5 - ma900_6; 
+    const slope6 = ma900_6 - ma900_7;
+    const slope7 = ma900_7 - ma900_8;
+    const slope8 = ma900_8 - ma900_9; 
+    // 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
+    //const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 >0.1763 && slope3 > 0.1763 && slope4 > 0.1763 && slope5 >0.1763 && slope6 >0.1763 && slope7 > 0.1763 && slope8 > 0.1763; 
+    //const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slope4 > 0  ;
+        // 기울기 계산
+        const isMA900Rising =
+        slope0 > -0.1763 && slope0 < 0.1763 &&
+        slope1 > -0.1763 && slope1 < 0.1763 &&
+        slope2 > -0.1763 && slope2 < 0.1763 &&
+        slope3 > -0.1763 && slope3 < 0.1763 &&
+        slope4 > -0.1763 && slope4 < 0.1763 &&
+        slope5 > -0.1763 && slope5 < 0.1763 &&
+        slope6 > -0.1763 && slope6 < 0.1763 &&
+        slope7 > -0.1763 && slope7 < 0.1763 &&
+        slope8 > -0.1763 && slope8 < 0.1763;
+    const slope60 = ma60 - prevMa60;
+    const slope120 = ma120 - prevMa120;
+    const slope240 = ma240 - prevMa240;
+    const slope360 = ma360 - prevMa360;
+    const slope600 = ma600 - prevMa600;
+//const slope360 = ma360 - prevMa360;
     // 기울기를 각도로 변환 (라디안 -> 도)
     const angle600Raw = Math.atan(slope600);
     const angle600 = angle600Raw * (180 / Math.PI);
     
     // 디버깅을 위한 추가 계산
     const percentChange600 = (slope600 / prevMa600) * 100;
-    // 기울기 계산
-const slope60 = ma60 - prevMa60;
-const slope120 = ma120 - prevMa120;
-const slope240 = ma240 - prevMa240;
-const slope360 = ma360 - prevMa360;
-//const slope360 = ma360 - prevMa360;
     // 하방 관통 조건을 단순 비교로 변경
     const isBelow120 = ma60 < ma120;
     const isBelow240 = ma60 < ma240;
@@ -277,77 +311,19 @@ const slope360 = ma360 - prevMa360;
     
     // MA600 하락 조건
     const isMa600Declining = angle600 < 0;  // MA600이 하락할 때만 매도
-    
-    console.log('\n=== 매도 각도 계산 디버깅 ===');
-    console.log('MA600:', ma600);
-    console.log('이전 MA600:', prevMa600);
-    console.log('MA600 변화량:', slope600);
-    console.log('MA600 변화율(%):', percentChange600.toFixed(6) + '%');
-    console.log('MA600 각도(라디안):', angle600Raw);
-    console.log('MA600 각도(도):', angle600.toFixed(2) + '°');
-    console.log('MA600 각도 방향:', angle600 > 0 ? '✅ 상승' : '❌ 하강');
-    console.log('MA600 안정 상태 여부:', Math.abs(angle600) < 10 ? '✅ 안정적' : '❌ 불안정');
-
-    // 로그 출력
-    console.log('\n=== A15 매도 신호 분석 ===');
-    console.log('현재 거래 상태:', {
-      '매도 가능 여부': position === 'buy',
-      '마지막 매수 시간': new Date().toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      })
-    });
-
-    // 매도 조건 확인 및 로그 출력
-    console.log('매도 조건:', {
-      'MA60': ma60.toFixed(2),
-      'MA120': ma120.toFixed(2),
-      'MA240': ma240.toFixed(2),
-      'MA360': ma360.toFixed(2),
-      'MA600': ma600.toFixed(2),
-      '60MA 기울기': slope60.toFixed(5),
-      '600MA 기울기': slope600.toFixed(5),
-      '600MA 각도': angle600.toFixed(2) + '°',
-      '조건 1-1 (완전 역배열)': isPerfectReverseAlignment ? '✅' : '❌',
-      '조건 1-2 (정배열이면서 하방 관통)': isPerfectAlignmentWithCrossBelow ? '✅' : '❌',
-      '조건 1-2-1 (MA60이 MA120 아래에 위치)': isBelow120 ? '✅' : '❌',
-      '조건 1-2-2 (MA60이 MA240 아래에 위치)': isBelow240 ? '✅' : '❌',
-      '조건 1-2-3 (MA60이 MA360 아래에 위치)': isBelow360 ? '✅' : '❌',
-      '조건 1-2-4 (MA60이 MA600 아래에 위치)': isBelow600 ? '✅' : '❌',
-      '조건 2 (MA600 하락 중)': isMa600Declining ? '✅' : '❌'
-    });
-
+ 
     // 매도 시그널 생성
-    const sellCondition = (isAllNegativeSlopeConditions || isAllBelowConditions)  ;
-    
-    // 매도 조건 상세 로그 추가
-    console.log('\n=== 매도 조건 상세 분석 ===');
-    console.log('완전 역배열 조건:', isPerfectReverseAlignment ? '✅ 충족' : '❌ 불충족');
-    console.log('정배열이면서 하방 관통 조건:', isPerfectAlignmentWithCrossBelow ? '✅ 충족' : '❌ 불충족');
-    console.log('MA600 하락 조건:', isMa600Declining ? '✅ 충족' : '❌ 불충족');
-    
-    if (isPerfectAlignmentWithCrossBelow) {
-      console.log('\n정배열이면서 하방 관통 조건 상세:');
-      console.log('- 정배열 (MA60 > MA120 > MA240):', isPerfectAlignment ? '✅' : '❌');
-      console.log('- MA60이 MA120 아래에 위치:', isBelow120 ? '✅' : '❌');
-      console.log('- MA60이 MA240 아래에 위치:', isBelow240 ? '✅' : '❌');
-      console.log('- MA60이 MA360 아래에 위치:', isBelow360 ? '✅' : '❌');
-      console.log('- MA60이 MA600 아래에 위치:', isBelow600 ? '✅' : '❌');
-    }
+    const sellCondition = (isBelow600 &&!isMA900Rising)  ;
+ 
     
     if (sellCondition) {
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log('✅ 매도 시그널 발생');
       console.log('매도 이유:', 
-        isPerfectReverseAlignment ? '완전 역배열' : 
-        isPerfectAlignmentWithCrossBelow ? '정배열이면서 하방 관통' : 
-        isMa600Declining ? 'MA600 하락 중' : '알 수 없음');
+        isBelow600 ? '완전 역배열' : 
+        isMA900Rising ? '정배열이면서 하방 관통' : '알 수 없음'
+    );
       return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
     }
 

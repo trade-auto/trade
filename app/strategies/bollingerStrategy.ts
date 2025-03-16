@@ -59,14 +59,27 @@ const bollingerStrategy: BollingerStrategy = {
 
     // 현재 거래 상태 체크
     const store = useUpbitStore.getState();
-    // const currentState = store.tradeState as unknown as TradeState;
+    const canBuy = store.tradeState.theoreticalPosition === 'wait';
     const isNotLastBuy = store.tradeState.lastTradeType !== 'bid';
+    
     console.log('\n=== 현재 거래 상태 체크 ===');
     console.log('현재 상태:', store.tradeState);
     
-    // 매수 가능 상태 체크 - 'wait' 상태일 때만 매수 가능하도록 수정
-    // const canBuy = currentState === 'waiting_buy';
-    const canBuy = store.tradeState.theoreticalPosition === 'wait';
+    // 매도 후 1분(60초) 이내에는 매수하지 않음
+    const currentTimeMs = data[index].time as number * 1000;
+    const lastSellTime = store.lastSellTime || 0;
+    const timeSinceLastSell = currentTimeMs - lastSellTime;
+    const isCooldownActive = timeSinceLastSell < 5*60000; // 1분 = 60,000ms
+    
+    if (isCooldownActive) {
+      const remainingCooldown = Math.ceil((5*60000 - timeSinceLastSell) / 1000);
+      console.log('\n=== ❌ 매도 후 대기 시간 ===');
+      console.log(`마지막 매도 후 ${(timeSinceLastSell / 1000).toFixed(0)}초 경과 (${remainingCooldown}초 남음)`);
+      console.log(`다음 매수 가능 시간: ${new Date(lastSellTime + 5*60000).toLocaleString('ko-KR')}`);
+      return null;
+    }
+    
+    // 이전 MA 계산
     const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
     const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
     const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
@@ -82,11 +95,11 @@ const bollingerStrategy: BollingerStrategy = {
     // 이전 MA600 계산 (MA600 상승세 확인용)
         // 600MA의 최근 6개 값을 계산 (현재 및 이전 5봉)
     const ma900_current = ma600; // data.slice(index - 600, index)로 계산한 현재 600MA
-    const ma900_1 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_2 = data.slice(index - 602, index - 2).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_3 = data.slice(index - 603, index - 3).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_4 = data.slice(index - 604, index - 4).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_5 = data.slice(index - 605, index - 5).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_1 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_2 = data.slice(index - 902, index - 2).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_3 = data.slice(index - 903, index - 3).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_4 = data.slice(index - 904, index - 4).reduce((a, b) => a + b.close, 0) / 900;
+    const ma900_5 = data.slice(index - 905, index - 5).reduce((a, b) => a + b.close, 0) / 900;
 
     // 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
     const slope0 = ma900_current - ma900_1;
@@ -119,7 +132,7 @@ const bollingerStrategy: BollingerStrategy = {
     const isPositiveSlope240 = slope240 > 0.1763*1;
     const isPositiveSlope360 = slope360 > 0.1763*1;
 
-    const additionalConditions =  isMA900Rising &&isBelow900;//&& isBelow600 ;&&isBelow900
+    const additionalConditions = isBelow600 && isMA900Rising;
     const isAllPositiveSlopeConditions = isPositiveSlope120 && isPositiveSlope240 && isPositiveSlope360;
     // 5번째 조건 사용 여부 체크
     const { useFifthCondition } = useUpbitStore.getState();
@@ -150,7 +163,7 @@ const bollingerStrategy: BollingerStrategy = {
     }
 
     console.log('✅ 매수 가능 상태 확인');
-    if (isNotLastBuy && ( isAllPositiveSlopeConditions && isAllAboveConditions ) && (additionalConditions || !useFifthCondition)) {
+    if (isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition)) {
     // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
    // if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
@@ -240,7 +253,8 @@ const slope6 = ma900_6 - ma900_7;
 const slope7 = ma900_7 - ma900_8;
 const slope8 = ma900_8 - ma900_9; 
 // 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
-const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slope4 > 0 && slope5 > 0 && slope6 > 0 && slope7 > 0 && slope8 > 0; 
+//const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slope4 > 0 && slope5 > 0 && slope6 > 0 && slope7 > 0 && slope8 > 0; 
+const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
 
     // 60MA가 120MA와 240MA보다 아래에 있는지 확인
     const isBelow120 = ma60 < ma120;
@@ -386,6 +400,7 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
     
     // 마지막 신호 발생 시간 및 인덱스 추적
     let lastSignalIndex = options?.lastProcessedIndex ? options.lastProcessedIndex - 30 : 0; // 초기값 설정
+    let lastSellTime = options?.metadata?.lastSellTime || 0; // 마지막 매도 시간 추적
     const minSignalInterval = 30; // 최소 30캔들(30초) 간격
     
     // 실시간 모드에서 이전 상태 유지
@@ -395,6 +410,7 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
       console.log('이전 처리 인덱스:', options.lastProcessedIndex);
       console.log('이전 포지션:', options.currentPosition || '없음');
       console.log('이전 거래 ID:', options.lastTradeId || '없음');
+      console.log('마지막 매도 시간:', options.metadata?.lastSellTime ? new Date(options.metadata.lastSellTime).toLocaleString('ko-KR') : '없음');
       
       // 이전 상태 유지
       if (options.currentPosition) {
@@ -422,7 +438,11 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
         signals,
         lastProcessedIndex: data.length - 1,
         currentPosition,
-        lastTradeId
+        lastTradeId,
+        metadata: {
+          ...options?.metadata,
+          lastSellTime // 마지막 매도 시간 저장
+        }
       };
     }
     
@@ -440,7 +460,7 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
       if (options?.lastProcessedIndex !== undefined) {
         // 이미 초기화가 완료된 경우
         if (options.lastProcessedIndex >= 600) {
-        startIndex = options.lastProcessedIndex + 1;
+          startIndex = options.lastProcessedIndex + 1; // 이전에 처리한 다음 캔들부터 분석
           console.log(`실시간 모드: 신규 데이터만 분석 (인덱스 ${startIndex}부터 ${endIndex - 1}까지)`);
         } else {
           // 아직 초기화가 필요한 경우이지만, 분석은 계속 진행
@@ -528,14 +548,19 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
               };
               
               signals.push(signal);
-          currentPosition = null;
-          lastTradeId = null;
+              currentPosition = null;
+              lastTradeId = null;
               lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
+              lastSellTime = time * 1000; // 마지막 매도 시간 저장 (밀리초 단위)
+              
+              // 마지막 매도 시간을 store에도 저장
+              useUpbitStore.setState({ lastSellTime: time * 1000 });
               
               console.log(`\n매도 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
               console.log(`가격: ${price}`);
               console.log(`수익률: ${((price - entryPrice) / entryPrice * 100).toFixed(2)}%`);
               console.log(`ID: ${id}`);
+              console.log(`다음 매수 가능 시간: ${new Date(lastSellTime + 60000).toLocaleString('ko-KR')} (1분 후)`);
             } else {
               // 매도 신호가 없는 경우에도 매수 상태임을 로그로 남김
               if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)
@@ -632,9 +657,13 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
       signals,
       lastProcessedIndex: endIndex - 1,
       currentPosition,
-      lastTradeId
+      lastTradeId,
+      metadata: {
+        ...options?.metadata,
+        lastSellTime // 마지막 매도 시간 저장
+      }
     };
   }
 };
 
-export default bollingerStrategy; 
+export default bollingerStrategy;
