@@ -595,3 +595,83 @@ A15적용
 연속 거래 사이 최소 30초 간격 필요
 360MA 횡보 상태(기울기 ±15도 이내)에서는 거래하지 않음
 60MA와 120MA가 모두 하강 기울기일 때는 30초 동안 매수하지 않음
+
+
+A16
+    const canBuy = store.tradeState.theoreticalPosition === 'wait';
+    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
+    const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
+    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+    // MA 계산 - 매수 가능 상태와 관계없이 계산
+    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
+    const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
+    
+    // 이전 MA600 계산 (MA600 상승세 확인용)
+    // 600MA의 최근 6개 값을 계산 (현재 및 이전 5봉)
+    const ma600_current = ma600; // data.slice(index - 600, index)로 계산한 현재 600MA
+    const ma600_1 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+    const ma600_2 = data.slice(index - 602, index - 2).reduce((a, b) => a + b.close, 0) / 600;
+    const ma600_3 = data.slice(index - 603, index - 3).reduce((a, b) => a + b.close, 0) / 600;
+    const ma600_4 = data.slice(index - 604, index - 4).reduce((a, b) => a + b.close, 0) / 600;
+    const ma600_5 = data.slice(index - 605, index - 5).reduce((a, b) => a + b.close, 0) / 600;
+
+    // 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
+    const slope0 = ma600_current - ma600_1;
+    const slope1 = ma600_1 - ma600_2;
+    const slope2 = ma600_2 - ma600_3;
+    const slope3 = ma600_3 - ma600_4;
+    const slope4 = ma600_4 - ma600_5;
+
+    // 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
+    const isMA600Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
+    const slope120 = ma120 - prevMa120;
+    const slope240 = ma240 - prevMa240;
+    const slope360 = ma360 - prevMa360;
+    const slope600 = ma600 - prevMa600;
+
+    const isAbove120 = ma60 > ma120;
+    const isAbove240 = ma60 > ma240;
+    const isAbove360 = ma60 > ma360;
+    const isAbove600 = ma60 > ma600;
+    const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 && isAbove600; 
+    const isPositiveSlope120 = slope120 > 0.1763*1;
+    const isPositiveSlope240 = slope240 > 0.1763*1;
+    const isPositiveSlope360 = slope360 > 0.1763*1;
+    const isAllPositiveSlopeConditions = isPositiveSlope120 && isPositiveSlope240 && isPositiveSlope360;
+    const additionalConditions =   isMA600Rising;
+    매수 
+    if (isNotLastBuy && ( isAllPositiveSlopeConditions && isAllAboveConditions ) && (additionalConditions || !useFifthCondition)) {
+                                 120,240,360                120,240,360,600              600 rising
+============================
+
+    // MA 계산
+    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
+    
+    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+    
+    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
+    
+    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
+    const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
+    const slope120 = ma120 - prevMa120;
+    const slope240 = ma240 - prevMa240;
+    const slope360 = ma360 - prevMa360;
+    const isBelow120 = ma60 < ma120;
+    const isBelow240 = ma60 < ma240;
+    const isBelow360 = ma60 < ma360;
+    const isBelow600 = ma60 < ma600;
+    const isNegativeSlope120 = slope120 < 0.1763*1;
+    const isNegativeSlope240 = slope240 < 0.1763*1;
+    const isNegativeSlope360 = slope360 < 0.1763*1;
+    const isAllNegativeSlopeConditions = isNegativeSlope120 && isNegativeSlope240 && isNegativeSlope360;
+    const isAllBelowConditions = isBelow120 && isBelow240 && isBelow360 && isBelow600;
+    매도 
+    const sellCondition = (isAllNegativeSlopeConditions || isAllBelowConditions)  ;
+                              120,240,360                    120,240,360,600
