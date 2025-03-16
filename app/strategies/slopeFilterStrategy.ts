@@ -144,6 +144,7 @@ const slopeFilterStrategy: TradingStrategy = {
       const isAbove120 = ma60 > ma120;
       const isAbove240 = ma60 > ma240;
       const isAbove360 = ma60 > ma360;
+      const isAbove600 = ma60 > ma600;
       
       // MA60이 MA600 아래에 있는 조건 추가
       const isBelow600 = ma60 < ma600;
@@ -153,12 +154,14 @@ const slopeFilterStrategy: TradingStrategy = {
       const isMA120And240Close = Math.abs(ma120 - ma240) / ma120 < maxDeviation;
       const isMA120And360Close = Math.abs(ma120 - ma360) / ma120 < maxDeviation;
       const isMA240And360Close = Math.abs(ma240 - ma360) / ma240 < maxDeviation;
-      const isAllMAClose = isMA120And240Close && isMA120And360Close && isMA240And360Close;
+      const isMA600And900Close = Math.abs(ma600 - ma900) / ma600 < maxDeviation;
+      const isAllMAClose = isMA120And240Close && isMA120And360Close && isMA240And360Close && isMA600And900Close;
       
       // 양의 기울기 조건
       const isPositiveSlope120 = slope120 > 0;
       const isPositiveSlope240 = slope240 > 0;
       const isPositiveSlope360 = slope360 > 0;
+      const isPositiveSlope600 = slope600 > 0;
       
       // 정배열 조건
       const isPerfectAlignment = ma60 > ma120 && ma120 > ma240;
@@ -168,14 +171,14 @@ const slopeFilterStrategy: TradingStrategy = {
       
       // 새로운 매수 조건 조합
       // 관통 조건 또는 이미 위에 있는 조건
-      const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360;
+      const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 && isAbove600;
       const isAllPositiveSlopeConditions = isPositiveSlope120 && isPositiveSlope240 && isPositiveSlope360;
       
       // MA900 기울기가 양수인 조건 추가
-      const isMA900Rising = slope900 > 0;
+      const isMA900Rising = slope900 > 0.1763*3;
       
       // MA600 기울기가 양수인 조건 추가
-      const isMA600Rising = slope600 > 0;
+      const isMA600Rising = slope600 > 0.1763*1;
       
       // MA가 가까이 있는 조건 추가
       const conditionA = isPerfectAlignment && isAllPositiveSlopeConditions && isAllAboveConditions;
