@@ -25,6 +25,34 @@ const bollingerStrategy: BollingerStrategy = {
     positionSizePercent: 50
   },
   
+  // 상승 추세 감지 함수
+  isUptrend(data: CandlestickData<Time>[], index: number): boolean {
+    if (index < 600) return false;
+  
+    // 이동평균 계산
+    const ma60 = data.slice(index - 60, index)
+                     .reduce((sum, c) => sum + c.close, 0) / 60;
+    const ma120 = data.slice(index - 120, index)
+                      .reduce((sum, c) => sum + c.close, 0) / 120;
+    const ma600 = data.slice(index - 600, index)
+                      .reduce((sum, c) => sum + c.close, 0) / 600;
+  
+    // 최근 5봉 동안 MA600이 계속 상승 중인지 확인
+    let ma600UpCount = 0;
+    for (let i = 0; i < 5; i++) {
+      const prevMa600 = data.slice(index - i - 601, index - i - 1)
+                            .reduce((sum, c) => sum + c.close, 0) / 600;
+      const currMa600 = data.slice(index - i - 600, index - i)
+                            .reduce((sum, c) => sum + c.close, 0) / 600;
+      if (currMa600 > prevMa600) ma600UpCount++;
+    }
+  
+    const isLongUp = (ma600UpCount === 5); // 5봉 연속 상승
+    const isShortAboveLong = (ma60 > ma120 && ma120 > ma600);
+  
+    return isLongUp && isShortAboveLong;
+  },
+  
   // 진입 조건 분석
   analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | 'nobuyfrequpdown' | null {
     const entryDateTime = new Date(data[index].time as number * 1000);
@@ -253,6 +281,12 @@ const bollingerStrategy: BollingerStrategy = {
   analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
     // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
     if (index < 360 || position !== 'buy') return false;
+
+    // 매도 조건 전에 "여전히 상승 추세인가?" 확인
+    if (this.isUptrend?.(data, index)) {
+      console.log('\n=== 아직 상승 추세 유지 → 매도 억제 ===');
+      return false; // 매도 신호 발생 X
+    }
 
     let ma600UpCount = 0; 
     
