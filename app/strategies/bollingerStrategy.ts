@@ -180,19 +180,35 @@ const bollingerStrategy: BollingerStrategy = {
     const isBelow600 = ma60 < ma600;
     const isBelow900 = ma60 < ma900;
     const isMA600Upward = ma600 > prevMa600;
-    const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 ;
+    //const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 ;// && isAbove600 ;
  
+    // MA600이 전 봉 대비 양(+)인 것만 보지 말고,
+    // 최근 5봉 모두 우상향인지 확인
+    let ma600UpCount = 0;
+    for (let i = 1; i <= 5; i++) {
+      const prev = data.slice(index - i - 600, index - i).reduce((a, b) => a + b.close, 0) / 600;
+      const curr = data.slice(index - i + 1 - 600, index - i + 1).reduce((a, b) => a + b.close, 0) / 600;
+      if (curr > prev) {
+        ma600UpCount++;
+      }
+    }
+    // "최근 5봉 모두 MA600 상승"일 때만 장기 상승으로 판단
+    const isMA600SteadyUp = (ma600UpCount === 5);
 
     const isPositiveSlope120 = slope120 > 0.1763*1;
     const isPositiveSlope240 = slope240 > 0.1763*1;
     const isPositiveSlope360 = slope360 > 0.1763*1;
+    const isPositiveSlope600 = slope600 > 0.1763*1;
 
-    const additionalConditions = isBelow600 && isMA900Rising;
-    const isAllPositiveSlopeConditions = isPositiveSlope120 && isPositiveSlope240 && isPositiveSlope360;
+    const additionalConditions =  isPositiveSlope600 ;// && isMA900Rising;
+    const isAllPositiveSlopeConditions =isPositiveSlope120 && isPositiveSlope240 && isPositiveSlope360 && isPositiveSlope600;
+    const isAllAboveConditions = isAbove120 && isAbove240 && isAbove360 && isAbove600;
     // 5번째 조건 사용 여부 체크
     const { useFifthCondition } = useUpbitStore.getState();
     const isNewBuyCondition = ( isAllPositiveSlopeConditions && isAllAboveConditions ) && additionalConditions;  //isPerfectAlignment || isReverseToPerfectAlignment
-    
+    // 최종 추가 조건: 장기 상승 추세를 함께 확인
+   // const isMA600Upward = ma600 > prevMa600; // or isPositiveSlope600
+    //const isMA600Upward = ma600 > prevMa600; // or isPositiveSlope600
     // MA240 상향추세 체크 (5캔들 이상)
     let ma240UpCount = 0;
     for (let i = 1; i <= 5; i++) {
@@ -217,8 +233,8 @@ const bollingerStrategy: BollingerStrategy = {
       return null;
     }
 
-    console.log('✅ 매수 가능 상태 확인');
-    if (isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition) && !isChoppyMarket) {
+    console.log('✅ 매수  ***** ');
+    if (isMA600SteadyUp &&isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition) && !isChoppyMarket) { //isChoppyMarket근접도
     // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
     
    // if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
@@ -325,14 +341,12 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
 
     const closeToMA60 = Math.abs(data[index].close - ma60) / ma60 < 0.1; // 10% 이내
     const closeToMA600 = Math.abs(data[index].close - ma600) / ma600 < 0.1; // 10% 이내
-   const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.10; // 10% 이내
+   const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 1; // 10% 이내
     const isRisingSideways =
-    ma600Slope > 0 && ma600Slope < 5 ;// 상승 횡보장 조건: 이동평균선의 상승 기울기는 0% 이상 5% 미만이고, 가격과 MA들이 서로 10% 이내 차이일 경우
-   // const isPriceStuck = closeToMA60 || closeToMA600;
-   //const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.15; // 15% 이내
-    const isChoppyMarket = (isRisingSideways && ma600ma900Close);
-
-    // 현재 가격과 매수 가격의 차이 계산 (수익률)
+    ma600Slope < -0.1763/2  ;// 상승 횡보장 조건: 이동평균선의 상승 기울기는 0% 이상 5% 미만이고, 가격과 MA들이 서로 10% 이내 차이일 경우
+ 
+    const isChoppyMarket = (isRisingSideways);// || ma600ma900Close);
+ 
     const currentPrice = data[index].close;
     const profitPercent = ((currentPrice / entryPrice) - 1) * 100;
     const additionalConditions =  isMA900Rising ;//&&isBelow900;//&& isBelow600 ;&&isBelow900
@@ -351,7 +365,7 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
     });
  
     // 매도 시그널 생성 - 기본 조건 (README 기준으로 수정)
-    if ((isBelow600 && isBelow360 && !(isChoppyMarket ))) {//(isBelow360 &&  !isMA900Rising && !isChoppyMarket)||
+    if (( isBelow360 &&   isBelow600 )) {//(isBelow360 &&  !isMA900Rising && !isChoppyMarket)||
       console.log('\n=== 매도 조건 충족 여부 ===');
       console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
       console.log({
