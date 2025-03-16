@@ -26,11 +26,14 @@ const bollingerStrategy: BollingerStrategy = {
   },
   
   // 진입 조건 분석
-  analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | null {
+  analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | 'nobuyfrequpdown' | null {
     const entryDateTime = new Date(data[index].time as number * 1000);
     console.log('\n=== 📊 analyzeEntry 함수 진입 ===');
     console.log('분석 시작 시간:', entryDateTime.toLocaleString('ko-KR'));
     console.log('캔들 인덱스:', index);
+
+    // 횡보장 감지 여부 초기화
+    let isChoppyMarket = false;
 
     // 필요한 최소 데이터 검사
     const requiredData = 600; // MA600 계산에 필요
@@ -69,13 +72,65 @@ const bollingerStrategy: BollingerStrategy = {
     const currentTimeMs = data[index].time as number * 1000;
     const lastSellTime = store.lastSellTime || 0;
     const timeSinceLastSell = currentTimeMs - lastSellTime;
-    const isCooldownActive = timeSinceLastSell < 5*60000; // 1분 = 60,000ms
+    const isCooldownActive = timeSinceLastSell < 10*60000; // 5분 = 300,000ms
     
     if (isCooldownActive) {
-      const remainingCooldown = Math.ceil((5*60000 - timeSinceLastSell) / 1000);
+      const remainingCooldown = Math.ceil((10*60000 - timeSinceLastSell) / 1000);
       console.log('\n=== ❌ 매도 후 대기 시간 ===');
       console.log(`마지막 매도 후 ${(timeSinceLastSell / 1000).toFixed(0)}초 경과 (${remainingCooldown}초 남음)`);
-      console.log(`다음 매수 가능 시간: ${new Date(lastSellTime + 5*60000).toLocaleString('ko-KR')}`);
+      console.log(`다음 매수 가능 시간: ${new Date(lastSellTime + 10*60000).toLocaleString('ko-KR')}`);
+      
+      // 마지막 매도 시점부터 현재까지의 캔들 데이터
+      const sellTimeIndex = data.findIndex(d => (d.time as number * 1000) >= lastSellTime);
+      if (sellTimeIndex !== -1) {
+        const candlesSinceSell = data.slice(sellTimeIndex, index + 1);
+        
+        // 횡보 판단 기준 1: 가격 변동 범위가 일정 비율 이내인지 확인
+        const highPrice = Math.max(...candlesSinceSell.map(c => c.high));
+        const lowPrice = Math.min(...candlesSinceSell.map(c => c.low));
+        const priceRange = ((highPrice - lowPrice) / lowPrice) * 100; // 변동 범위 (%)
+        
+        // MA 계산
+        const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+        const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+        const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
+        const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
+        // 횡보 판단 기준 2: MA 기울기 확인
+        const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
+        const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+        const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+        const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
+        const ma60Slope = Math.abs((ma60 - prevMa60) / prevMa60 * 100);
+        const ma120Slope = Math.abs((ma120 - prevMa120) / prevMa120 * 100);
+        const ma600Slope = Math.abs((ma600 - prevMa600) / prevMa600 * 100);
+        const ma900Slope = Math.abs((ma900 - prevMa900) / prevMa900 * 100);
+        
+        // 횡보 판단 기준 3: 가격이 MA60과 MA120 사이에서 오르내림을 반복하는지 확인
+        const closeToMA60 = Math.abs(data[index].close - ma60) / ma60 < 0.1; // 30% 이내
+        const closeToMA900 = Math.abs(data[index].close - ma900) / ma900 < 0.1; // 30% 이내
+        
+        // 횡보 판단 기준 4: MA600과 MA900이 서로 가까이 있는지 확인
+        const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.15; // 15% 이내
+        
+        //const isRangebound = priceRange < 1.0; // 변동 범위가 1% 미만
+        const isFlatMA = ma600Slope < 10 && ma900Slope < 10; // MA 기울기가 10% 미만
+        const isPriceStuck = closeToMA60 || closeToMA900; // 가격이 MA 근처에 갇힘
+        
+        const isChoppyMarket = (isFlatMA || isPriceStuck || ma600ma900Close);
+        
+        if (isChoppyMarket) {
+          console.log('\n=== ⚠️ 횡보장 감지됨 (nobuyfrequpdown) ===');
+          console.log(`가격 변동 범위: ${priceRange.toFixed(2)}% (기준: 1.0% 미만)`);
+          console.log(`MA60 기울기: ${ma60Slope.toFixed(4)}% (기준: 0.2% 미만)`);
+          console.log(`MA120 기울기: ${ma120Slope.toFixed(4)}% (기준: 0.2% 미만)`);
+          console.log(`가격이 MA600 근처: ${closeToMA60 ? '예' : '아니오'}`);
+          console.log(`가격이 MA900 근처: ${closeToMA900 ? '예' : '아니오'}`);
+          console.log(`MA600과 MA900이 근접: ${ma600ma900Close ? '예' : '아니오'} (${(Math.abs(ma600 - ma900) / ma900 * 100).toFixed(3)}%)`);
+          console.log(`최종 판정: 횡보장으로 매수 금지`);
+          return 'nobuyfrequpdown';
+        }
+      }
+      
       return null;
     }
     
@@ -163,7 +218,7 @@ const bollingerStrategy: BollingerStrategy = {
     }
 
     console.log('✅ 매수 가능 상태 확인');
-    if (isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition)) {
+    if (isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition) && !isChoppyMarket) {
     // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
    // if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
@@ -493,24 +548,31 @@ const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && s
             const signal: TradeSignal = {
               id,
               time,
-            position: 'buy',
+              position: 'buy',
               price,
               strategy: 'BOLLINGER' as TradeStrategy,
-            reason: '매수 조건 충족',
+              reason: '매수 조건 충족',
               metadata: {
                 ma60: data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60,
               }
             };
             
             signals.push(signal);
-          currentPosition = 'buy';
+            currentPosition = 'buy';
             lastTradeId = id;
             lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
             
             console.log(`\n매수 신호 생성: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
             console.log(`가격: ${price}`);
             console.log(`ID: ${id}`);
-          } else {
+          } 
+          // 횡보장 감지 신호 발생
+          else if (entryResult === 'nobuyfrequpdown') {
+            const time = data[i].time as number;
+            console.log(`\n횡보장 감지: ${new Date(time * 1000).toLocaleString('ko-KR')}`);
+            console.log('매수 신호가 억제되었습니다. (nobuyfrequpdown)');
+          }
+          else {
             // 매수 신호가 없는 경우에도 매수 대기 중임을 로그로 남김
             if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)
               console.log(`캔들 ${i} - 매수 대기 중...`);
@@ -538,7 +600,7 @@ const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && s
               const signal: TradeSignal = {
                 id,
                 time,
-            position: 'sell',
+                position: 'sell',
                 price,
                 strategy: 'BOLLINGER' as TradeStrategy,
                 relatedTradeId: lastTradeId,
@@ -560,7 +622,7 @@ const isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && s
               console.log(`가격: ${price}`);
               console.log(`수익률: ${((price - entryPrice) / entryPrice * 100).toFixed(2)}%`);
               console.log(`ID: ${id}`);
-              console.log(`다음 매수 가능 시간: ${new Date(lastSellTime + 60000).toLocaleString('ko-KR')} (1분 후)`);
+              console.log(`다음 매수 가능 시간: ${new Date(lastSellTime + 10*60000).toLocaleString('ko-KR')} (10분 후)`);
             } else {
               // 매도 신호가 없는 경우에도 매수 상태임을 로그로 남김
               if (i % 100 === 0 || i === endIndex - 1) {  // 100개 캔들마다 로그 출력 (너무 많은 로그 방지)

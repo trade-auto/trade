@@ -194,6 +194,6 @@ export interface TradingStrategy {
 
 // 볼린저 전략 인터페이스 (롱 포지션만 사용)
 export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'analyzeExit'> {
-  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'buy' | null;
+  analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'buy' | 'nobuyfrequpdown' | null;
   analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number) => boolean;
 } 
