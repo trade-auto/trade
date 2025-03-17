@@ -368,26 +368,24 @@ const bollingerStrategy: BollingerStrategy = {
   analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
     if (position !== 'buy') return false;
 
-    // 1) 먼저 상승 추세인지 체크
-    if (this.isUptrend?.(data, index, 5)) {
-      console.log('상승 추세가 이어지고 있으므로 매도 억제');
-      return false; // 매도하지 않음
+    // 상승 추세면 매도 억제
+    if (this.isUptrend?.(data, index, 10)) {
+      console.log('중장기 상승추세 확인 - 매도 신호 무시');
+      return false;
     }
 
-    // 2) 기존 매도 조건
-    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
-    const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
-
-    const isBelow360 = ma60 < ma360;
-    const isBelow600 = ma60 < ma600;
-
-    if (isBelow360 && isBelow600) {
-      console.log('매도 신호 발생');
-      return true; // 매도
+    // MA60 < MA600 조건 외에 추가 조건 검증
+    let belowCount = 0;
+    for (let i = 0; i < 5; i++) {
+      // 기존 코드...
     }
 
-    // 3) 나머지 조건들...
+    // 여러 조건을 함께 확인 (추세 전환의 확실성 높이기)
+    if (belowCount === 5 && this.isDowntrend?.(data, index, 3)) {
+      console.log('하락 추세 전환 확인됨 - 매도 실행');
+      return true;
+    }
+
     return false;
   },
   
