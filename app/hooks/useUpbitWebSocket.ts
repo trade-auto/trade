@@ -40,21 +40,20 @@ export const useUpbitWebSocket = (market: string) => {
       };
 
       socketRef.current.onmessage = (event) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (typeof reader.result === 'string') {
+        // 바이너리 데이터를 직접 처리
+        if (event.data instanceof Blob) {
+          event.data.text().then(text => {
             try {
-              const data = JSON.parse(reader.result) as WebSocketData;
+              const data = JSON.parse(text) as WebSocketData;
               if (data.type === 'trade') {
                 setCurrentPrice(data.trade_price);
                 setLastUpdated(new Date(data.timestamp));
               }
             } catch (error) {
-              console.error('WebSocket 데이터 파싱 오류:', error);
+              console.error('데이터 파싱 오류:', error);
             }
-          }
-        };
-        reader.readAsText(event.data);
+          });
+        }
       };
 
       socketRef.current.onerror = (error) => {
