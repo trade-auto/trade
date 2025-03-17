@@ -73,6 +73,15 @@ const bollingerStrategy: BollingerStrategy = {
   },
   
   /**
+   * 이익 목표 달성 여부 확인 (익절 조건)
+   */
+  shouldTakeProfit(entryPrice: number, currentPrice: number, takeProfitPercent = 2.0): boolean {
+    const profitRatio = ((currentPrice - entryPrice) / entryPrice) * 100;
+    console.log(`현재 수익률: ${profitRatio.toFixed(2)}% (목표: ${takeProfitPercent}%)`);
+    return profitRatio >= takeProfitPercent;
+  },
+  
+  /**
    * 최근 N봉 동안 MA600이 연속 하락 중인지 확인
    */
   isDowntrend(data: CandlestickData<Time>[], index: number, period = 5): boolean {
@@ -97,24 +106,46 @@ const bollingerStrategy: BollingerStrategy = {
     return (downCount === period);
   },
   
-  // 상승 추세 감지 함수
-  isUptrend(data: CandlestickData<Time>[], index: number, checkBars = 5): boolean {
-    // MA600 계산에 필요한 최소 캔들 수 (600 + checkBars)
-    if (index < 600 + checkBars) return false;
+  /**
+   * 과거 60봉의 MA600 값을 검사하여,
+   * - 전 30봉은 모두 상승하고,
+   * - 이후 30봉의 평균 증감폭이 0.1% 이하이면 상승 추세로 판단
+   */
+  isUptrend(data: CandlestickData<Time>[], index: number ): boolean {
+    // MA600 계산을 위해 최소 660봉(600 + 60)이 필요함
+    if (index < 660) return false;
 
-    let upCount = 0;
-    for (let i = 0; i < checkBars; i++) {
-      const currMa600 = data.slice(index - i - 600, index - i)
-                            .reduce((sum, c) => sum + c.close, 0) / 600;
-      const prevMa600 = data.slice(index - i - 601, index - i - 1)
-                            .reduce((sum, c) => sum + c.close, 0) / 600;
-      if (currMa600 > prevMa600) {
-        upCount++;
+    const ma600Array: number[] = [];
+    // 과거 60봉의 MA600 값을 계산 (오래된 순서대로 저장)
+    // 예: i = index - 60 + 1 부터 index까지
+    for (let i = index - 60 + 1; i <= index; i++) {
+      const ma600Val =
+        data.slice(i - 600, i).reduce((sum, c) => sum + c.close, 0) / 600;
+      ma600Array.push(ma600Val);
+    }
+    // ma600Array[0]은 가장 오래된 값, ma600Array[59]는 최신 값
+
+    // 조건 1: 전 30봉(인덱스 0~29)이 모두 엄격히 상승(각각 이전보다 커야 함)
+    for (let k = 0; k < 29; k++) {
+      if (ma600Array[k] >= ma600Array[k + 1]) {
+        console.log("전 30봉의 MA600이 일관되게 상승하지 않음");
+        return false;
       }
     }
 
-    // 5봉 연속 MA600이 우상향이면 "상승 추세"
-    return (upCount === checkBars);
+    // 조건 2: 이후 30봉(인덱스 30~59)의 평균 증감폭(퍼센트)이 0.1% 이내
+    const initial = ma600Array[30];
+    const final = ma600Array[59];
+    const totalIncreasePercent = ((final - initial) / initial) * 100;
+    const avgIncrease = totalIncreasePercent / 30; // 봉당 평균 증감(%)
+    if (avgIncrease > 0.1) {
+      console.log(
+        `후 30봉의 평균 증감폭이 너무 높음: ${avgIncrease.toFixed(4)}% (기준: 0.1% 이하 필요)`
+      );
+      return false;
+    }
+
+    return true;
   },
   
   // 진입 조건 분석
@@ -368,8 +399,15 @@ const bollingerStrategy: BollingerStrategy = {
   analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
     if (position !== 'buy') return false;
 
-    // 1) 먼저 상승 추세인지 체크
-    if (this.isUptrend?.(data, index, 5)) {
+    // 0) 먼저 익절 조건 체크 - 목표 수익률 달성 시 즉시 매도
+    const currentPrice = data[index].close;
+    if (this.shouldTakeProfit?.(entryPrice, currentPrice, this.riskManagement?.takeProfitPercent)) {
+      console.log(`✅ 목표 수익률 ${this.riskManagement?.takeProfitPercent}% 달성! 익절 매도 신호 발생`);
+      return true; // 익절 매도
+    }
+
+    // 1) 다음으로 상승 추세인지 체크
+    if (this.isUptrend?.(data, index)) {
       console.log('상승 추세가 이어지고 있으므로 매도 억제');
       return false; // 매도하지 않음
     }
