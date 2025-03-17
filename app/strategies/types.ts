@@ -196,6 +196,7 @@ export interface TradingStrategy {
 export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'analyzeExit'> {
   analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'buy' | 'nobuyfrequpdown' | null;
   analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number) => boolean;
-  isUptrend?: (data: CandlestickData<Time>[], index: number, period?: number) => boolean;
+  isUptrend?: (data: CandlestickData<Time>[], index: number, checkBars?: number) => boolean;
   isDowntrend?: (data: CandlestickData<Time>[], index: number, period?: number) => boolean;
+  isMAFanSpreadOut?: (ma60: number, ma120: number, ma240: number, ma360: number, ma600: number, thresholdPercent?: number) => boolean;
 } 

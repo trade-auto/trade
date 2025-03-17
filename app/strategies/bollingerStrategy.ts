@@ -6,6 +6,53 @@ import { useEffect } from 'react';
 
 type TradeState = 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
 
+/**
+ * 이동평균선 간격이 충분히 벌어졌는지 확인
+ * - 예) MA60 > MA120 > MA240 > MA360 > MA600
+ * - 인접 MA 간격이 threshold% 이상
+ */
+function isMAFanSpreadOut(
+  ma60: number,
+  ma120: number,
+  ma240: number,
+  ma360: number,
+  ma600: number,
+  thresholdPercent = 0.05 // 0.01% 기준치로 대폭 완화
+): boolean {
+  // 1) 순서 체크: ma60 > ma120 > ma240 > ma360 > ma600
+  // 모든 조건을 만족하지 않아도 됨 - 첫 번째 조건만 확인 
+  if (!(ma60 > ma120)) {
+    console.log('MA 순서 조건 불충족: MA60 > MA120');
+    return false;
+  }
+
+  // 2) 각 MA 간 간격(%) 체크
+  //    예: (MA60 - MA120)/MA120 * 100 >= thresholdPercent
+  const diff60_120 = ((ma60 - ma120) / ma120) * 100;
+  const diff120_240 = ((ma120 - ma240) / ma240) * 100;
+  const diff240_360 = ((ma240 - ma360) / ma360) * 100;
+  const diff360_600 = ((ma360 - ma600) / ma600) * 100;
+
+  console.log(`[MA 간격] 60-120: ${diff60_120.toFixed(3)}%, 120-240: ${diff120_240.toFixed(3)}%, 240-360: ${diff240_360.toFixed(3)}%, 360-600: ${diff360_600.toFixed(3)}%`);
+  console.log(`[기준치] ${thresholdPercent}% 이상`);
+
+  // 각 구간의 간격이 thresholdPercent 이상인지 확인
+  // 1개 이상의 조건만 충족해도 true 반환하도록 완화
+  let passCount = 0;
+  if (diff60_120 >= thresholdPercent) passCount++;
+  if (diff120_240 >= thresholdPercent) passCount++;
+  if (diff240_360 >= thresholdPercent) passCount++;
+  if (diff360_600 >= thresholdPercent) passCount++;
+  
+  if (passCount < 1) {
+    console.log('MA 간격 조건 불충족: 모든 구간이 기준치 미달');
+    return false;
+  }
+
+  console.log(`✅ MA 간격 조건 충족! (${passCount}/4 구간 통과)`);
+  return true;
+}
+
 // 볼린저 밴드 전략
 const bollingerStrategy: BollingerStrategy = {
   name: 'BOLLINGER',
@@ -51,12 +98,12 @@ const bollingerStrategy: BollingerStrategy = {
   },
   
   // 상승 추세 감지 함수
-  isUptrend(data: CandlestickData<Time>[], index: number, period = 5): boolean {
-    // MA600 계산에 필요한 최소 캔들 수 확인
-    if (index < 600 + period) return false;
+  isUptrend(data: CandlestickData<Time>[], index: number, checkBars = 5): boolean {
+    // MA600 계산에 필요한 최소 캔들 수 (600 + checkBars)
+    if (index < 600 + checkBars) return false;
 
     let upCount = 0;
-    for (let i = 0; i < period; i++) {
+    for (let i = 0; i < checkBars; i++) {
       const currMa600 = data.slice(index - i - 600, index - i)
                             .reduce((sum, c) => sum + c.close, 0) / 600;
       const prevMa600 = data.slice(index - i - 601, index - i - 1)
@@ -66,8 +113,8 @@ const bollingerStrategy: BollingerStrategy = {
       }
     }
 
-    // 최근 5봉 모두 MA600이 우상향이면 "상승 추세"로 간주
-    return (upCount === period);
+    // 5봉 연속 MA600이 우상향이면 "상승 추세"
+    return (upCount === checkBars);
   },
   
   // 진입 조건 분석
@@ -198,6 +245,14 @@ const bollingerStrategy: BollingerStrategy = {
     const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
+    
+    // MA 간격이 충분히 벌어졌는지 확인 (0.01%로 threshold 대폭 낮춤)
+    const isSpreadOut = this.isMAFanSpreadOut?.(ma60, ma120, ma240, ma360, ma600, 0.05);
+    console.log(`\n=== MA Fan 조건 확인 ===`);
+    if (!isSpreadOut) {
+      console.log('\n=== ⚠️ MA 간격이 충분히 벌어지지 않음 (참고사항) ===');
+      // 완전히 억제하지 않고 경고만 표시
+    }
 
     // 이전 MA600 계산 (MA600 상승세 확인용)
         // 600MA의 최근 6개 값을 계산 (현재 및 이전 5봉)
@@ -275,8 +330,6 @@ const bollingerStrategy: BollingerStrategy = {
       }
     }
 
- 
-    
     // 매수 가능 상태가 아닌 경우
     if (!canBuy) {
       console.log('\n=== ❌ 매수 불가 상태 ===');
@@ -285,11 +338,22 @@ const bollingerStrategy: BollingerStrategy = {
     }
 
     console.log('✅ 매수  ***** ');
-    if (isMA600SteadyUp &&isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && (additionalConditions || !useFifthCondition) && !isChoppyMarket) { //isChoppyMarket근접도
-    // 매수 시그널 생성 - 5번째 조건 적용 여부에 따라 판단
     
-   // if (ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && (isBelow360 || !useFifthCondition)) {
+    // isMAFanCondition 사용 (기본값은 false로 설정)
+    const isMAFanCondition = false; // 기본값으로 비활성화
+    
+    // isSpreadOut 조건은 isMAFanCondition이 true일 때만 적용
+    if (isMA600SteadyUp && isNotLastBuy && isAllPositiveSlopeConditions && isAllAboveConditions && 
+        (additionalConditions || !useFifthCondition) && !isChoppyMarket && 
+        (!isMAFanCondition || isSpreadOut)) {
+    
       console.log('\n=== ✅ 매수 조건 충족! ===');
+      if (isSpreadOut) {
+        console.log('MA Fan Spread 조건 충족: 강한 상승 추세 확인');
+      } else {
+        console.log('MA Fan Spread 조건 불충족: 약한 상승 추세 가능성 있음');
+      }
+      
       if (!useFifthCondition && !additionalConditions) {
         console.log('5번째 조건(MA60 < MA360)이 비활성화되어 있어 통과하였습니다.');
       }
@@ -302,150 +366,29 @@ const bollingerStrategy: BollingerStrategy = {
   
   // 청산 조건 분석
   analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
-    // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
-    if (index < 360 || position !== 'buy') return false;
+    if (position !== 'buy') return false;
 
-    // 1) 먼저, 상승 추세인지 확인
+    // 1) 먼저 상승 추세인지 체크
     if (this.isUptrend?.(data, index, 5)) {
-      console.log('\n=== 현재 장기 상승 추세 유지 → 매도 신호 억제 ===');
-      return false; // 매도 X
+      console.log('상승 추세가 이어지고 있으므로 매도 억제');
+      return false; // 매도하지 않음
     }
 
-    let ma600UpCount = 0; 
-    
-    // MA 계산
+    // 2) 기존 매도 조건
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
-    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
     const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
-    
-    // 이전 MA 계산
-    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
 
-    // MA 기울기 계산
-    const ma60Slope = Math.abs((ma60 - prevMa60) / prevMa60 * 100);
-    const ma120Slope = Math.abs((ma120 - prevMa120) / prevMa120 * 100);
-    const ma240Slope = Math.abs((ma240 - prevMa240) / prevMa240 * 100);
-   // const ma600Slope = ((ma600 - prevMa600) / prevMa600) * 100;
-    const ma600Slope = Math.abs((ma600 - prevMa600) / prevMa600 * 100);
-    // MA 기울기 하향 조건 (10봉 연속 하향인 경우)
-    let ma120DownCount = 0;
-    let ma240DownCount = 0;
-    let ma60Below120Count = 0;
-    let ma60Below240Count = 0;
-    let ma600DownCount = 0;
-
-    for (let i = 0; i < 10; i++) {
-      const currentMa120 = data.slice(index - i - 120, index - i).reduce((a, b) => a + b.close, 0) / 120;
-      const prevMa120Check = data.slice(index - i - 121, index - i - 1).reduce((a, b) => a + b.close, 0) / 120;
-      const currentMa240 = data.slice(index - i - 240, index - i).reduce((a, b) => a + b.close, 0) / 240;
-      const prevMa240Check = data.slice(index - i - 241, index - i - 1).reduce((a, b) => a + b.close, 0) / 240;
-      const currentMa60 = data.slice(index - i - 60, index - i).reduce((a, b) => a + b.close, 0) / 60;
-      const prevMa60Check = data.slice(index - i - 61, index - i - 1).reduce((a, b) => a + b.close, 0) / 60;
-      const currentMa600 = data.slice(index - i - 600, index - i).reduce((a, b) => a + b.close, 0) / 600;
-      const prevMa600Check = data.slice(index - i - 601, index - i - 1).reduce((a, b) => a + b.close, 0) / 600;
-
-      if (currentMa120 < prevMa120Check) ma120DownCount++;
-      if (currentMa240 < prevMa240Check) ma240DownCount++;
-      if (currentMa60 < currentMa120) ma60Below120Count++;
-      if (currentMa60 < currentMa240) ma60Below240Count++;
-      if (currentMa600 < prevMa600Check) ma600DownCount++;
-      if (currentMa600 > prevMa600Check) ma600UpCount++; 
-    }
-
-     // 이전 MA600 계산 (MA600 상승세 확인용)
-    // 600MA의 최근 6개 값을 계산 (현재 및 이전 5봉)
-const ma900_current = ma600; // data.slice(index - 600, index)로 계산한 현재 600MA
-const ma900_1 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_2 = data.slice(index - 602, index - 2).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_3 = data.slice(index - 603, index - 3).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_4 = data.slice(index - 604, index - 4).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_5 = data.slice(index - 605, index - 5).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_6 = data.slice(index - 606, index - 6).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_7 = data.slice(index - 607, index - 7).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_8 = data.slice(index - 608, index - 8).reduce((a, b) => a + b.close, 0) / 900;
-const ma900_9 = data.slice(index - 609, index - 9).reduce((a, b) => a + b.close, 0) / 900;
-
-
-// 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
-const slope0 = ma900_current - ma900_1;
-const slope1 = ma900_1 - ma900_2;
-const slope2 = ma900_2 - ma900_3;
-const slope3 = ma900_3 - ma900_4;
-const slope4 = ma900_4 - ma900_5;
-const slope5 = ma900_5 - ma900_6; 
-const slope6 = ma900_6 - ma900_7;
-const slope7 = ma900_7 - ma900_8;
-const slope8 = ma900_8 - ma900_9; 
-// 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
-const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 > 0 && slope3 > 0 && slope4 > 0 && slope5 > 0 && slope6 > 0 && slope7 > 0 && slope8 > 0; 
-// isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
-
-    // 60MA가 120MA와 240MA보다 아래에 있는지 확인
-    const isBelow120 = ma60 < ma120;
-    const isBelow240 = ma60 < ma240;
     const isBelow360 = ma60 < ma360;
     const isBelow600 = ma60 < ma600;
 
-    // MA600이 하락 추세인지 확인 (현재 MA600 < 이전 MA600)
-    const isMA600Falling = ma600 < prevMa600;
-    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
-    // 횡보장 감지를 위한 변수들 정의
-
-    const closeToMA60 = Math.abs(data[index].close - ma60) / ma60 < 0.1; // 10% 이내
-    const closeToMA600 = Math.abs(data[index].close - ma600) / ma600 < 0.1; // 10% 이내
-   const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 1; // 10% 이내
-    const isRisingSideways =
-    ma600Slope < -0.1763/2  ;// 상승 횡보장 조건: 이동평균선의 상승 기울기는 0% 이상 5% 미만이고, 가격과 MA들이 서로 10% 이내 차이일 경우
- 
-    const isChoppyMarket = (isRisingSideways);// || ma600ma900Close);
- 
-    const currentPrice = data[index].close;
-    const profitPercent = ((currentPrice / entryPrice) - 1) * 100;
-    const additionalConditions =  isMA900Rising ;//&&isBelow900;//&& isBelow600 ;&&isBelow900
-    console.log('\n=== 매도 신호 분석 ===');
-    console.log('현재 거래 상태:', {
-      '매도 가능 여부': position === 'buy',
-      '마지막 매수 시간': new Date().toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      })
-    });
-
-    // 매도 시그널 생성 - 기본 조건 (README 기준으로 수정)
-    if (( isBelow360 &&   isBelow600 )) {//(isBelow360 &&  !isMA900Rising && !isChoppyMarket)||
-      console.log('\n=== 매도 조건 충족 여부 ===');
-      console.log('상태 변경: waiting_sell → sell (매도 주문 실행)');
-      console.log({
-        '체크 시간': new Date().toLocaleString('ko-KR', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        }),
-        'MA60이 MA600 아래': isBelow600 ? '✅' : '❌',
-        'MA60 값': ma60.toFixed(2),
-        'MA600 값': ma600.toFixed(2),
-        '최종 판정': '✅ 매도 신호 발생!'
-      });
-      return true;  // 매도 신호 발생 → 매도 주문 실행 (sell)
+    if (isBelow360 && isBelow600) {
+      console.log('매도 신호 발생');
+      return true; // 매도
     }
 
-    console.log('\n=== 매도 조건 충족 여부 ===');
-    console.log('상태 유지: waiting_sell (매도 대기)');
-    return false;  // 매도 대기 상태 유지 (waiting_sell)
+    // 3) 나머지 조건들...
+    return false;
   },
   
   // 지표 계산 함수
