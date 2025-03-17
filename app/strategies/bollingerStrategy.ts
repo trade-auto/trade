@@ -25,32 +25,49 @@ const bollingerStrategy: BollingerStrategy = {
     positionSizePercent: 50
   },
   
-  // 상승 추세 감지 함수
-  isUptrend(data: CandlestickData<Time>[], index: number): boolean {
-    if (index < 600) return false;
-  
-    // 이동평균 계산
-    const ma60 = data.slice(index - 60, index)
-                     .reduce((sum, c) => sum + c.close, 0) / 60;
-    const ma120 = data.slice(index - 120, index)
-                      .reduce((sum, c) => sum + c.close, 0) / 120;
-    const ma600 = data.slice(index - 600, index)
-                      .reduce((sum, c) => sum + c.close, 0) / 600;
-  
-    // 최근 5봉 동안 MA600이 계속 상승 중인지 확인
-    let ma600UpCount = 0;
-    for (let i = 0; i < 5; i++) {
-      const prevMa600 = data.slice(index - i - 601, index - i - 1)
-                            .reduce((sum, c) => sum + c.close, 0) / 600;
+  /**
+   * 최근 N봉 동안 MA600이 연속 하락 중인지 확인
+   */
+  isDowntrend(data: CandlestickData<Time>[], index: number, period = 5): boolean {
+    // MA600을 계산하려면 최소 600개 캔들이 필요
+    if (index < 600 + period) return false;
+
+    let downCount = 0;
+
+    for (let i = 0; i < period; i++) {
       const currMa600 = data.slice(index - i - 600, index - i)
                             .reduce((sum, c) => sum + c.close, 0) / 600;
-      if (currMa600 > prevMa600) ma600UpCount++;
+      const prevMa600 = data.slice(index - i - 601, index - i - 1)
+                            .reduce((sum, c) => sum + c.close, 0) / 600;
+      
+      // 이번 봉의 MA600이 이전 봉의 MA600보다 낮으면 "하락"으로 카운트
+      if (currMa600 < prevMa600) {
+        downCount++;
+      }
     }
+
+    // period(예: 5)봉 모두 하락이면 "하락 추세"로 판단
+    return (downCount === period);
+  },
   
-    const isLongUp = (ma600UpCount === 5); // 5봉 연속 상승
-    const isShortAboveLong = (ma60 > ma120 && ma120 > ma600);
-  
-    return isLongUp && isShortAboveLong;
+  // 상승 추세 감지 함수
+  isUptrend(data: CandlestickData<Time>[], index: number, period = 5): boolean {
+    // MA600 계산에 필요한 최소 캔들 수 확인
+    if (index < 600 + period) return false;
+
+    let upCount = 0;
+    for (let i = 0; i < period; i++) {
+      const currMa600 = data.slice(index - i - 600, index - i)
+                            .reduce((sum, c) => sum + c.close, 0) / 600;
+      const prevMa600 = data.slice(index - i - 601, index - i - 1)
+                            .reduce((sum, c) => sum + c.close, 0) / 600;
+      if (currMa600 > prevMa600) {
+        upCount++;
+      }
+    }
+
+    // 최근 5봉 모두 MA600이 우상향이면 "상승 추세"로 간주
+    return (upCount === period);
   },
   
   // 진입 조건 분석
@@ -79,6 +96,13 @@ const bollingerStrategy: BollingerStrategy = {
       console.log(`현재 데이터 길이: ${data.length}초`);
       console.log(`현재 인덱스: ${index}`);
       return null;
+    }
+
+    // 하락 추세에서는 매수 억제
+    const isMarketDowntrend = this.isDowntrend?.(data, index, 5); // 5봉 연속 MA600 하락 여부
+    if (isMarketDowntrend) {
+      console.log('\n=== ❌ 장기 하락 추세 감지 → 매수 억제 ===');
+      return null; // 매수 신호 발생하지 않음
     }
 
     // 이전 데이터 무결성 검사
@@ -141,10 +165,10 @@ const bollingerStrategy: BollingerStrategy = {
         const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.15; // 15% 이내
         
         //const isRangebound = priceRange < 1.0; // 변동 범위가 1% 미만
-        const isFlatMA = ma600Slope < 10 && ma900Slope < 10; // MA 기울기가 10% 미만
+        const isFlatMA = ma600Slope < 0.2 && ma900Slope < 0.2; // MA 기울기가 0.2% 미만
         const isPriceStuck = closeToMA60 || closeToMA900; // 가격이 MA 근처에 갇힘
         
-        const isChoppyMarket = (isFlatMA || isPriceStuck || ma600ma900Close);
+        isChoppyMarket = (isFlatMA || isPriceStuck || ma600ma900Close);
         
         if (isChoppyMarket) {
           console.log('\n=== ⚠️ 횡보장 감지됨 (nobuyfrequpdown) ===');
@@ -235,8 +259,7 @@ const bollingerStrategy: BollingerStrategy = {
     const { useFifthCondition } = useUpbitStore.getState();
     const isNewBuyCondition = ( isAllPositiveSlopeConditions && isAllAboveConditions ) && additionalConditions;  //isPerfectAlignment || isReverseToPerfectAlignment
     // 최종 추가 조건: 장기 상승 추세를 함께 확인
-   // const isMA600Upward = ma600 > prevMa600; // or isPositiveSlope600
-    //const isMA600Upward = ma600 > prevMa600; // or isPositiveSlope600
+ 
     // MA240 상향추세 체크 (5캔들 이상)
     let ma240UpCount = 0;
     for (let i = 1; i <= 5; i++) {
@@ -282,10 +305,10 @@ const bollingerStrategy: BollingerStrategy = {
     // position이 'buy'가 아니면 매도 신호를 발생시키지 않음
     if (index < 360 || position !== 'buy') return false;
 
-    // 매도 조건 전에 "여전히 상승 추세인가?" 확인
-    if (this.isUptrend?.(data, index)) {
-      console.log('\n=== 아직 상승 추세 유지 → 매도 억제 ===');
-      return false; // 매도 신호 발생 X
+    // 1) 먼저, 상승 추세인지 확인
+    if (this.isUptrend?.(data, index, 5)) {
+      console.log('\n=== 현재 장기 상승 추세 유지 → 매도 신호 억제 ===');
+      return false; // 매도 X
     }
 
     let ma600UpCount = 0; 
@@ -359,7 +382,7 @@ const slope6 = ma900_6 - ma900_7;
 const slope7 = ma900_7 - ma900_8;
 const slope8 = ma900_8 - ma900_9; 
 // 5봉 동안 모두 임계치(0.1763) 이상 상승해야 상승 추세로 판단
-const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slope4 > 0 && slope5 > 0 && slope6 > 0 && slope7 > 0 && slope8 > 0; 
+const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 > 0 && slope3 > 0 && slope4 > 0 && slope5 > 0 && slope6 > 0 && slope7 > 0 && slope8 > 0; 
 // isMA900Rising = slope0 > 0.1763 && slope1 > 0.1763 && slope2 > 0.1763 && slope3 > 0.1763 && slope4 > 0.1763; 
 
     // 60MA가 120MA와 240MA보다 아래에 있는지 확인
@@ -397,7 +420,7 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
         hour12: false
       })
     });
- 
+
     // 매도 시그널 생성 - 기본 조건 (README 기준으로 수정)
     if (( isBelow360 &&   isBelow600 )) {//(isBelow360 &&  !isMA900Rising && !isChoppyMarket)||
       console.log('\n=== 매도 조건 충족 여부 ===');
@@ -606,17 +629,17 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
             const signal: TradeSignal = {
               id,
               time,
-              position: 'buy',
+            position: 'buy',
               price,
               strategy: 'BOLLINGER' as TradeStrategy,
-              reason: '매수 조건 충족',
+            reason: '매수 조건 충족',
               metadata: {
                 ma60: data.slice(i - 60, i).reduce((a, b) => a + b.close, 0) / 60,
               }
             };
             
             signals.push(signal);
-            currentPosition = 'buy';
+          currentPosition = 'buy';
             lastTradeId = id;
             lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
             
@@ -658,7 +681,7 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
               const signal: TradeSignal = {
                 id,
                 time,
-                position: 'sell',
+            position: 'sell',
                 price,
                 strategy: 'BOLLINGER' as TradeStrategy,
                 relatedTradeId: lastTradeId,
@@ -668,8 +691,8 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
               };
               
               signals.push(signal);
-              currentPosition = null;
-              lastTradeId = null;
+          currentPosition = null;
+          lastTradeId = null;
               lastSignalIndex = i; // 마지막 신호 인덱스 업데이트
               lastSellTime = time * 1000; // 마지막 매도 시간 저장 (밀리초 단위)
               
@@ -786,4 +809,4 @@ const isMA900Rising = slope0 > 0 && slope1 > 0 && slope2 >0 && slope3 > 0 && slo
   }
 };
 
-export default bollingerStrategy;
+export default bollingerStrategy; 
