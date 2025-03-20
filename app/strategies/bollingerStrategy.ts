@@ -6,6 +6,41 @@ import { useEffect } from 'react';
 
 type TradeState = 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
 
+function isShortTermDowntrend(data: CandlestickData<Time>[], index: number): boolean {
+  if (index < 910) return false; // 최소 910봉 필요 (MA900 포함)
+
+  let downCount = 0;
+  let totalAngle = 0;
+
+  function calculateAngle(curr: number, prev: number, period: number): number {
+    return Math.atan((curr - prev) / period) * (180 / Math.PI);
+  }
+
+  // 🔍 **최근 10봉의 각도 계산 (기울기가 -2° 이하인지 확인)**
+  for (let i = index - 10 + 1; i <= index; i++) {
+    const currMa600 = data.slice(i - 600, i).reduce((sum, c) => sum + c.close, 0) / 600;
+    const prevMa600 = data.slice(i - 601, i - 1).reduce((sum, c) => sum + c.close, 0) / 600;
+    const currMa900 = data.slice(i - 900, i).reduce((sum, c) => sum + c.close, 0) / 900;
+    const prevMa900 = data.slice(i - 901, i - 1).reduce((sum, c) => sum + c.close, 0) / 900;
+
+    const angle600 = calculateAngle(currMa600, prevMa600, 1);
+    const angle900 = calculateAngle(currMa900, prevMa900, 1);
+
+    const avgAngle = (angle600 + angle900) / 2;
+    totalAngle += avgAngle;
+
+    if (avgAngle <= -2) {
+      downCount++;
+    }
+  }
+
+  console.log(`\n🔍 [단기 하락 추세 분석]`);
+  console.log(`✅ 최근 10봉 중 ${downCount}/10봉 기울기 -2° 이하`);
+  console.log(`✅ 전체 평균 기울기: ${(totalAngle / 10).toFixed(2)}°`);
+
+  return downCount >= 5 && totalAngle / 10 < -1.5;
+}
+
 /**
  * 이동평균선 간격이 충분히 벌어졌는지 확인
  * - 예) MA60 > MA120 > MA240 > MA360 > MA600
@@ -130,7 +165,7 @@ const bollingerStrategy: BollingerStrategy = {
         upCount++;
       }
     }
-    
+
     // 5봉 이상 상승했으면 상승 추세로 판단
     if (upCount >= 5) {
       console.log(`MA600 최근 ${upCount}/9 봉이 상승 중: 상승 추세`);
@@ -140,7 +175,6 @@ const bollingerStrategy: BollingerStrategy = {
     console.log(`MA600 최근 ${upCount}/9 봉만 상승 중: 상승 추세 아님`);
     return false;
   },
-  
   // 진입 조건 분석
   analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | 'nobuyfrequpdown' | null {
     const entryDateTime = new Date(data[index].time as number * 1000);
@@ -152,7 +186,7 @@ const bollingerStrategy: BollingerStrategy = {
     let isChoppyMarket = false;
 
     // 필요한 최소 데이터 검사
-    const requiredData = 600; // MA600 계산에 필요
+    const requiredData = 960; // MA900 계산에 필요
     const isCollecting = index < requiredData;
     if (isCollecting) {
       console.log(`초기 데이터 수집 중... (필요: ${requiredData}초)`);
@@ -168,6 +202,14 @@ const bollingerStrategy: BollingerStrategy = {
       console.log(`현재 인덱스: ${index}`);
       return null;
     }
+
+    // 장기 하강 추세 감지 → 매수 금지
+    if (isShortTermDowntrend(data, index)) {
+      console.log('❌ MA900 & MA600 기반 장기 하강 추세 감지 → 매수 금지');
+      return null;
+    }
+
+ 
 
     // 하락 추세에서는 매수 억제
     const isMarketDowntrend = this.isDowntrend?.(data, index, 5); // 5봉 연속 MA600 하락 여부
@@ -293,7 +335,7 @@ const bollingerStrategy: BollingerStrategy = {
     const isBelow600 = ma60 < ma600;
     const isBelow900 = ma60 < ma900;
     const isMA600Upward = ma600 > prevMa600;
-    
+ 
     // MA600이 전 봉 대비 양(+)인 것만 보지 말고,
     // 최근 5봉 모두 우상향인지 확인
     let ma600UpCount = 0;

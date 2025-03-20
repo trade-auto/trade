@@ -200,4 +200,5 @@ export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' 
   isDowntrend?: (data: CandlestickData<Time>[], index: number, period?: number) => boolean;
   isMAFanSpreadOut?: (ma60: number, ma120: number, ma240: number, ma360: number, ma600: number, thresholdPercent?: number) => boolean;
   shouldTakeProfit?: (entryPrice: number, currentPrice: number, takeProfitPercent?: number) => boolean;
+  isMA600SteadyUp?: (data: CandlestickData<Time>[], index: number) => boolean;
 } 
