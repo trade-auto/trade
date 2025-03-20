@@ -1,7 +1,7 @@
 import { CandlestickData, Time } from 'lightweight-charts';
 
 // 전략 유형 정의
-export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' ;
+export type TradeStrategy = 'BOLLINGER' | 'SUPERTREND' | 'RSI';
 
 // 포지션 유형 정의
 export type PositionType = 'buy' | 'sell' | null;
@@ -133,6 +133,7 @@ export interface IndicatorSettings {
   bollinger?: { period: number; stdDev: number; };  // 볼린저 밴드 설정
   rsi?: { period: number; overbought: number; oversold: number; };  // RSI 설정
   macd?: { fast: number; slow: number; signal: number; };  // MACD 설정
+  supertrend?: { atrPeriod: number; factor: number; }; // 슈퍼트렌드 설정
   customIndicators?: Record<string, any>;  // 사용자 정의 지표
 }
 
@@ -201,4 +202,25 @@ export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' 
   isMAFanSpreadOut?: (ma60: number, ma120: number, ma240: number, ma360: number, ma600: number, thresholdPercent?: number) => boolean;
   shouldTakeProfit?: (entryPrice: number, currentPrice: number, takeProfitPercent?: number) => boolean;
   isMA600SteadyUp?: (data: CandlestickData<Time>[], index: number) => boolean;
+  
+  // 새로 추가한 메서드들
+  measureMADivergence(ma60: number, ma120: number, ma240: number, ma360: number): number;
+  wasWideNowNarrow(data: CandlestickData<Time>[], index: number, wideThreshold?: number, narrowThreshold?: number): boolean;
+  hasMACross(data: CandlestickData<Time>[], index: number): boolean;
+  isPerfectAlignment(ma60: number, ma120: number, ma240: number, ma360: number): boolean;
+  isLongTermUptrend(data: CandlestickData<Time>[], index: number): boolean;
+}
+
+export interface SupertrendStrategy extends TradingStrategy {
+  // 슈퍼트렌드 전략 관련 속성
+  indicators?: {
+    supertrend: { atrPeriod: number; factor: number; }
+  };
+}
+
+export interface RSIStrategy extends TradingStrategy {
+  // RSI 전략 관련 속성
+  indicators?: {
+    rsi: { period: number; overbought: number; oversold: number; }
+  };
 } 

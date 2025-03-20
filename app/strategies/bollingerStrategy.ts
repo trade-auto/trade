@@ -88,6 +88,96 @@ function isMAFanSpreadOut(
   return true;
 }
 
+/**
+ * 정배열 상태인지 확인 
+ * - 조건 완화: MA60 > MA120만 충족하면 정배열로 판단
+ */
+function isPerfectAlignment(
+  ma60: number,
+  ma120: number,
+  ma240: number,
+  ma360: number
+): boolean {
+  // 기존: ma60 > ma120 && ma120 > ma240 && ma240 > ma360
+  // 완화: MA60 > MA120만 만족하면 됨
+  const isAligned = ma60 > ma120;
+  console.log(`정배열 여부(MA60 > MA120): ${isAligned ? '✅' : '❌'} (${ma60.toFixed(2)} vs ${ma120.toFixed(2)})`);
+  return isAligned;
+}
+
+/**
+ * 장기 이동평균선(MA600, MA900)이 상승 추세인지 확인
+ * - 기준 완화: 둘 중 하나라도 이전 봉보다 같거나 크면 상승으로 판단
+ */
+function isLongTermUptrend(
+  data: CandlestickData<Time>[],
+  index: number
+): boolean {
+  if (index < 900 + 5) return false; // 최소 905봉 필요 (MA900 + 5봉)
+
+  // MA600 상승 여부 확인 - 같거나 크면 상승으로 판단 (완화)
+  const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
+  const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+  
+  // MA900 상승 여부 확인 - 같거나 크면 상승으로 판단 (완화)
+  const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
+  const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
+  
+  // 둘 중 하나라도 같거나 크면 상승 추세로 판단 (완화)
+  const ma600Stable = ma600 >= prevMa600;
+  const ma900Stable = ma900 >= prevMa900;
+  
+  console.log(`MA600 상승/유지 여부: ${ma600Stable ? '✅' : '❌'} (${ma600.toFixed(2)} vs ${prevMa600.toFixed(2)})`);
+  console.log(`MA900 상승/유지 여부: ${ma900Stable ? '✅' : '❌'} (${ma900.toFixed(2)} vs ${prevMa900.toFixed(2)})`);
+  
+  return ma600Stable || ma900Stable;
+}
+
+/**
+ * MA900과 MA600을 이용하여 장기 하강 추세 판단
+ * - 과거 60봉 검사 (전 30봉: 하락 / 이후 30봉: 평균 하락률이 ±0.1% 이내)
+ */
+function isLongTermDowntrend(data: CandlestickData<Time>[], index: number): boolean {
+  if (index < 960) return false; // 최소 960봉 필요 (MA900 계산 포함)
+
+  let first30Down = 0;
+  let last30Change = 0;
+
+  // 전 30봉 검사: 하락 여부 판단
+  for (let i = index - 60; i < index - 30; i++) {
+    const currMa600 = data.slice(i - 600, i).reduce((sum, c) => sum + c.close, 0) / 600;
+    const prevMa600 = data.slice(i - 601, i - 1).reduce((sum, c) => sum + c.close, 0) / 600;
+    const currMa900 = data.slice(i - 900, i).reduce((sum, c) => sum + c.close, 0) / 900;
+    const prevMa900 = data.slice(i - 901, i - 1).reduce((sum, c) => sum + c.close, 0) / 900;
+
+    if (currMa600 < prevMa600 && currMa900 < prevMa900) {
+      first30Down++;
+    }
+  }
+
+  // 이후 30봉 검사: 평균 변화율 계산
+  for (let i = index - 30; i < index; i++) {
+    const currMa600 = data.slice(i - 600, i).reduce((sum, c) => sum + c.close, 0) / 600;
+    const prevMa600 = data.slice(i - 601, i - 1).reduce((sum, c) => sum + c.close, 0) / 600;
+    const currMa900 = data.slice(i - 900, i).reduce((sum, c) => sum + c.close, 0) / 900;
+    const prevMa900 = data.slice(i - 901, i - 1).reduce((sum, c) => sum + c.close, 0) / 900;
+
+    const change600 = ((currMa600 - prevMa600) / prevMa600) * 100;
+    const change900 = ((currMa900 - prevMa900) / prevMa900) * 100;
+
+    last30Change += (change600 + change900) / 2; // 평균 변화율 계산
+  }
+
+  last30Change /= 30; // 평균 변화율 계산 (30봉 기준)
+
+  console.log(`\n🔍 [장기 하강 추세 분석]`);
+  console.log(`✅ 전 30봉 하락 개수: ${first30Down}/30`);
+  console.log(`✅ 이후 30봉 평균 변화율: ${last30Change.toFixed(4)}% (±0.1% 이내)`);
+
+  // 조건 충족 시 장기 하락 추세로 판단
+  return first30Down >= 25 && Math.abs(last30Change) <= 0.1;
+}
+
 // 볼린저 밴드 전략
 const bollingerStrategy: BollingerStrategy = {
   name: 'BOLLINGER',
@@ -204,12 +294,10 @@ const bollingerStrategy: BollingerStrategy = {
     }
 
     // 장기 하강 추세 감지 → 매수 금지
-    if (isShortTermDowntrend(data, index)) {
+    if (isLongTermDowntrend(data, index)) {
       console.log('❌ MA900 & MA600 기반 장기 하강 추세 감지 → 매수 금지');
       return null;
     }
-
- 
 
     // 하락 추세에서는 매수 억제
     const isMarketDowntrend = this.isDowntrend?.(data, index, 5); // 5봉 연속 MA600 하락 여부
@@ -285,6 +373,7 @@ const bollingerStrategy: BollingerStrategy = {
     const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
     const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
     const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
+    
     // MA 계산 - 매수 가능 상태와 관계없이 계산
     const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
     const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
@@ -293,96 +382,65 @@ const bollingerStrategy: BollingerStrategy = {
     const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
     const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
     
-    // MA 간격이 충분히 벌어졌는지 확인 (0.01%로 threshold 대폭 낮춤)
-    const isSpreadOut = this.isMAFanSpreadOut?.(ma60, ma120, ma240, ma360, ma600, 0.05);
-    console.log(`\n=== MA Fan 조건 확인 ===`);
-    if (!isSpreadOut) {
-      console.log('\n=== ⚠️ MA 간격이 충분히 벌어지지 않음 (참고사항) ===');
-      // 완전히 억제하지 않고 경고만 표시
-    }
-
-    // 이전 MA600 계산 (MA600 상승세 확인용)
-        // 600MA의 최근 6개 값을 계산 (현재 및 이전 5봉)
-    const ma900_current = ma600; // data.slice(index - 600, index)로 계산한 현재 600MA
-    const ma900_1 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_2 = data.slice(index - 902, index - 2).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_3 = data.slice(index - 903, index - 3).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_4 = data.slice(index - 904, index - 4).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_5 = data.slice(index - 905, index - 5).reduce((a, b) => a + b.close, 0) / 900;
-
-    // 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
-    const slope0 = ma900_current - ma900_1;
-    const slope1 = ma900_1 - ma900_2;
-    const slope2 = ma900_2 - ma900_3;
-    const slope3 = ma900_3 - ma900_4;
-    const slope4 = ma900_4 - ma900_5;
-
-    // 5봉 동안 모두 임계치 이상 상승해야 상승 추세로 판단
-    // 임계값을 0.02로 대폭 낮춤 (저변동성 코인을 위해)
-    const isMA900Rising = slope0 > 0.02 && slope1 > 0.02 && slope2 > 0.02 && slope3 > 0.02 && slope4 > 0.02; 
+    console.log('\n=== 주요 이동평균선 값 ===');
+    console.log(`MA60: ${ma60.toFixed(2)}, MA120: ${ma120.toFixed(2)}, MA240: ${ma240.toFixed(2)}`);
+    console.log(`MA360: ${ma360.toFixed(2)}, MA600: ${ma600.toFixed(2)}, MA900: ${ma900.toFixed(2)}`);
     
-    const slope120 = ma120 - prevMa120;
-    const slope240 = ma240 - prevMa240;
-    const slope360 = ma360 - prevMa360;
-    const slope600 = ma600 - prevMa600;
+    // 1) 과거 넓고 지금 좁아졌는지 확인
+    const isSqueeze = this.wasWideNowNarrow(data, index, 1.0, 0.3);
     
-    // MA 조건 검사
-    const isAbove120 = ma60 > ma120;
-    const isAbove240 = ma60 > ma240;
-    const isAbove360 = ma60 > ma360;
-    const isAbove600 = ma60 > ma600;
-    const isBelow360 = ma60 < ma360;
-    const isBelow600 = ma60 < ma600;
-    const isBelow900 = ma60 < ma900;
-    const isMA600Upward = ma600 > prevMa600;
- 
-    // MA600이 전 봉 대비 양(+)인 것만 보지 말고,
-    // 최근 5봉 모두 우상향인지 확인
-    let ma600UpCount = 0;
-    for (let i = 1; i <= 5; i++) {
-      const prev = data.slice(index - i - 600, index - i).reduce((a, b) => a + b.close, 0) / 600;
-      const curr = data.slice(index - i + 1 - 600, index - i + 1).reduce((a, b) => a + b.close, 0) / 600;
-      if (curr > prev) {
-        ma600UpCount++;
-      }
-    }
-    // "최근 2봉 이상 MA600 상승"일 때 장기 상승으로 판단 (3봉에서 추가 완화)
-    const isMA600SteadyUp = (ma600UpCount >= 2);
-
-    // 기울기 임계값 0.08에서 0.02로 추가 낮춤
-    const isPositiveSlope120 = slope120 > 0.02;
-    const isPositiveSlope240 = slope240 > 0.02;
-    const isPositiveSlope360 = slope360 > 0.02;
-    const isPositiveSlope600 = slope600 > 0.02;
-
-    // OR 조건으로 추가 완화
-    const additionalConditions = isPositiveSlope600 || isMA900Rising || isMA600Upward;
+    // 2) 교차 발생 여부 확인 (MA60이 MA120을 상향 돌파)
+    const isCross = this.hasMACross(data, index);
     
-    // 기울기 조건 추가 완화: 최소 1개 이상의 MA가 양의 기울기를 가지면 됨
-    const isAllPositiveSlopeConditions = [isPositiveSlope120, isPositiveSlope240, isPositiveSlope360, isPositiveSlope600]
-                                        .filter(Boolean).length >= 1;
+    // 3) 추가 필터: 정배열 상태인지 확인
+    const isAlignment = this.isPerfectAlignment(ma60, ma120, ma240, ma360);
     
-    // 모든 MA보다 높아야 하는 조건 완화: 적어도 1개 이상의 장기 MA보다 높으면 됨
-    const isAllAboveConditions = [isAbove120, isAbove240, isAbove360, isAbove600]
-                                .filter(Boolean).length >= 1;
-
-    // 매수 조건 완화: 필수 조건 수를 줄이고 OR 조건 추가
-    if ((isMA600SteadyUp || isAllPositiveSlopeConditions) && 
-        (isAllAboveConditions || ma60 > data[index].close) && 
-        !isChoppyMarket) {
+    // 4) 추가 필터: 장기 이동평균선 상승 중인지 확인
+    const isUptrend = this.isLongTermUptrend(data, index);
     
+    // 횡보장 확인 (기존 코드 재사용)
+    const ma600Slope = Math.abs((ma600 - prevMa600) / prevMa600 * 100);
+    const ma900Slope = Math.abs((ma900 - prevMa600) / prevMa600 * 100);
+    const isFlatMA = ma600Slope < 0.05 && ma900Slope < 0.05;
+    const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.05;
+    isChoppyMarket = isFlatMA && ma600ma900Close;
+    
+    console.log('\n=== 매수 조건 체크 ===');
+    console.log(`1) 과거 넓고 현재 좁아짐: ${isSqueeze ? '✅' : '❌'}`);
+    console.log(`2) MA60이 MA120 상향 돌파: ${isCross ? '✅' : '❌'}`);
+    console.log(`3) 정배열(MA60>MA120>MA240>MA360): ${isAlignment ? '✅' : '❌'}`);
+    console.log(`4) 장기 이동평균선 상승 중: ${isUptrend ? '✅' : '❌'}`);
+    console.log(`5) 횡보장 여부: ${isChoppyMarket ? '⚠️ 횡보장' : '✅ 정상'}`);
+    
+    // 매수 조건: 
+    // 1. 과거 간격 넓고 현재 좁아짐
+    // 2. MA60이 MA120 상향 돌파
+    // 3. 횡보장이 아님
+    // 4. 추가 필터 (선택적): 정배열 또는 장기 이동평균선 상승 중
+    // 조건 완화: !isChoppyMarket 조건을 제거하여 횡보장에서도 매수 가능하도록 함
+    if (isSqueeze && isCross && (isAlignment || isUptrend)) {
       console.log('\n=== ✅ 매수 조건 충족! ===');
-      if (isSpreadOut) {
-        console.log('MA Fan Spread 조건 충족: 강한 상승 추세 확인');
-      } else {
-        console.log('MA Fan Spread 조건 불충족: 약한 상승 추세 가능성 있음');
+      console.log('과거 간격 넓었다가 현재 좁아짐 + MA60/MA120 크로스 발생');
+      
+      if (isAlignment) {
+        console.log('정배열 확인: MA60 > MA120');
+      }
+      
+      if (isUptrend) {
+        console.log('장기 이동평균선 상승/유지 확인: MA600 또는 MA900 상승 중');
+      }
+      
+      if (isChoppyMarket) {
+        console.log('⚠️ 횡보장이지만 매수 신호 발생 (조건 완화)');
       }
       
       console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
       return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
     }
 
-    return null;  // 매수 조건 불충족
+    // 매수 조건 불충족
+    console.log('\n=== ❌ 매수 조건 불충족 ===');
+    return null;
   },
   
   // 청산 조건 분석
@@ -778,7 +836,76 @@ const bollingerStrategy: BollingerStrategy = {
         lastSellTime // 마지막 매도 시간 저장
       }
     };
-  }
+  },
+  
+  // 특정 시점에서 MA60~MA360 간격(%)을 측정
+  measureMADivergence(
+    ma60: number,
+    ma120: number,
+    ma240: number,
+    ma360: number
+  ): number {
+    // 예: ( (MA60 - MA120)/MA120 + (MA120 - MA240)/MA240 + (MA240 - MA360)/MA360 ) / 3
+    // 단, 실제로 MA60 < MA120인 경우 음수가 될 수도 있으니 절댓값을 취하거나 조건 체크
+    const diff1 = Math.abs(ma60 - ma120) / ((ma60 + ma120) / 2) * 100;
+    const diff2 = Math.abs(ma120 - ma240) / ((ma120 + ma240) / 2) * 100;
+    const diff3 = Math.abs(ma240 - ma360) / ((ma240 + ma360) / 2) * 100;
+
+    return (diff1 + diff2 + diff3) / 3; // 평균 백분율 차이
+  },
+  
+  /**
+   * "과거엔 넓었고, 지금은 좁아졌다"를 체크
+   * - 과거 divergence가 wideThreshold 이상
+   * - 현재 divergence가 narrowThreshold 이하
+   */
+  wasWideNowNarrow(
+    data: CandlestickData<Time>[],
+    index: number,
+    wideThreshold = 1.0,   // 예: 1% 이상이면 "넓다"
+    narrowThreshold = 0.3  // 예: 0.3% 이하이면 "좁다"
+  ): boolean {
+    if (index < 360 + 10) return false; // MA360 계산 + 과거 시점 확보
+
+    // 과거 10봉 전 지점
+    const pastIndex = index - 10;
+
+    // 과거 시점 MA
+    const pastMa60 = data.slice(pastIndex - 60, pastIndex).reduce((a, b) => a + b.close, 0) / 60;
+    const pastMa120 = data.slice(pastIndex - 120, pastIndex).reduce((a, b) => a + b.close, 0) / 120;
+    const pastMa240 = data.slice(pastIndex - 240, pastIndex).reduce((a, b) => a + b.close, 0) / 240;
+    const pastMa360 = data.slice(pastIndex - 360, pastIndex).reduce((a, b) => a + b.close, 0) / 360;
+
+    // 현재 시점 MA
+    const currMa60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const currMa120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+    const currMa240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
+    const currMa360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
+
+    const pastDiv = this.measureMADivergence(pastMa60, pastMa120, pastMa240, pastMa360);
+    const currDiv = this.measureMADivergence(currMa60, currMa120, currMa240, currMa360);
+
+    console.log(`[wasWideNowNarrow] 과거 Divergence=${pastDiv.toFixed(3)}%, 현재 Divergence=${currDiv.toFixed(3)}%`);
+
+    return (pastDiv >= wideThreshold) && (currDiv <= narrowThreshold);
+  },
+  
+  /**
+   * MA60이 MA120을 최근에 교차(상향 돌파)했는지 여부
+   */
+  hasMACross(data: CandlestickData<Time>[], index: number): boolean {
+    if (index < 120) return false;
+
+    const prevMa60 = data.slice(index - 61, index - 1).reduce((a, b) => a + b.close, 0) / 60;
+    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
+    const currMa60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
+    const currMa120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
+
+    // 과거엔 MA60 < MA120, 지금은 MA60 > MA120 → 상향 돌파
+    return (prevMa60 < prevMa120) && (currMa60 > currMa120);
+  },
+  isPerfectAlignment: isPerfectAlignment,
+  isLongTermUptrend: isLongTermUptrend,
 };
 
 export default bollingerStrategy; 
