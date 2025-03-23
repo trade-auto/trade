@@ -33,6 +33,45 @@ interface CandleData {
   volume: number;
 }
 
+// MACD 계산 함수
+function calculateEMA(data: number[], period: number): number[] {
+  const k = 2 / (period + 1);
+  let emaArray: number[] = [];
+  let ema = data.slice(0, period).reduce((a, b) => a + b) / period;
+
+  emaArray[period - 1] = ema;
+
+  for (let i = period; i < data.length; i++) {
+    ema = data[i] * k + ema * (1 - k);
+    emaArray[i] = ema;
+  }
+
+  return emaArray;
+}
+
+function calculateMACD(closePrices: number[]) {
+  const ema12 = calculateEMA(closePrices, 12);
+  const ema26 = calculateEMA(closePrices, 26);
+
+  const macdLine = ema12.map((val, i) => 
+    val !== undefined && ema26[i] !== undefined ? val - ema26[i] : undefined
+  );
+  
+  const signalLine = calculateEMA(
+    macdLine.filter((x): x is number => x !== undefined), 
+    9
+  );
+
+  const histogram = macdLine.map((val, i) => {
+    if (val !== undefined && signalLine[i - (macdLine.length - signalLine.length)] !== undefined) {
+      return val - signalLine[i - (macdLine.length - signalLine.length)];
+    }
+    return undefined;
+  });
+
+  return { macdLine, signalLine, histogram };
+}
+
 // 간단한 차트 컴포넌트
 const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, height = 600 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -216,6 +255,27 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
           value: d.volume,
           color: d.close >= d.open ? '#26a69a' : '#ef5350'
         }));
+
+        // MACD 계산
+        const closePrices = candleData.map(d => d.close);
+        const { macdLine, signalLine, histogram } = calculateMACD(closePrices);
+        
+        // MACD 데이터 변환
+        const macdData = candleData.map((d, i) => ({
+          time: d.time,
+          value: macdLine[i] || 0
+        }));
+
+        const signalData = candleData.map((d, i) => ({
+          time: d.time,
+          value: signalLine[i - (macdLine.length - signalLine.length)] || 0
+        }));
+
+        const histogramData = candleData.map((d, i) => ({
+          time: d.time,
+          value: histogram[i] || 0,
+          color: (histogram[i] || 0) >= 0 ? '#26a69a' : '#ef5350'
+        }));
         
         // 캔들스틱 차트 생성
         const candlestickSeries = chart.addCandlestickSeries({
@@ -232,10 +292,32 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
           priceFormat: { type: 'volume' },
           priceScaleId: 'volume',
         });
+
+        // MACD 라인 생성
+        const macdSeries = chart.addLineSeries({
+          color: '#2196F3',
+          lineWidth: 2,
+          priceScaleId: 'macd',
+        });
+
+        const signalSeries = chart.addLineSeries({
+          color: '#FF9800',
+          lineWidth: 2,
+          priceScaleId: 'macd',
+        });
+
+        const histogramSeries = chart.addHistogramSeries({
+          color: '#26a69a',
+          priceFormat: { type: 'volume' },
+          priceScaleId: 'macd',
+        });
         
         // 데이터 설정
         candlestickSeries.setData(candlestickData);
         volumeSeries.setData(volumeData);
+        macdSeries.setData(macdData);
+        signalSeries.setData(signalData);
+        histogramSeries.setData(histogramData);
         
         // 차트 영역 조정
         chart.timeScale().fitContent();
