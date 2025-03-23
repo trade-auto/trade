@@ -224,144 +224,253 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
     }
 
     try {
-      // 차트 생성
-      const chart = createChart(chartContainerRef.current, {
+      // 차트 컨테이너 스타일 설정
+      chartContainerRef.current.style.position = 'relative';
+
+      // 차트 3개 생성을 위한 컨테이너 추가
+      chartContainerRef.current.innerHTML = `
+        <div id="candle-chart" style="width:100%; height:${height * 0.6}px; margin-bottom:2px;"></div>
+        <div id="macd-chart" style="width:100%; height:${height * 0.2}px; margin-bottom:2px;"></div>
+        <div id="volume-chart" style="width:100%; height:${height * 0.2 - 4}px;"></div>
+      `;
+
+      // 1. 캔들 차트 생성
+      const candleChartElement = document.getElementById('candle-chart');
+      const candleChart = createChart(candleChartElement!, {
         width: chartContainerRef.current.clientWidth,
-        height: height,
+        height: height * 0.6,
         layout: {
           background: { color: '#2B2B43' },
           textColor: '#D9D9D9',
+          fontSize: 14,
+          fontFamily: 'Gulim, sans-serif',
         },
         grid: {
           vertLines: { color: '#3C3C5A' },
           horzLines: { color: '#3C3C5A' },
         },
-      });
-      chartRef.current = chart;
-
-      // 캔들스틱 시리즈 생성 (상단 60%)
-      const candlestickSeries = chart.addCandlestickSeries({
-        upColor: '#26a69a',
-        downColor: '#ef5350',
-        borderVisible: false,
-        wickUpColor: '#26a69a',
-        wickDownColor: '#ef5350',
-        priceScaleId: 'right',
-      });
-
-      // MACD 시리즈 생성 (중간 20%)
-      const macdSeries = chart.addLineSeries({
-        color: '#2196F3',
-        lineWidth: 2,
-        priceScaleId: 'macd',
-        priceFormat: {
-          type: 'price',
-          precision: 2,
+        rightPriceScale: {
+          visible: true,
+          borderColor: '#3C3C5A',
+          borderVisible: true,
+          ticksVisible: true,
+          autoScale: true,
+        },
+        timeScale: {
+          borderColor: '#3C3C5A',
+          timeVisible: true,
+          borderVisible: true,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            return date.toLocaleTimeString('ko-KR', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            });
+          },
         },
       });
 
-      const signalSeries = chart.addLineSeries({
-        color: '#FF9800',
+      // 2. MACD 차트 생성
+      const macdChartElement = document.getElementById('macd-chart');
+      const macdChart = createChart(macdChartElement!, {
+        width: chartContainerRef.current.clientWidth,
+        height: height * 0.2,
+        layout: {
+          background: { color: '#2B2B43' },
+          textColor: '#D9D9D9',
+          fontSize: 14,
+          fontFamily: 'Gulim, sans-serif',
+        },
+        grid: {
+          vertLines: { color: '#3C3C5A' },
+          horzLines: { color: '#3C3C5A' },
+        },
+        rightPriceScale: {
+          visible: true,
+          borderColor: '#3C3C5A',
+          borderVisible: true,
+          ticksVisible: true,
+          autoScale: true,
+        },
+        timeScale: {
+          borderColor: '#3C3C5A',
+          timeVisible: false,
+          borderVisible: true,
+        },
+      });
+
+      // 3. 볼륨 차트 생성
+      const volumeChartElement = document.getElementById('volume-chart');
+      const volumeChart = createChart(volumeChartElement!, {
+        width: chartContainerRef.current.clientWidth,
+        height: height * 0.2 - 4,
+        layout: {
+          background: { color: '#2B2B43' },
+          textColor: '#D9D9D9',
+          fontSize: 14,
+          fontFamily: 'Gulim, sans-serif',
+        },
+        grid: {
+          vertLines: { color: '#3C3C5A' },
+          horzLines: { color: '#3C3C5A' },
+        },
+        rightPriceScale: {
+          visible: true,
+          borderColor: '#3C3C5A',
+          borderVisible: true,
+          ticksVisible: true,
+          autoScale: true,
+        },
+        timeScale: {
+          borderColor: '#3C3C5A',
+          timeVisible: true,
+          borderVisible: true,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            return date.toLocaleDateString('ko-KR', { 
+              month: '2-digit', 
+              day: '2-digit'
+            });
+          },
+        },
+      });
+
+      // 캔들스틱 시리즈 생성
+      const candleSeries = candleChart.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderUpColor: '#26a69a',
+        borderDownColor: '#ef5350',
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350',
+        priceFormat: {
+          type: 'price',
+          precision: 0,
+          minMove: 1,
+        },
+      });
+
+      // MACD 시리즈 생성
+      const macdLineSeries = macdChart.addLineSeries({
+        color: '#2196F3',
         lineWidth: 2,
-        priceScaleId: 'macd',
+        priceFormat: {
+          type: 'price',
+          precision: 2,
+          minMove: 0.01,
+        },
       });
 
-      const histogramSeries = chart.addHistogramSeries({
+      const signalLineSeries = macdChart.addLineSeries({
+        color: '#FF9800',
+        lineWidth: 1,
+        priceFormat: {
+          type: 'price',
+          precision: 2,
+          minMove: 0.01,
+        },
+      });
+
+      const histogramSeries = macdChart.addHistogramSeries({
         color: '#26a69a',
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'macd',
+        priceFormat: {
+          type: 'price',
+          precision: 2,
+          minMove: 0.01,
+        },
       });
 
-      // 볼륨 시리즈 생성 (하단 20%)
-      const volumeSeries = chart.addHistogramSeries({
+      // 볼륨 시리즈 생성
+      const volumeSeries = volumeChart.addHistogramSeries({
         color: '#26a69a',
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'volume',
+        priceFormat: {
+          type: 'volume',
+          precision: 0,
+        },
       });
 
-      // 데이터 변환 및 설정
-      const candlestickData = candleData.map(d => ({
+      // 캔들 데이터 설정
+      candleSeries.setData(candleData.map(d => ({
         time: d.time,
         open: d.open,
         high: d.high,
         low: d.low,
         close: d.close
-      }));
+      })));
 
-      const volumeData = candleData.map(d => ({
+      // 볼륨 데이터 설정
+      volumeSeries.setData(candleData.map(d => ({
         time: d.time,
         value: d.volume,
         color: d.close >= d.open ? '#26a69a' : '#ef5350'
-      }));
+      })));
 
+      // MACD 계산 및 데이터 설정
       const closePrices = candleData.map(d => d.close);
       const { macdLine, signalLine, histogram } = calculateMACD(closePrices);
 
-      const macdData = candleData.map((d, i) => ({
+      macdLineSeries.setData(candleData.map((d, i) => ({
         time: d.time,
         value: macdLine[i] || 0
-      }));
+      })));
 
-      const signalData = candleData.map((d, i) => ({
+      signalLineSeries.setData(candleData.map((d, i) => ({
         time: d.time,
         value: signalLine[i - (macdLine.length - signalLine.length)] || 0
-      }));
+      })));
 
-      const histogramData = candleData.map((d, i) => ({
+      histogramSeries.setData(candleData.map((d, i) => ({
         time: d.time,
         value: histogram[i] || 0,
         color: (histogram[i] || 0) >= 0 ? '#26a69a' : '#ef5350'
-      }));
+      })));
 
-      // 각 시리즈에 데이터 설정
-      candlestickSeries.setData(candlestickData);
-      macdSeries.setData(macdData);
-      signalSeries.setData(signalData);
-      histogramSeries.setData(histogramData);
-      volumeSeries.setData(volumeData);
-
-      // 캔들스틱 영역 설정 (상단 60%)
-      chart.priceScale('right').applyOptions({
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.4,
-        },
-        borderVisible: true,
-      });
-
-      // MACD 영역 설정 (중간 20%)
-      chart.priceScale('macd').applyOptions({
-        scaleMargins: {
-          top: 0.6,
-          bottom: 0.2,
-        },
-        borderVisible: true,
-      });
-
-      // 볼륨 영역 설정 (하단 20%)
-      chart.priceScale('volume').applyOptions({
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
-        borderVisible: true,
-      });
-
-      // 차트 영역 설정
-      chart.timeScale().fitContent();
-
-      // 창 크기 변경 시 차트 크기 조정
-      const handleResize = () => {
-        if (chartContainerRef.current && chartRef.current) {
-          chartRef.current.applyOptions({
-            width: chartContainerRef.current.clientWidth
-          });
+      // 차트들을 동기화하기 위한 시간 범위 설정
+      const syncTimeRange = () => {
+        const timeScale = candleChart.timeScale();
+        const visibleRange = timeScale.getVisibleLogicalRange();
+        if (visibleRange !== null) {
+          macdChart.timeScale().setVisibleLogicalRange(visibleRange);
+          volumeChart.timeScale().setVisibleLogicalRange(visibleRange);
         }
       };
+
+      // 초기 범위 맞추기
+      candleChart.timeScale().fitContent();
+      setTimeout(syncTimeRange, 100);
+
+      // 캔들 차트의 시간축 변경 이벤트 구독
+      candleChart.timeScale().subscribeVisibleTimeRangeChange(syncTimeRange);
+
+      // 차트 레퍼런스 저장 (메모리 누수 방지를 위해)
+      chartRef.current = {
+        candleChart,
+        macdChart,
+        volumeChart,
+        remove: () => {
+          candleChart.remove();
+          macdChart.remove();
+          volumeChart.remove();
+        }
+      };
+
+      // 윈도우 리사이즈 이벤트
+      const handleResize = () => {
+        if (!chartContainerRef.current) return;
+        const width = chartContainerRef.current.clientWidth;
+        
+        candleChart.applyOptions({ width });
+        macdChart.applyOptions({ width });
+        volumeChart.applyOptions({ width });
+        
+        setTimeout(syncTimeRange, 100);
+      };
+
       window.addEventListener('resize', handleResize);
 
       return () => {
         window.removeEventListener('resize', handleResize);
+        candleChart.timeScale().unsubscribeVisibleTimeRangeChange(syncTimeRange);
         if (chartRef.current) {
           try {
             chartRef.current.remove();
