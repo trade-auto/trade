@@ -49,6 +49,26 @@ function calculateEMA(data: number[], period: number): number[] {
   return emaArray;
 }
 
+// 단순 이동평균(SMA) 계산 함수 추가
+function calculateSMA(data: number[], period: number): number[] {
+  const result: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN); // 기간이 차기 전까지는 값 없음
+      continue;
+    }
+    
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      sum += data[i - j];
+    }
+    result.push(sum / period);
+  }
+  
+  return result;
+}
+
 function calculateMACD(closePrices: number[]) {
   const ema12 = calculateEMA(closePrices, 12);
   const ema26 = calculateEMA(closePrices, 26);
@@ -73,7 +93,7 @@ function calculateMACD(closePrices: number[]) {
 }
 
 // 간단한 차트 컴포넌트
-const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, height = 600 }) => {
+const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, height = 3600 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,12 +246,14 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
     try {
       // 차트 컨테이너 스타일 설정
       chartContainerRef.current.style.position = 'relative';
+      chartContainerRef.current.style.height = `${height}px`;
+      chartContainerRef.current.style.overflow = 'auto';
 
       // 차트 3개 생성을 위한 컨테이너 추가
       chartContainerRef.current.innerHTML = `
-        <div id="candle-chart" style="width:100%; height:${height * 0.6}px; margin-bottom:2px;"></div>
-        <div id="macd-chart" style="width:100%; height:${height * 0.2}px; margin-bottom:2px;"></div>
-        <div id="volume-chart" style="width:100%; height:${height * 0.2 - 4}px;"></div>
+        <div id="candle-chart" style="width:100%; height:${height * 0.6}px; margin-bottom:12px;"></div>
+        <div id="macd-chart" style="width:100%; height:${height * 0.2}px; margin-bottom:12px;"></div>
+        <div id="volume-chart" style="width:100%; height:${height * 0.2 - 24}px;"></div>
       `;
 
       // 1. 캔들 차트 생성
@@ -242,7 +264,7 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         layout: {
           background: { color: '#2B2B43' },
           textColor: '#D9D9D9',
-          fontSize: 14,
+          fontSize: 18,
           fontFamily: 'Gulim, sans-serif',
         },
         grid: {
@@ -278,36 +300,7 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         layout: {
           background: { color: '#2B2B43' },
           textColor: '#D9D9D9',
-          fontSize: 14,
-          fontFamily: 'Gulim, sans-serif',
-        },
-        grid: {
-          vertLines: { color: '#3C3C5A' },
-          horzLines: { color: '#3C3C5A' },
-        },
-        rightPriceScale: {
-          visible: true,
-          borderColor: '#3C3C5A',
-          borderVisible: true,
-          ticksVisible: true,
-          autoScale: true,
-        },
-        timeScale: {
-          borderColor: '#3C3C5A',
-          timeVisible: false,
-          borderVisible: true,
-        },
-      });
-
-      // 3. 볼륨 차트 생성
-      const volumeChartElement = document.getElementById('volume-chart');
-      const volumeChart = createChart(volumeChartElement!, {
-        width: chartContainerRef.current.clientWidth,
-        height: height * 0.2 - 4,
-        layout: {
-          background: { color: '#2B2B43' },
-          textColor: '#D9D9D9',
-          fontSize: 14,
+          fontSize: 18,
           fontFamily: 'Gulim, sans-serif',
         },
         grid: {
@@ -327,9 +320,45 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
           borderVisible: true,
           tickMarkFormatter: (time: number) => {
             const date = new Date(time * 1000);
-            return date.toLocaleDateString('ko-KR', { 
-              month: '2-digit', 
-              day: '2-digit'
+            return date.toLocaleTimeString('ko-KR', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            });
+          },
+        },
+      });
+
+      // 3. 볼륨 차트 생성
+      const volumeChartElement = document.getElementById('volume-chart');
+      const volumeChart = createChart(volumeChartElement!, {
+        width: chartContainerRef.current.clientWidth,
+        height: height * 0.2 - 24,
+        layout: {
+          background: { color: '#2B2B43' },
+          textColor: '#D9D9D9',
+          fontSize: 18,
+          fontFamily: 'Gulim, sans-serif',
+        },
+        grid: {
+          vertLines: { color: '#3C3C5A' },
+          horzLines: { color: '#3C3C5A' },
+        },
+        rightPriceScale: {
+          visible: true,
+          borderColor: '#3C3C5A',
+          borderVisible: true,
+          ticksVisible: true,
+          autoScale: true,
+        },
+        timeScale: {
+          borderColor: '#3C3C5A',
+          timeVisible: true,
+          borderVisible: true,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            return date.toLocaleTimeString('ko-KR', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
             });
           },
         },
@@ -389,6 +418,58 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         },
       });
 
+      // 이동평균선 색상 설정
+      const maColors = {
+        ma5: '#FF5733',     // 빨간색
+        ma10: '#0000FF',    // 파란색
+        ma20: '#800080',    // 보라색
+        ma30: '#FFA500',    // 주황색
+        ma60: '#008000',    // 녹색
+      };
+
+      // 이동평균선 시리즈 생성
+      const closePrices = candleData.map(d => d.close);
+
+      // 5일 이동평균선
+      const ma5Data = calculateSMA(closePrices, 5);
+      const ma5Series = candleChart.addLineSeries({
+        color: maColors.ma5,
+        lineWidth: 2,
+        title: '5 이평선',
+      });
+
+      // 10일 이동평균선
+      const ma10Data = calculateSMA(closePrices, 10);
+      const ma10Series = candleChart.addLineSeries({
+        color: maColors.ma10,
+        lineWidth: 2,
+        title: '10 이평선',
+      });
+
+      // 20일 이동평균선
+      const ma20Data = calculateSMA(closePrices, 20);
+      const ma20Series = candleChart.addLineSeries({
+        color: maColors.ma20,
+        lineWidth: 2,
+        title: '20 이평선',
+      });
+
+      // 30일 이동평균선
+      const ma30Data = calculateSMA(closePrices, 30);
+      const ma30Series = candleChart.addLineSeries({
+        color: maColors.ma30,
+        lineWidth: 2,
+        title: '30 이평선',
+      });
+
+      // 60일 이동평균선
+      const ma60Data = calculateSMA(closePrices, 60);
+      const ma60Series = candleChart.addLineSeries({
+        color: maColors.ma60,
+        lineWidth: 2,
+        title: '60 이평선',
+      });
+
       // 캔들 데이터 설정
       candleSeries.setData(candleData.map(d => ({
         time: d.time,
@@ -398,6 +479,42 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         close: d.close
       })));
 
+      // 이동평균선 데이터 설정
+      ma5Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: ma5Data[i]
+        })).filter(item => !isNaN(item.value))
+      );
+
+      ma10Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: ma10Data[i]
+        })).filter(item => !isNaN(item.value))
+      );
+
+      ma20Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: ma20Data[i]
+        })).filter(item => !isNaN(item.value))
+      );
+
+      ma30Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: ma30Data[i]
+        })).filter(item => !isNaN(item.value))
+      );
+
+      ma60Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: ma60Data[i]
+        })).filter(item => !isNaN(item.value))
+      );
+
       // 볼륨 데이터 설정
       volumeSeries.setData(candleData.map(d => ({
         time: d.time,
@@ -406,7 +523,6 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
       })));
 
       // MACD 계산 및 데이터 설정
-      const closePrices = candleData.map(d => d.close);
       const { macdLine, signalLine, histogram } = calculateMACD(closePrices);
 
       macdLineSeries.setData(candleData.map((d, i) => ({
@@ -578,8 +694,8 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
       
       <div 
         ref={chartContainerRef} 
-        className="w-full bg-gray-800 p-4 rounded relative z-10"
-        style={{ height: `${height}px` }}
+        className="w-full bg-gray-800 p-4 rounded relative z-10 overflow-auto"
+        style={{ height: `${height}px`, maxHeight: '80vh' }}
       />
     </div>
   );
