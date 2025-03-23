@@ -3,6 +3,17 @@ import { BollingerStrategy, TradeSignal, ExtendedMetadata, AnalyzeOptions, Analy
 import { calculateStandardDeviation } from './utils';
 import useUpbitStore from '../store/useUpbitStore';
 import { useEffect } from 'react';
+import axios from 'axios';
+import { getCachedVolumeData, getTradeVolume, hasBuySignal, hasSellSignal } from './volumeUtils';
+
+// ExtendedMetadata 타입 확장
+declare module './types' {
+  interface ExtendedMetadata {
+    buyVolume?: number;
+    sellVolume?: number;
+    buySellRatio?: number;
+  }
+}
 
 type TradeState = 'waiting_buy' | 'buying' | 'bought' | 'waiting_sell' | 'selling' | 'sold';
 
@@ -86,6 +97,100 @@ function isMAFanSpreadOut(
 
   console.log(`✅ MA 간격 조건 충족! (${passCount}/4 구간 통과)`);
   return true;
+}
+
+// 매수/매도 거래량 비율 기반 매수 신호 분석
+function analyzeEntryWithVolume(data: CandlestickData<Time>[], index: number): 'buy' | 'nobuyfrequpdown' | null {
+  if (index < 60) return null; // 최소 60개 캔들 필요
+
+  try {
+    // 현재 시장 데이터 (고정값 사용)
+    const market = 'KRW-BTC'; // 기본값 사용
+    
+    // 캐시된 거래량 데이터 가져오기
+    const volumeData = getCachedVolumeData(market);
+    
+    // API 조회 시작 (백그라운드로 실행 - 다음 호출때 캐시 데이터 사용)
+    getTradeVolume(market, 100).catch((err: Error) => console.error('거래량 업데이트 실패:', err));
+    
+    // 매수 신호 확인 (매수 거래량이 매도 거래량보다 20% 이상 많은 경우)
+    if (hasBuySignal(volumeData.buyVolume, volumeData.sellVolume)) {
+      console.log('✅ 매수 거래량 우세 → 매수 신호');
+      
+      // 추가 확인: 볼린저 밴드 접근 확인
+      const period = 20;
+      const stdDev = 2;
+      const prices = data.slice(index - period, index).map(d => d.close);
+      const sma = prices.reduce((a, b) => a + b, 0) / period;
+      const sd = calculateStandardDeviation(prices);
+      const lowerBand = sma - (stdDev * sd);
+      
+      const currentPrice = data[index].close;
+      const distanceToLowerBand = ((currentPrice - lowerBand) / lowerBand) * 100;
+      
+      // 볼린저 밴드 하단에 가까울 때 (5% 이내)
+      if (distanceToLowerBand <= 5) {
+        console.log('✅ 볼린저 밴드 하단 접근 + 매수 거래량 우세 → 강력한 매수 신호');
+        return 'buy';
+      }
+      
+      // 그 외에도 매수 신호 유지
+      return 'buy';
+    }
+    
+    // 횡보장 감지 조건 추가
+    if (volumeData.buySellRatio > 0.9 && volumeData.buySellRatio < 1.1) {
+      console.log('⚠️ 매수/매도 거래량 균형 → 횡보장 감지');
+      return 'nobuyfrequpdown';
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('거래량 기반 매수 분석 실패:', error);
+    return null;
+  }
+}
+
+// 매수/매도 거래량 비율 기반 매도 신호 분석
+function analyzeExitWithVolume(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
+  if (position !== 'buy') return false;
+  if (index < 60) return false;
+
+  try {
+    // 현재 시장 데이터 (고정값 사용)
+    const market = 'KRW-BTC'; // 기본값 사용
+    
+    // 캐시된 거래량 데이터 가져오기
+    const volumeData = getCachedVolumeData(market);
+    
+    // API 조회 시작 (백그라운드로 실행 - 다음 호출때 캐시 데이터 사용)
+    getTradeVolume(market, 100).catch((err: Error) => console.error('거래량 업데이트 실패:', err));
+    
+    // 매도 신호 확인 (매수 거래량이 매도 거래량보다 20% 이상 적은 경우)
+    if (hasSellSignal(volumeData.buyVolume, volumeData.sellVolume)) {
+      console.log('❌ 매도 거래량 우세 → 매도 신호');
+      return true;
+    }
+    
+    // 익절 조건
+    const currentPrice = data[index].close;
+    const profitPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
+    if (profitPercent >= 2.0) {
+      console.log(`✅ 목표 수익률 ${profitPercent.toFixed(2)}% 달성 → 익절 매도`);
+      return true;
+    }
+    
+    // 손절 조건
+    if (profitPercent <= -1.0) {
+      console.log(`❌ 손실 ${profitPercent.toFixed(2)}% 발생 → 손절 매도`);
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('거래량 기반 매도 분석 실패:', error);
+    return false;
+  }
 }
 
 // 볼린저 밴드 전략
@@ -176,249 +281,10 @@ const bollingerStrategy: BollingerStrategy = {
     return false;
   },
   // 진입 조건 분석
-  analyzeEntry(data: CandlestickData<Time>[], index: number): 'buy' | 'nobuyfrequpdown' | null {
-    const entryDateTime = new Date(data[index].time as number * 1000);
-    console.log('\n=== 📊 analyzeEntry 함수 진입 ===');
-    console.log('분석 시작 시간:', entryDateTime.toLocaleString('ko-KR'));
-    console.log('캔들 인덱스:', index);
-
-    // 횡보장 감지 여부 초기화
-    let isChoppyMarket = false;
-
-    // 필요한 최소 데이터 검사
-    const requiredData = 960; // MA900 계산에 필요
-    const isCollecting = index < requiredData;
-    if (isCollecting) {
-      console.log(`초기 데이터 수집 중... (필요: ${requiredData}초)`);
-      console.log(`현재: ${index}초 / ${requiredData}초 (${((index/requiredData)*100).toFixed(1)}%)`);
-      return null;
-    }
-
-    // 충분한 데이터가 있는지 검사
-    if (data.length < requiredData || index < requiredData) {
-      console.log('충분한 데이터가 없습니다.');
-      console.log(`필요한 데이터: ${requiredData}초`);
-      console.log(`현재 데이터 길이: ${data.length}초`);
-      console.log(`현재 인덱스: ${index}`);
-      return null;
-    }
-
-    // 장기 하강 추세 감지 → 매수 금지
-    if (isShortTermDowntrend(data, index)) {
-      console.log('❌ MA900 & MA600 기반 장기 하강 추세 감지 → 매수 금지');
-      return null;
-    }
-
- 
-
-    // 하락 추세에서는 매수 억제
-    const isMarketDowntrend = this.isDowntrend?.(data, index, 5); // 5봉 연속 MA600 하락 여부
-    if (isMarketDowntrend) {
-      console.log('\n=== ❌ 장기 하락 추세 감지 → 매수 억제 ===');
-      return null; // 매수 신호 발생하지 않음
-    }
-
-    // 이전 데이터 무결성 검사
-    const dataSlice = data.slice(index - requiredData, index);
-    if (dataSlice.some(d => d === undefined || d.close === undefined)) {
-      console.log('이전 데이터에 누락된 값이 있습니다.');
-      return null;
-    }
-
-    // 현재 거래 상태 체크
-    const store = useUpbitStore.getState();
-    const canBuy = store.tradeState.theoreticalPosition === 'wait';
-    const isNotLastBuy = store.tradeState.lastTradeType !== 'bid';
-    
-    console.log('\n=== 현재 거래 상태 체크 ===');
-    console.log('현재 상태:', store.tradeState);
-    
-    // 매도 후 1분(60초) 이내에는 매수하지 않음
-    const currentTimeMs = data[index].time as number * 1000;
-    const lastSellTime = store.lastSellTime || 0;
-    const timeSinceLastSell = currentTimeMs - lastSellTime;
-    const isCooldownActive = timeSinceLastSell < 10*60000; // 5분 = 300,000ms
-    
-    if (isCooldownActive) {
-      const remainingCooldown = Math.ceil((10*60000 - timeSinceLastSell) / 1000);
-      console.log('\n=== ❌ 매도 후 대기 시간 ===');
-      console.log(`마지막 매도 후 ${(timeSinceLastSell / 1000).toFixed(0)}초 경과 (${remainingCooldown}초 남음)`);
-      console.log(`다음 매수 가능 시간: ${new Date(lastSellTime + 10*60000).toLocaleString('ko-KR')}`);
-      
-      // 마지막 매도 시점부터 현재까지의 캔들 데이터
-      const sellTimeIndex = data.findIndex(d => (d.time as number * 1000) >= lastSellTime);
-      if (sellTimeIndex !== -1) {
-        const candlesSinceSell = data.slice(sellTimeIndex, index + 1);
-        
-        // MA 계산
-        const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-        const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
-        const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
-        
-        // 횡보 판단 기준 완화: 횡보 감지 조건을 더 엄격하게 만들어 덜 감지되도록 함
-        const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
-        const prevMa900 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-        const ma600Slope = Math.abs((ma600 - prevMa600) / prevMa600 * 100);
-        const ma900Slope = Math.abs((ma900 - prevMa900) / prevMa900 * 100);
-        
-        // 횡보 조건 기준 높임 - 더 엄격한 조건으로 횡보 감지 줄임
-        const isFlatMA = ma600Slope < 0.05 && ma900Slope < 0.05; // 0.2%에서 0.05%로 조건 강화
-        const ma600ma900Close = Math.abs(ma600 - ma900) / ma900 < 0.05; // 15%에서 5%로 조건 강화
-        
-        isChoppyMarket = isFlatMA && ma600ma900Close; // OR 조건에서 AND 조건으로 변경하여 횡보 감지 조건 강화
-        
-        if (isChoppyMarket) {
-          console.log('\n=== ⚠️ 횡보장 감지됨 (nobuyfrequpdown) ===');
-          console.log(`MA600 기울기: ${ma600Slope.toFixed(4)}% (기준: 0.05% 미만)`);
-          console.log(`MA900 기울기: ${ma900Slope.toFixed(4)}% (기준: 0.05% 미만)`);
-          console.log(`MA600과 MA900이 근접: ${ma600ma900Close ? '예' : '아니오'} (${(Math.abs(ma600 - ma900) / ma900 * 100).toFixed(3)}%)`);
-          console.log(`최종 판정: 횡보장으로 매수 금지`);
-          return 'nobuyfrequpdown';
-        }
-      }
-      
-      return null;
-    }
-    
-    // 이전 MA 계산
-    const prevMa120 = data.slice(index - 121, index - 1).reduce((a, b) => a + b.close, 0) / 120;
-    const prevMa240 = data.slice(index - 241, index - 1).reduce((a, b) => a + b.close, 0) / 240;
-    const prevMa360 = data.slice(index - 361, index - 1).reduce((a, b) => a + b.close, 0) / 360;
-    const prevMa600 = data.slice(index - 601, index - 1).reduce((a, b) => a + b.close, 0) / 600;
-    // MA 계산 - 매수 가능 상태와 관계없이 계산
-    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma120 = data.slice(index - 120, index).reduce((a, b) => a + b.close, 0) / 120;
-    const ma240 = data.slice(index - 240, index).reduce((a, b) => a + b.close, 0) / 240;
-    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
-    const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
-    const ma900 = data.slice(index - 900, index).reduce((a, b) => a + b.close, 0) / 900;
-    
-    // MA 간격이 충분히 벌어졌는지 확인 (0.01%로 threshold 대폭 낮춤)
-    const isSpreadOut = this.isMAFanSpreadOut?.(ma60, ma120, ma240, ma360, ma600, 0.05);
-    console.log(`\n=== MA Fan 조건 확인 ===`);
-    if (!isSpreadOut) {
-      console.log('\n=== ⚠️ MA 간격이 충분히 벌어지지 않음 (참고사항) ===');
-      // 완전히 억제하지 않고 경고만 표시
-    }
-
-    // 이전 MA600 계산 (MA600 상승세 확인용)
-        // 600MA의 최근 6개 값을 계산 (현재 및 이전 5봉)
-    const ma900_current = ma600; // data.slice(index - 600, index)로 계산한 현재 600MA
-    const ma900_1 = data.slice(index - 901, index - 1).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_2 = data.slice(index - 902, index - 2).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_3 = data.slice(index - 903, index - 3).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_4 = data.slice(index - 904, index - 4).reduce((a, b) => a + b.close, 0) / 900;
-    const ma900_5 = data.slice(index - 905, index - 5).reduce((a, b) => a + b.close, 0) / 900;
-
-    // 각 구간별 기울기 계산 (현재 값과 바로 이전 값의 차이)
-    const slope0 = ma900_current - ma900_1;
-    const slope1 = ma900_1 - ma900_2;
-    const slope2 = ma900_2 - ma900_3;
-    const slope3 = ma900_3 - ma900_4;
-    const slope4 = ma900_4 - ma900_5;
-
-    // 5봉 동안 모두 임계치 이상 상승해야 상승 추세로 판단
-    // 임계값을 0.02로 대폭 낮춤 (저변동성 코인을 위해)
-    const isMA900Rising = slope0 > 0.02 && slope1 > 0.02 && slope2 > 0.02 && slope3 > 0.02 && slope4 > 0.02; 
-    
-    const slope120 = ma120 - prevMa120;
-    const slope240 = ma240 - prevMa240;
-    const slope360 = ma360 - prevMa360;
-    const slope600 = ma600 - prevMa600;
-    
-    // MA 조건 검사
-    const isAbove120 = ma60 > ma120;
-    const isAbove240 = ma60 > ma240;
-    const isAbove360 = ma60 > ma360;
-    const isAbove600 = ma60 > ma600;
-    const isBelow360 = ma60 < ma360;
-    const isBelow600 = ma60 < ma600;
-    const isBelow900 = ma60 < ma900;
-    const isMA600Upward = ma600 > prevMa600;
- 
-    // MA600이 전 봉 대비 양(+)인 것만 보지 말고,
-    // 최근 5봉 모두 우상향인지 확인
-    let ma600UpCount = 0;
-    for (let i = 1; i <= 5; i++) {
-      const prev = data.slice(index - i - 600, index - i).reduce((a, b) => a + b.close, 0) / 600;
-      const curr = data.slice(index - i + 1 - 600, index - i + 1).reduce((a, b) => a + b.close, 0) / 600;
-      if (curr > prev) {
-        ma600UpCount++;
-      }
-    }
-    // "최근 2봉 이상 MA600 상승"일 때 장기 상승으로 판단 (3봉에서 추가 완화)
-    const isMA600SteadyUp = (ma600UpCount >= 2);
-
-    // 기울기 임계값 0.08에서 0.02로 추가 낮춤
-    const isPositiveSlope120 = slope120 > 0.02;
-    const isPositiveSlope240 = slope240 > 0.02;
-    const isPositiveSlope360 = slope360 > 0.02;
-    const isPositiveSlope600 = slope600 > 0.02;
-
-    // OR 조건으로 추가 완화
-    const additionalConditions = isPositiveSlope600 || isMA900Rising || isMA600Upward;
-    
-    // 기울기 조건 추가 완화: 최소 1개 이상의 MA가 양의 기울기를 가지면 됨
-    const isAllPositiveSlopeConditions = [isPositiveSlope120, isPositiveSlope240, isPositiveSlope360, isPositiveSlope600]
-                                        .filter(Boolean).length >= 1;
-    
-    // 모든 MA보다 높아야 하는 조건 완화: 적어도 1개 이상의 장기 MA보다 높으면 됨
-    const isAllAboveConditions = [isAbove120, isAbove240, isAbove360, isAbove600]
-                                .filter(Boolean).length >= 1;
-
-    // 매수 조건 완화: 필수 조건 수를 줄이고 OR 조건 추가
-    if ((isMA600SteadyUp || isAllPositiveSlopeConditions) && 
-        (isAllAboveConditions || ma60 > data[index].close) && 
-        !isChoppyMarket) {
-    
-      console.log('\n=== ✅ 매수 조건 충족! ===');
-      if (isSpreadOut) {
-        console.log('MA Fan Spread 조건 충족: 강한 상승 추세 확인');
-      } else {
-        console.log('MA Fan Spread 조건 불충족: 약한 상승 추세 가능성 있음');
-      }
-      
-      console.log('상태 변경: waiting_buy → buy (매수 주문 실행)');
-      return 'buy';  // 매수 신호 발생 → 매수 주문 실행 (buy)
-    }
-
-    return null;  // 매수 조건 불충족
-  },
+  analyzeEntry: analyzeEntryWithVolume,
   
   // 청산 조건 분석
-  analyzeExit(data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number): boolean {
-    if (position !== 'buy') return false;
-
-    // 0) 먼저 익절 조건 체크 - 목표 수익률 달성 시 즉시 매도
-    const currentPrice = data[index].close;
-    if (this.shouldTakeProfit?.(entryPrice, currentPrice, this.riskManagement?.takeProfitPercent)) {
-      console.log(`✅ 목표 수익률 ${this.riskManagement?.takeProfitPercent}% 달성! 익절 매도 신호 발생`);
-      return true; // 익절 매도
-    }
-
-    // 1) 다음으로 상승 추세인지 체크
-    if (this.isUptrend?.(data, index)) {
-      console.log('상승 추세가 이어지고 있으므로 매도 억제');
-      return false; // 매도하지 않음
-    }
-
-    // 2) 기존 매도 조건 완화
-    const ma60 = data.slice(index - 60, index).reduce((a, b) => a + b.close, 0) / 60;
-    const ma360 = data.slice(index - 360, index).reduce((a, b) => a + b.close, 0) / 360;
-    const ma600 = data.slice(index - 600, index).reduce((a, b) => a + b.close, 0) / 600;
-
-    const isBelow360 = ma60 < ma360;
-    const isBelow600 = ma60 < ma600;
-
-    // OR 조건으로 완화: 둘 중 하나만 충족해도 매도
-    if (isBelow360 || isBelow600) {
-      console.log('매도 신호 발생');
-      return true; // 매도
-    }
-
-    // 3) 나머지 조건들...
-    return false;
-  },
+  analyzeExit: analyzeExitWithVolume,
   
   // 지표 계산 함수
   calculateIndicators(data, index) {
@@ -463,6 +329,13 @@ const bollingerStrategy: BollingerStrategy = {
     // 이격도 계산
     const deviation = Math.abs(data[index].close - ma60) / ma60;
     
+    // 거래량 데이터 가져오기 (동기 함수 사용)
+    const market = 'KRW-BTC'; // 기본값 사용
+    const volumeData = getCachedVolumeData(market);
+    
+    // API 조회 시작 (백그라운드로 실행 - 다음 호출때 캐시 데이터 사용)
+    getTradeVolume(market, 100).catch((err: Error) => console.error('거래량 업데이트 실패:', err));
+    
     const metadata: ExtendedMetadata = {
       ma60,
       ma120,
@@ -474,28 +347,29 @@ const bollingerStrategy: BollingerStrategy = {
       deviation,
       isAbove600MA: data[index].close > ma600,
       ma240UpCount,
-      isMA600Upward: ma600 > prevMa600
+      isMA600Upward: ma600 > prevMa600,
+      // 거래량 관련 데이터 추가
+      buyVolume: volumeData.buyVolume,
+      sellVolume: volumeData.sellVolume,
+      buySellRatio: volumeData.buySellRatio
     };
     
-    console.log(`MA60: ${ma60.toFixed(3)}`);
-    console.log(`MA120: ${ma120.toFixed(3)}`);
-    console.log(`MA240: ${ma240.toFixed(3)}`);
-    console.log(`MA360: ${ma360.toFixed(3)}`);
-    console.log(`MA600: ${ma600.toFixed(3)}`);
+    console.log(`[거래량 지표] 매수: ${volumeData.buyVolume.toFixed(4)}, 매도: ${volumeData.sellVolume.toFixed(4)}, 비율: ${volumeData.buySellRatio.toFixed(2)}`);
+    console.log(`MA60: ${ma60.toFixed(3)}, MA120: ${ma120.toFixed(3)}, MA240: ${ma240.toFixed(3)}, MA360: ${ma360.toFixed(3)}, MA600: ${ma600.toFixed(3)}`);
       
     // 매수 조건 확인 상태 표시
     const isAbove120 = ma60 > ma120;
     const isAbove240 = ma60 > ma240;
     const isBelow360 = ma60 < ma360;
     const isMA600Upward = ma600 > prevMa600;
+    const hasBuyVolumeAdvantage = volumeData.buySellRatio > 1.0;
       
     console.log('\n=== 매수 조건 체크 ===');
-    console.log(`조건 1 (MA240 상향 5봉 이상): ${ma240UpCount >= 1 ? '✅' : '❌'} (${ma240UpCount}/5)`);
+    console.log(`조건 1 (매수 거래량 우세): ${hasBuyVolumeAdvantage ? '✅' : '❌'} (${volumeData.buySellRatio.toFixed(2)})`);
     console.log(`조건 2 (MA60 > MA120): ${isAbove120 ? '✅' : '❌'}`);
     console.log(`조건 3 (MA60 > MA240): ${isAbove240 ? '✅' : '❌'}`);
     console.log(`조건 4 (MA600 상승세): ${isMA600Upward ? '✅' : '❌'}`);
     console.log(`조건 5 (MA60 < MA360): ${isBelow360 ? '✅' : '❌'}`);
-    console.log(`최종 판정: ${(ma240UpCount >= 1 && isAbove120 && isAbove240 && isMA600Upward && isBelow360) ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
     
     return metadata;
   },
