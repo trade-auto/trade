@@ -165,10 +165,13 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
       chartRef.current = chart;
       
       try {
-        // 데이터 변환
-        const lineData = candleData.map(d => ({
+        // 캔들스틱 데이터 변환
+        const candlestickData = candleData.map(d => ({
           time: d.time,
-          value: d.close
+          open: d.open,
+          high: d.high,
+          low: d.low,
+          close: d.close
         }));
         
         // 볼륨 데이터 변환
@@ -178,12 +181,13 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
           color: d.close >= d.open ? '#26a69a' : '#ef5350'
         }));
         
-        // 가격 차트 생성
-        const priceSeries = chart.addAreaSeries({
-          lineColor: '#2196F3',
-          topColor: '#2196F3',
-          bottomColor: 'rgba(33, 150, 243, 0.28)',
-          lineWidth: 2,
+        // 캔들스틱 차트 생성
+        const candlestickSeries = chart.addCandlestickSeries({
+          upColor: '#26a69a',
+          downColor: '#ef5350',
+          borderVisible: false,
+          wickUpColor: '#26a69a',
+          wickDownColor: '#ef5350'
         });
         
         // 볼륨 차트 생성
@@ -194,7 +198,7 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         });
         
         // 데이터 설정
-        priceSeries.setData(lineData);
+        candlestickSeries.setData(candlestickData);
         volumeSeries.setData(volumeData);
         
         // 차트 영역 조정
