@@ -4,20 +4,11 @@ import {
   IChartApi,
   ISeriesApi,
   Time,
-  CandlestickSeries,
-  LineSeries,
-  HistogramSeries,
-  createSeriesMarkers,
-  ISeriesMarkersPluginApi,
-  LineWidth,
   SeriesMarker,
   CandlestickData,
+  LineWidth,
 } from 'lightweight-charts';
 import useUpbitStore from '../store/useUpbitStore';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-interface CandlestickSeriesWithMarkers extends ISeriesApi<"Candlestick"> {
-  setMarkers?: (markers: SeriesMarker<Time>[]) => void;
-}
 
 interface ChartContainerProps {
   isFullscreen: boolean;
@@ -118,7 +109,7 @@ const getChartOptions = (width: number, height: number, chartType: string) => ({
 type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'sixHundredEMA' | 'nineHundredEMA';
 
 interface SeriesRefs {
-  candle: CandlestickSeriesWithMarkers | null;
+  candle: ISeriesApi<"Candlestick"> | null;
   volume: ISeriesApi<"Histogram"> | null;
   sixtyEMA: ISeriesApi<"Line"> | null;
   oneTwentyEMA: ISeriesApi<"Line"> | null;
@@ -143,7 +134,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   const container = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const markerPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const seriesRefs = useRef<SeriesRefs>({
     candle: null,
     volume: null,
@@ -183,7 +173,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
           secondsVisible: true,
           tickMarkFormatter: (time: number) => {
             const date = new Date(time * 1000);
-            // 초 단위 차트는 시/분/초 표시
             const hours = date.getHours().toString().padStart(2, '0');
             const minutes = date.getMinutes().toString().padStart(2, '0');
             const seconds = date.getSeconds().toString().padStart(2, '0');
@@ -194,7 +183,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     }
 
     // 시리즈 생성
-    seriesRefs.current.candle = chart.addSeries(CandlestickSeries, {
+    seriesRefs.current.candle = chart.addCandlestickSeries({
       upColor: CHART_COLORS.upColor,
       downColor: CHART_COLORS.downColor,
       borderVisible: false,
@@ -202,10 +191,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       wickDownColor: CHART_COLORS.downColor,
     });
 
-    // 마커 플러그인 초기화
-    markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
-
-    seriesRefs.current.volume = chart.addSeries(HistogramSeries, {
+    seriesRefs.current.volume = chart.addHistogramSeries({
       color: CHART_COLORS.upColor,
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
@@ -214,7 +200,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     // MA 시리즈 생성
     Object.entries(MA_COLORS).forEach(([key, color]) => {
       const seriesKey = `${key}EMA` as EMAKey;
-      (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = chart.addSeries(LineSeries, {
+      (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = chart.addLineSeries({
         color,
         lineWidth: 2,
         visible: true,
@@ -224,11 +210,6 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     // 데이터가 제공된 경우 사용
     if (data) {
       seriesRefs.current.candle!.setData(data);
-    }
-
-    // 마커 설정
-    if (markers && markers.length > 0 && seriesRefs.current.candle?.setMarkers) {
-      seriesRefs.current.candle.setMarkers(markers);
     }
 
     // 차트 준비 완료 콜백
@@ -246,8 +227,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
 
     // 초기 리사이즈 이벤트 리스너 설정
     window.addEventListener('resize', handleResize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 의도적으로 의존성 배열을 비워서 한 번만 실행되도록 함
+  }, []);
 
   useEffect(() => {
     initializeChart();
@@ -258,95 +238,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         chartRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 의도적으로 의존성 배열을 비워서 한 번만 실행되도록 함
-
-  // 마커 플러그인 생성 및 설정 함수 
-  const setupMarkerPlugin = useCallback(() => {
-    if (!seriesRefs.current.candle) {
-      console.warn('캔들 시리즈가 준비되지 않아 마커 플러그인을 생성할 수 없습니다.');
-      return;
-    }
-    
-    try {
-      console.log('마커 플러그인 설정 시작');
-      
-      // 이전 플러그인 정리
-      markerPluginRef.current = null;
-      
-      // 새 플러그인 생성
-      markerPluginRef.current = createSeriesMarkers(seriesRefs.current.candle);
-      
-      // 마커가 있으면 적용
-      if (markers.length > 0 && markerPluginRef.current) {
-        console.log('초기 마커 설정:', markers.length, '개');
-        markerPluginRef.current.setMarkers(markers);
-        
-        // 안전장치: 지연 마커 적용
-        setTimeout(() => {
-          if (markerPluginRef.current) {
-            console.log('지연 마커 재확인:', markers.length, '개');
-            markerPluginRef.current.setMarkers(markers);
-          }
-        }, 300);
-      }
-      
-      console.log('마커 플러그인 설정 완료');
-    } catch (error) {
-      console.error('마커 플러그인 설정 오류:', error);
-    }
-  }, [markers]);
-
-  // 초기화 후 마커 플러그인 설정
-  useEffect(() => {
-    if (seriesRefs.current.candle) {
-      setupMarkerPlugin();
-    }
-  }, [setupMarkerPlugin]);
-  
-  // 마커 업데이트
-  useEffect(() => {
-    if (!markerPluginRef.current && seriesRefs.current.candle) {
-      setupMarkerPlugin();
-      return;
-    }
-    
-    if (markerPluginRef.current && markers.length > 0) {
-      console.log('마커 업데이트:', markers.length, '개');
-      try {
-        markerPluginRef.current.setMarkers(markers);
-        
-        // 안전장치: 지연 마커 확인
-        setTimeout(() => {
-          if (markerPluginRef.current) {
-            console.log('지연 마커 확인:', markers.length, '개');
-            markerPluginRef.current.setMarkers(markers);
-          }
-        }, 300);
-      } catch (error) {
-        console.error('마커 업데이트 실패:', error);
-        
-        // 오류 발생 시 플러그인 재설정 시도
-        setupMarkerPlugin();
-      }
-    }
-  }, [markers, tradeStrategy, setupMarkerPlugin]);
-
-  // 전체화면 변경 시 차트 크기 조정
-  useEffect(() => {
-    handleResize();
-  }, [isFullscreen, handleResize]);
-
-  // 차트 옵션 업데이트
-  useEffect(() => {
-    if (!chartRef.current) return;
-    
-    chartRef.current.applyOptions(getChartOptions(
-      container.current?.clientWidth || 800,
-      isFullscreen ? window.innerHeight * 0.9 : chartHeight,
-      chartType
-    ));
-  }, [chartType, chartHeight, isFullscreen]);
+  }, []);
 
   return (
     <div

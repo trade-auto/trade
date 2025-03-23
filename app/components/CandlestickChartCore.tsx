@@ -32,8 +32,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     chartPrice,
     progress,
     allData,
-    markers,
-    backtestResult,
     isAutoUpdate,
     isRealtimeAPIEnabled,
     lastSymbol,
@@ -74,9 +72,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   
   // 업비트 스토어
   const { tradeStrategy, updateTradeStrategy } = useUpbitStore();
-  
-  // 백테스트 마커 추출
-  const backtestMarkers = csvBacktestResult?.markers || [];
   
   // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
   useEffect(() => {
@@ -146,7 +141,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       nineHundredEMASeries,
       importedData,
       tradeStrategy as TradeStrategy,
-      (markers) => {},
+      () => {},
       setCsvBacktestResult
     );
   };
@@ -250,98 +245,47 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
             chartHeight={chartHeight}
             toggleFullscreen={toggleFullscreen}
             symbol={symbol}
-            markers={markers}
             chartType={chartType}
+            markers={[]}
             isAutoUpdate={isAutoUpdate}
             isRealtimeAPIEnabled={isRealtimeAPIEnabled}
+            data={allData}
             onChartReady={handleChartReady}
           />
         </div>
-      
-        {/* 설정 및 결과 섹션 */}
-        <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-          {/* 차트 설정 */}
-          <div>
-            <ChartSettings 
-              showMA={showMA}
-              updateShowMA={updateShowMA}
-              chartHeight={chartHeight}
-              handleHeightChange={handleHeightChange}
-            />
-          </div>
-          
-          {/* 백테스트 결과 */}
-          <div>
-            <BacktestResults backtestResult={backtestResult} />
-          </div>
-        </div>
         
-        {/* CSV 다운로더 */}
-        <div>
-          <CsvDownloader
-            csvDateRange={{
-              startDate: csvDateRange.startDate,
-              endDate: csvDateRange.endDate
-            }}
-            setCsvDateRange={(range) => {
-              setCsvDateRange({
-                startDate: range.startDate || new Date(),
-                endDate: range.endDate || new Date()
-              });
-            }}
-            csvLoading={csvLoading}
-            csvProgress={csvProgress}
-            allData={allData as unknown as any[]}
-            saveToCSV={saveToCSV}
-          />
-        </div>
-
-        {/* CSV 임포트 진행률 표시 */}
-        <div>
-          <div className="text-white">CSV 임포트 진행률: {importProgress}%</div>
-        </div>
-
-        {/* 백테스트 차트 섹션 */}
-        {isDataImported && importedData.length > 0 && (
-          <div>
-            <div className="relative w-full mt-4">
-              <div className="text-white text-lg font-bold mb-2">백테스트 차트</div>
-              <ChartContainer
-                isFullscreen={isFullscreen}
-                chartHeight={chartHeight}
-                toggleFullscreen={toggleFullscreen}
-                symbol={symbol}
-                markers={backtestMarkers}
-                chartType={chartType}
-                onChartReady={handleBacktestChartInit}
-                data={importedData}
-              />
-            </div>
-            <div>
-              <BacktestResults backtestResult={csvBacktestResult} />
-            </div>
-          </div>
+        {/* 백테스트 결과 */}
+        {csvBacktestResult && (
+          <BacktestResults result={csvBacktestResult} />
         )}
         
-        {/* CSV 임포트 버튼 */}
-        <div className="mb-4">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={onFileImport}
-            accept=".csv"
-            className="hidden"
-          />
-          <button
-            onClick={triggerFileInput}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-          >
-            CSV 데이터 임포트
-          </button>
-        </div>
+        {/* CSV 다운로드 버튼 */}
+        <CsvDownloader
+          csvDateRange={csvDateRange}
+          csvLoading={csvLoading}
+          csvProgress={csvProgress}
+          allData={allData}
+          setCsvDateRange={setCsvDateRange}
+          saveToCSV={saveToCSV}
+        />
+        
+        {/* 파일 임포트 버튼 */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={onFileImport}
+          accept=".csv"
+          className="hidden"
+        />
+        <button
+          onClick={triggerFileInput}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+        >
+          CSV 파일 임포트
+        </button>
       </div>
     </div>
   );
 };
 
-export { CandlestickChart }; 
+export default CandlestickChart; 

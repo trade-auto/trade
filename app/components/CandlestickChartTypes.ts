@@ -1,4 +1,4 @@
-import { Time, SeriesMarker } from 'lightweight-charts';
+import { Time } from 'lightweight-charts';
 import { ExtendedCandlestickData, DateRange, BacktestResult, MASettings } from '../types/candlestick';
 import { UpbitCandle } from '../types/candlestick';
 
@@ -44,7 +44,6 @@ export interface ChartRefs {
   threeHundredSixtyEMASeriesRef: React.MutableRefObject<any>;
   threeHundredEMASeriesRef: React.MutableRefObject<any>;
   nineHundredEMASeriesRef: React.MutableRefObject<any>;
-  markerPluginRef: React.MutableRefObject<any>;
 }
 
 export interface BacktestChartRefs {
@@ -57,7 +56,6 @@ export interface BacktestChartRefs {
   backtestThreeHundredSixtyEMASeriesRef: React.MutableRefObject<any>;
   backtestThreeHundredEMASeriesRef: React.MutableRefObject<any>;
   backtestNineHundredEMASeriesRef: React.MutableRefObject<any>;
-  backtestMarkerPluginRef: React.MutableRefObject<any>;
 }
 
-export type { ExtendedCandlestickData, DateRange, BacktestResult, MASettings, UpbitCandle, SeriesMarker, Time }; 
+export type { ExtendedCandlestickData, DateRange, BacktestResult, MASettings, UpbitCandle, Time }; 

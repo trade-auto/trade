@@ -7,5 +7,5 @@
 // - CandlestickChartBacktest.tsx: 백테스트 관련 기능
 // - CandlestickChartCSV.tsx: CSV 관련 기능
 
-export { CandlestickChart } from './CandlestickChartCore';
+export { default as CandlestickChart } from './CandlestickChartCore';
 export type { OrderParams } from './CandlestickChartTypes';
