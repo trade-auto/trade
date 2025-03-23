@@ -11,6 +11,19 @@ interface ChartProps {
   height?: number;
 }
 
+interface ChartSettings {
+  market: string;
+  interval: string;
+  count: number;
+}
+
+// 기본 설정값
+const DEFAULT_SETTINGS: ChartSettings = {
+  market: 'KRW-BTC',
+  interval: 'minutes/3',
+  count: 200
+};
+
 interface CandleData {
   time: any; // 타입 호환성을 위해 any 사용
   open: number;
@@ -27,10 +40,33 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
   const [error, setError] = useState<string | null>(null);
   const [candleData, setCandleData] = useState<CandleData[]>([]);
   const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 5; // 최대 재시도 횟수 증가
+  const [settings, setSettings] = useState<ChartSettings>(() => {
+    // localStorage에서 설정값 불러오기
+    if (typeof window !== 'undefined') {
+      const savedSettings = localStorage.getItem('chartSettings');
+      return savedSettings ? JSON.parse(savedSettings) : DEFAULT_SETTINGS;
+    }
+    return DEFAULT_SETTINGS;
+  });
+  const maxRetries = 5;
   
   // 차트 객체 레퍼런스
   const chartRef = useRef<any>(null);
+
+  // 설정값 저장 함수
+  const saveSettings = (newSettings: ChartSettings) => {
+    setSettings(newSettings);
+    localStorage.setItem('chartSettings', JSON.stringify(newSettings));
+  };
+
+  // 설정 변경 핸들러
+  const handleSettingChange = (key: keyof ChartSettings, value: string | number) => {
+    const newSettings = {
+      ...settings,
+      [key]: value
+    };
+    saveSettings(newSettings);
+  };
 
   // 캔들 데이터 가져오기
   const fetchData = async () => {
@@ -249,6 +285,52 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
   
   return (
     <div className="w-full">
+      {/* 설정 패널 추가 */}
+      <div className="mb-4 p-4 bg-gray-800 rounded-lg">
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">마켓</label>
+            <select
+              value={settings.market}
+              onChange={(e) => handleSettingChange('market', e.target.value)}
+              className="w-full bg-gray-700 text-white rounded px-3 py-2"
+            >
+              <option value="KRW-BTC">비트코인</option>
+              <option value="KRW-ETH">이더리움</option>
+              <option value="KRW-XRP">리플</option>
+              {/* 추가 마켓 옵션 */}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">기간</label>
+            <select
+              value={settings.interval}
+              onChange={(e) => handleSettingChange('interval', e.target.value)}
+              className="w-full bg-gray-700 text-white rounded px-3 py-2"
+            >
+              <option value="minutes/1">1분</option>
+              <option value="minutes/3">3분</option>
+              <option value="minutes/5">5분</option>
+              <option value="minutes/15">15분</option>
+              <option value="minutes/30">30분</option>
+              <option value="minutes/60">1시간</option>
+              <option value="days">1일</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">캔들 개수</label>
+            <input
+              type="number"
+              value={settings.count}
+              onChange={(e) => handleSettingChange('count', parseInt(e.target.value))}
+              min="1"
+              max="200"
+              className="w-full bg-gray-700 text-white rounded px-3 py-2"
+            />
+          </div>
+        </div>
+      </div>
+
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center text-white z-20">
           <div className="bg-gray-800 bg-opacity-80 p-4 rounded-lg">
