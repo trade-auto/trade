@@ -404,4 +404,4 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   );
 };
 
-export default CandlestickChartCore; 
+export default CandlestickChartCore;

@@ -1,3 +1,16 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "WebFetch(*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(cat:*)",
+      "Bash(git checkout:*)"
+    ]
+  },
   "enableAllProjectMcpServers": false
 }

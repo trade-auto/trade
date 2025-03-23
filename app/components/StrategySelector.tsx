@@ -79,4 +79,4 @@ const StrategySelector: React.FC<StrategySelectorProps> = ({
   );
 };
 
-export default StrategySelector; 
+export default StrategySelector;
