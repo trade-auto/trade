@@ -229,6 +229,56 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
     }
   };
 
+  // 데이터 누적 함수
+  const fetchMoreData = async () => {
+    let allData = [...candleData];
+    let oldestDate = candleData.length > 0 ? candleData[0].time : null;
+    
+    // 3번 정도 추가 데이터 가져오기 (최대 600개 캔들)
+    for(let i = 0; i < 3; i++) {
+      if(!oldestDate) break;
+      
+      // to 파라미터를 사용하여 이전 데이터 요청
+      const url = `https://api.upbit.com/v1/candles/${interval}?market=${market}&count=200&to=${new Date(oldestDate * 1000).toISOString()}`;
+      const response = await axios.get(url);
+      
+      // 데이터 변환 및 누적
+      const moreData = response.data
+        .map((candle: any) => {
+          // 필요한 필드가 존재하는지 검증
+          if (!candle.candle_date_time_kst || 
+              candle.opening_price === undefined || 
+              candle.high_price === undefined || 
+              candle.low_price === undefined || 
+              candle.trade_price === undefined || 
+              candle.candle_acc_trade_volume === undefined) {
+            console.error('캔들 데이터 형식 오류', candle);
+            throw new Error('캔들 데이터 형식이 올바르지 않습니다.');
+          }
+          
+          return {
+            time: Math.floor(new Date(candle.candle_date_time_kst).getTime() / 1000),
+            open: candle.opening_price,
+            high: candle.high_price,
+            low: candle.low_price,
+            close: candle.trade_price,
+            volume: candle.candle_acc_trade_volume
+          };
+        })
+        .reverse();
+      
+      if(moreData.length === 0) break;
+      
+      // 가장 오래된 데이터의 시간 갱신
+      oldestDate = moreData[0].time;
+      
+      // 누적 데이터에 추가
+      allData = [...moreData, ...allData];
+    }
+    
+    return allData;
+  };
+
   // 차트 생성 및 데이터 설정
   useEffect(() => {
     if (!chartContainerRef.current || !candleData.length) return;
