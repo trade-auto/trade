@@ -218,25 +218,25 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
               <div className="w-full flex justify-between items-center text-sm px-2">
                 <div className="text-gray-400">
                   {realtimeUpdateStatus.isUpdating ? (
-                    <span className="text-blue-400">업데이트 중...</span>
+                    <span>데이터 업데이트 중...</span>
                   ) : (
-                    <span className="text-green-400">
-                      마지막 업데이트: {realtimeUpdateStatus.lastUpdateTime || '없음'}
+                    <span>
+                      마지막 업데이트: {realtimeUpdateStatus.lastUpdateTime || '없음'} (총 {realtimeUpdateStatus.updateCount}회)
                     </span>
                   )}
                 </div>
-                <div className="text-gray-400">
-                  총 업데이트 횟수: {realtimeUpdateStatus.updateCount}
-                </div>
-              </div>
-            )}
-            {isAutoUpdate && (
-              <div className="text-xs text-gray-400 px-2 w-full text-right">
-                자동 업데이트 완료 후 자동으로 실시간 업데이트로 전환됩니다
               </div>
             )}
           </div>
         )}
+        
+        {/* 차트 설정 컴포넌트 추가 */}
+        <ChartSettings
+          showMA={showMA}
+          updateShowMA={updateShowMA}
+          chartHeight={chartHeight}
+          handleHeightChange={handleHeightChange}
+        />
         
         {/* 차트 컨테이너 */}
         <div className="relative w-full">
@@ -256,7 +256,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
         
         {/* 백테스트 결과 */}
         {csvBacktestResult && (
-          <BacktestResults result={csvBacktestResult} />
+          <BacktestResults backtestResult={csvBacktestResult} />
         )}
         
         {/* CSV 다운로드 버튼 */}
@@ -265,7 +265,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           csvLoading={csvLoading}
           csvProgress={csvProgress}
           allData={allData}
-          setCsvDateRange={setCsvDateRange}
+          setCsvDateRange={(range) => setCsvDateRange(range as any)}
           saveToCSV={saveToCSV}
         />
         

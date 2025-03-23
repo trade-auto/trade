@@ -32,7 +32,7 @@ export const StrategySelector: React.FC<StrategySelectorProps> = ({
             className="hidden"
           />
           <div className="flex flex-col">
-            <span className="text-white font-medium">볼린저 밴드 전략</span>
+            <span className="text-white font-medium">MACD 밴드 전략</span>
             <span className="text-gray-300 text-sm">20일 기준, 2 표준편차 상/하단 돌파 시 매매</span>
           </div>
         </label>

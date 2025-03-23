@@ -1,7 +1,7 @@
 import React from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
-import { UpbitCandle } from '../types/candlestick';
+import { UpbitCandle, CandlestickData } from '../types/candlestick';
 
 interface CsvDownloaderProps {
   csvDateRange: {
@@ -10,7 +10,7 @@ interface CsvDownloaderProps {
   };
   csvLoading: boolean;
   csvProgress: number;
-  allData: UpbitCandle[];
+  allData: CandlestickData[] | UpbitCandle[];
   setCsvDateRange: (range: { startDate: Date | null; endDate: Date | null }) => void;
   saveToCSV: () => void;
 }

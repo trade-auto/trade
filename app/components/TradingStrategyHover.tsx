@@ -16,7 +16,7 @@ const TradingStrategyHover: React.FC<TradingStrategyHoverProps> = ({
            style={{ transform: 'translateX(-5%)', width: '200px' }}>
         <h3 className="text-lg font-bold mb-4">매매 전략</h3>
         <div className="space-y-2">
-          {(['BOLLINGER', 'MA_CROSS', 'MA_CROSS_DEVIATION', 'SLOPE_FILTER'] as TradeStrategy[]).map((strategy) => (
+          {(['MACD', 'MA_CROSS', 'MA_CROSS_DEVIATION', 'SLOPE_FILTER'] as TradeStrategy[]).map((strategy) => (
             <button
               key={strategy}
               onClick={() => updateTradeStrategy(strategy)}
@@ -26,7 +26,7 @@ const TradingStrategyHover: React.FC<TradingStrategyHoverProps> = ({
                   : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
               }`}
             >
-              {strategy === 'BOLLINGER' && '볼린저 밴드'}
+              {strategy === 'MACD' && 'MACD 전략'}
               {strategy === 'MA_CROSS' && 'MA 크로스'}
               {strategy === 'MA_CROSS_DEVIATION' && 'MA 이탈'}
               {strategy === 'SLOPE_FILTER' && '기울기필터4전략'}

@@ -214,13 +214,13 @@ const loadTradeStrategy = (): TradeStrategy => {
   if (typeof window !== 'undefined') {
     try {
       const savedStrategy = localStorage.getItem('tradeStrategy');
-      return savedStrategy ? JSON.parse(savedStrategy) : 'BOLLINGER';
+      return savedStrategy ? JSON.parse(savedStrategy) : 'MACD';
     } catch (error) {
       console.error('전략 설정 로드 중 오류 발생:', error);
-      return 'BOLLINGER';
+      return 'MACD';
     }
   }
-  return 'BOLLINGER';
+  return 'MACD';
 };
 
 // 로컬 스토리지에서 날짜 범위 불러오기
@@ -550,18 +550,29 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
       };
     },
     lastAnalysisResult: null,
-    analyzeRealtimeData: (data) => {
+    analyzeRealtimeData: (data: CandlestickData<Time>[]) => {
       const state = get();
-      const selectedStrategy = state.strategies[state.tradeStrategy];
-      
-      // 이전 분석 결과 가져오기
       const prevAnalysisResult = state.lastAnalysisResult;
       
-      // 분석 옵션 설정 - 마지막 300개 캔들은 항상 재분석
-      const lookbackCandles = 300;
-      const lastProcessedIndex = prevAnalysisResult?.lastProcessedIndex || 0;
-      const reanalyzeIndex = Math.max(0, data.length - lookbackCandles);
-      const startIndex = Math.min(lastProcessedIndex, reanalyzeIndex);
+      // Ensure we have data to analyze
+      if (!data || data.length === 0) {
+        console.warn('분석할 데이터가 없습니다.');
+        return null;
+      }
+
+      const selectedStrategy = state.strategies[state.tradeStrategy];
+      
+      // 전략이 존재하는지 확인
+      if (!selectedStrategy || !selectedStrategy.analyze) {
+        console.error(`전략 "${state.tradeStrategy}"가 존재하지 않거나 analyze 메서드가 없습니다.`);
+        return null;
+      }
+      
+      // Start analysis from the beginning or continue from previous position
+      const lookbackCandles = 100; // How many candles to include in each analysis
+      
+      // Find the starting point for analysis
+      const startIndex = Math.max(0, data.length - lookbackCandles);
       
       const options = {
         realtime: true,

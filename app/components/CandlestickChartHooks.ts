@@ -1,6 +1,6 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
-import { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
-import { ExtendedCandlestickData, DateRange, MASettings, SeriesMarker } from './CandlestickChartTypes';
+import { IChartApi, ISeriesApi, Time, SeriesMarker } from 'lightweight-charts';
+import { ExtendedCandlestickData, DateRange, MASettings } from './CandlestickChartTypes';
 import { getInitialDateRange, calculateEMA, getChartEndpoint, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
 import { UpbitCandle } from '../types/candlestick';
@@ -67,13 +67,33 @@ export const useChartData = (
 
   // 실시간 API 업데이트로 전환하는 함수
   const switchToRealtimeAfterUpdate = useCallback(() => {
-    // 자동 업데이트 중지
+    console.log('실시간 업데이트로 전환 시작...');
+    
+    // 자동 업데이트 중지 - 콜백 사용하여 확실하게 상태 변경 적용
     setIsAutoUpdate(false);
-    // 잠시 후 실시간 API 활성화
+    
+    // 상태 업데이트가 완료된 후 실시간 API 활성화 (더 긴 지연 시간 사용)
     setTimeout(() => {
+      console.log('자동 업데이트 중지 확인:', isAutoUpdate ? '아직 활성화됨' : '비활성화됨');
+      
+      // 두 번째 단계: 실시간 API 활성화
+      console.log('실시간 API 활성화 중...');
       setIsRealtimeAPIEnabled(true);
-    }, 500);
-  }, []);
+      
+      // 변경 사항 확인을 위한 추가 로그
+      setTimeout(() => {
+        console.log('전환 완료 상태 확인:');
+        console.log('- 자동 업데이트:', isAutoUpdate ? '활성화됨 (문제!)' : '비활성화됨 (정상)');
+        console.log('- 실시간 API:', isRealtimeAPIEnabled ? '활성화됨 (정상)' : '비활성화됨 (문제!)');
+        
+        // 전환이 제대로 되지 않았으면 다시 시도
+        if (!isRealtimeAPIEnabled) {
+          console.log('⚠️ 실시간 API가 활성화되지 않았습니다. 다시 시도합니다.');
+          setIsRealtimeAPIEnabled(true);
+        }
+      }, 500);
+    }, 1500);
+  }, [isAutoUpdate, isRealtimeAPIEnabled]);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -172,14 +192,43 @@ export const useChartData = (
         setProgress(70);
         
         // EMA 계산 및 설정 - 병렬 처리
-        const [ema60Data, ema120Data, ema240Data, ema360Data, ema600Data, ema900Data] = await Promise.all([
+        console.log('이동평균선 계산 시작 (초기 설정)');
+        
+        // 먼저 짧은 기간의 이평선 계산
+        const [ema60Data, ema120Data, ema240Data] = await Promise.all([
           Promise.resolve(calculateEMA(allProcessedData, 60)),
           Promise.resolve(calculateEMA(allProcessedData, 120)),
-          Promise.resolve(calculateEMA(allProcessedData, 240)),
-          Promise.resolve(calculateEMA(allProcessedData, 360)),
-          Promise.resolve(calculateEMA(allProcessedData, 600)),
-          Promise.resolve(calculateEMA(allProcessedData, 900))
+          Promise.resolve(calculateEMA(allProcessedData, 240))
         ]);
+        
+        console.log(`짧은 기간 이평선 계산 완료: 60MA=${ema60Data.length}개, 120MA=${ema120Data.length}개, 240MA=${ema240Data.length}개`);
+        console.log('240MA 샘플 데이터:', ema240Data.length > 0 ? `첫번째: ${ema240Data[0].value.toFixed(2)}, 마지막: ${ema240Data[ema240Data.length-1].value.toFixed(2)}` : '없음');
+        
+        // 다음으로 긴 기간의 이평선 계산
+        let ema360Data: { time: Time; value: number }[] = []; 
+        let ema600Data: { time: Time; value: number }[] = []; 
+        let ema900Data: { time: Time; value: number }[] = [];
+        
+        if (allProcessedData.length >= 360) {
+          ema360Data = calculateEMA(allProcessedData, 360);
+          console.log(`360MA 계산 완료: ${ema360Data.length}개`);
+        } else {
+          console.log(`360MA 계산 불가: 데이터가 부족합니다 (${allProcessedData.length}개 < 360개)`);
+        }
+        
+        if (allProcessedData.length >= 600) {
+          ema600Data = calculateEMA(allProcessedData, 600);
+          console.log(`600MA 계산 완료: ${ema600Data.length}개`);
+        } else {
+          console.log(`600MA 계산 불가: 데이터가 부족합니다 (${allProcessedData.length}개 < 600개)`);
+        }
+        
+        if (allProcessedData.length >= 900) {
+          ema900Data = calculateEMA(allProcessedData, 900);
+          console.log(`900MA 계산 완료: ${ema900Data.length}개`);
+        } else {
+          console.log(`900MA 계산 불가: 데이터가 부족합니다 (${allProcessedData.length}개 < 900개)`);
+        }
         
         if (
           sixtyEMASeriesRef.current && 
@@ -193,18 +242,112 @@ export const useChartData = (
           sixtyEMASeriesRef.current.setData(ema60Data);
           oneTwentyEMASeriesRef.current.setData(ema120Data);
           twoFortyEMASeriesRef.current.setData(ema240Data);
-          threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
-          sixHundredEMASeriesRef.current.setData(ema600Data);
-          nineHundredEMASeriesRef.current.setData(ema900Data);
+          
+          // 긴 기간의 이평선은 데이터가 충분할 때만 설정
+          if (ema360Data.length > 0) {
+            threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+          }
+          
+          if (ema600Data.length > 0) {
+            sixHundredEMASeriesRef.current.setData(ema600Data);
+          }
+          
+          if (ema900Data.length > 0) {
+            nineHundredEMASeriesRef.current.setData(ema900Data);
+          }
           
           // 시리즈 가시성 설정
-          sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
-          oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
-          twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
-          threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
-          sixHundredEMASeriesRef.current.applyOptions({ visible: showMA.sixHundred });
-          nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+          console.log('이동평균선 가시성 설정: ', showMA);
+          if (sixtyEMASeriesRef.current) {
+            sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+            console.log('60MA 가시성 설정:', showMA.sixty);
+          }
+          
+          if (oneTwentyEMASeriesRef.current) {
+            oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+            console.log('120MA 가시성 설정:', showMA.oneTwenty);
+          }
+          
+          if (twoFortyEMASeriesRef.current) {
+            twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+            console.log('- 240MA 업데이트:', ema240Data.length > 0 ? `첫번째: ${ema240Data[0].value.toFixed(2)}, 마지막: ${ema240Data[ema240Data.length-1].value.toFixed(2)}` : '없음');
+            
+            // 240MA 현재 데이터 확인
+            const currentData = twoFortyEMASeriesRef.current.data() as { time: Time; value: number }[];
+            console.log(`- 240MA 현재 데이터 개수: ${currentData.length}개, 시리즈 표시 상태: ${showMA.twoForty ? '표시' : '숨김'}`);
+          }
+          
+          if (threeHundredSixtyEMASeriesRef.current) {
+            threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+            console.log('360MA 가시성 설정:', showMA.threeHundredSixty);
+          }
+          
+          if (sixHundredEMASeriesRef.current) {
+            sixHundredEMASeriesRef.current.applyOptions({ visible: showMA.sixHundred });
+            console.log('600MA 가시성 설정:', showMA.sixHundred);
+          }
+          
+          if (nineHundredEMASeriesRef.current) {
+            nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+            console.log('900MA 가시성 설정:', showMA.nineHundred);
+          }
+          
+          console.log('이동평균선 설정 완료');
+          
+          setProgress(85);
+          
+          // 매매 신호 분석 및 마커 생성
+          const selectedStrategy = useUpbitStore.getState().strategies[useUpbitStore.getState().tradeStrategy];
+          const analysisResult = selectedStrategy.analyze(allProcessedData);
+          const signals = analysisResult.signals
+            .filter(signal => signal.position !== null)
+            .map(signal => ({
+              ...signal,
+              time: signal.time as unknown as Time,
+              position: signal.position as 'buy' | 'sell',
+              metadata: signal.metadata ? {
+                ...signal.metadata,
+                ma60: signal.metadata.ma60 || 0,
+                ma120: signal.metadata.ma120 || 0,
+                ma240: signal.metadata.ma240 || 0,
+                ma900: signal.metadata.ma900 || 0,
+                upperBand: signal.metadata.upperBand || 0,
+                lowerBand: signal.metadata.lowerBand || 0,
+                deviation: signal.metadata.deviation || 0,
+                isAbove900MA: signal.metadata.isAbove900MA || false
+              } : undefined
+            }));
+          
+          // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
+          const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
+          
+          // 로그에 신호 수 출력
+          console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
+          console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
+          
+          const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);  
+          // 매수/매도 포인트 계산
+          setMarkers(strategyMarkers);
+          
+          // 백테스트 결과 계산 (전체 신호 사용)
+          const backtestResult = calculateBacktestResult(allProcessedData, signals, mode || 'test');
+          setBacktestResult(backtestResult);
+          
+          // 현재 가격 설정
+          if (allProcessedData.length > 0) {
+            const lastCandle = allProcessedData[allProcessedData.length - 1];
+            setChartPrice(lastCandle.close);
+          }
+          
+          // 타임스케일 피팅
+          if (chartRef.current) {
+            chartRef.current.timeScale().fitContent();
+          }
+        } else {
+          console.error('이동평균선 시리즈 참조가 유효하지 않습니다.');
         }
+        
+        console.log('이동평균선 설정 완료');
         
         setProgress(85);
         
@@ -219,14 +362,7 @@ export const useChartData = (
             position: signal.position as 'buy' | 'sell',
             metadata: signal.metadata ? {
               ...signal.metadata,
-              ma60: signal.metadata.ma60 || 0,
-              ma120: signal.metadata.ma120 || 0,
-              ma240: signal.metadata.ma240 || 0,
-              ma900: signal.metadata.ma900 || 0,
-              upperBand: signal.metadata.upperBand || 0,
-              lowerBand: signal.metadata.lowerBand || 0,
-              deviation: signal.metadata.deviation || 0,
-              isAbove900MA: signal.metadata.isAbove900MA || false
+              ma60: signal.metadata.ma60 || 0
             } : undefined
           }));
         
@@ -237,33 +373,47 @@ export const useChartData = (
         console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
         console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
         
-        const strategyMarkers = createTradeMarkers(limitedSignals);  
-        // 매수/매도 포인트 계산
+        const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
         setMarkers(strategyMarkers);
-        
-        // 백테스트 결과 계산 (전체 신호 사용)
-        const backtestResult = calculateBacktestResult(allProcessedData, signals, mode || 'test');
-        setBacktestResult(backtestResult);
-        
-        // 현재 가격 설정
-        if (allProcessedData.length > 0) {
-          const lastCandle = allProcessedData[allProcessedData.length - 1];
-          setChartPrice(lastCandle.close);
-        }
-        
-        // 타임스케일 피팅
-        if (chartRef.current) {
-          chartRef.current.timeScale().fitContent();
-        }
+        console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
       }
       
       // 모든 데이터 저장
       setAllData(allProcessedData);
       
       // 전체 데이터 로드 후 실시간 API로 전환 (자동 업데이트 모드일 경우)
+      console.log('데이터 로드 완료, 실시간 전환 조건 확인:', {
+        isAutoUpdate,
+        chartType,
+        timeframe: chartType === 'seconds/60' ? '1분봉' : chartType
+      });
+      
       if (isAutoUpdate && chartType === 'seconds/60') {
-        // 자동 업데이트에서 실시간 업데이트로 전환
-        switchToRealtimeAfterUpdate();
+        console.log('✅ 조건 충족: 실시간 업데이트로 전환 예정');
+        console.log('- isAutoUpdate:', isAutoUpdate);
+        console.log('- chartType:', chartType);
+        console.log('- 데이터 개수:', allProcessedData.length);
+        
+        // 데이터가 충분한지 확인 (최소 100개 이상)
+        if (allProcessedData.length >= 100) {
+          console.log('✅ 데이터가 충분합니다. 실시간 업데이트로 전환합니다.');
+          // 자동 업데이트에서 실시간 업데이트로 전환
+          switchToRealtimeAfterUpdate();
+        } else {
+          console.log('❌ 데이터가 부족합니다. 더 많은 데이터를 로드한 후 다시 시도합니다.');
+        }
+      } else {
+        console.log('❌ 실시간 업데이트 전환 조건 미충족');
+        console.log('- isAutoUpdate:', isAutoUpdate);
+        console.log('- chartType:', chartType);
+        
+        if (!isAutoUpdate) {
+          console.log('  → 자동 업데이트가 비활성화되어 있습니다. 활성화 후 다시 시도하세요.');
+        }
+        
+        if (chartType !== 'seconds/60') {
+          console.log(`  → 차트 타입이 초봉(seconds/60)이 아닙니다. 현재: ${chartType}`);
+        }
       }
       
     } catch (error) {
@@ -305,9 +455,19 @@ export const useChartData = (
       borderVisible: false,
     });
     
+    // 이동평균선 스타일 설정
+    if (twoFortyEMASeriesRef.current) {
+      twoFortyEMASeriesRef.current.applyOptions({
+        color: '#FFFF00',  // 밝은 노란색으로 변경
+        lineWidth: 2,      // 선 두께를 두껍게
+        visible: showMA.twoForty
+      });
+      console.log('240MA 스타일 설정 완료 - 색상: 노란색, 두께: 2px, 표시 여부:', showMA.twoForty);
+    }
+    
     // 차트 준비 후 데이터 로드
     loadData();
-  }, [loadData]);
+  }, [loadData, showMA]);
 
   // 전체화면 토글
   const toggleFullscreen = useCallback(() => {
@@ -364,10 +524,14 @@ export const useChartData = (
 
   // 이동평균선 업데이트 함수 최적화
   const updateMovingAverages = useCallback((data: ExtendedCandlestickData[]) => {
-    if (data.length < 60) return; // 최소 60개 데이터 필요
+    // 최소 60개 데이터는 필요 (모든 이평선을 계산하지 않더라도 차트를 표시하기 위함)
+    if (data.length < 60) {
+      console.log('데이터가 60개 미만이어서 이동평균선을 업데이트할 수 없습니다:', data.length);
+      return;
+    }
     
     const startTime = Date.now();
-    console.log('이동평균선 업데이트 시작');
+    console.log('이동평균선 업데이트 시작 - 데이터 길이:', data.length);
     
     try {
       // 마지막 캔들 시간
@@ -375,7 +539,29 @@ export const useChartData = (
       
       // 이동평균선 계산 함수 (부드러운 이동평균 사용)
       const calculateSmoothMA = (period: number, seriesRef: React.MutableRefObject<ISeriesApi<"Line"> | null>) => {
-        if (data.length < period) return null;
+        // 데이터가 충분한지 확인
+        if (data.length < period) {
+          console.log(`데이터가 부족하여 ${period}MA를 계산할 수 없습니다. 필요: ${period}, 현재: ${data.length}`);
+          return null;
+        }
+        
+        // 이전 값 가져오기
+        let prevValue: number | null = null;
+        let hasData = false;
+        
+        if (seriesRef.current) {
+          const seriesData = seriesRef.current.data() as { time: Time; value: number }[];
+          if (seriesData && seriesData.length > 0) {
+            prevValue = seriesData[seriesData.length - 1].value;
+            hasData = true;
+          }
+        }
+        
+        // 이전 데이터가 없고, 데이터가 충분하지 않으면 계산할 수 없음
+        if (!hasData && data.length < period * 1.2) {
+          console.log(`${period}MA 초기 계산을 위한 데이터가 부족합니다. 필요: ${Math.round(period * 1.2)}, 현재: ${data.length}`);
+          return null;
+        }
         
         // 성능 최적화: 단순 이동평균 계산 (슬라이스 최소화)
         let sum = 0;
@@ -385,19 +571,13 @@ export const useChartData = (
         }
         const sma = sum / (data.length - startIdx);
         
-        // 이전 값 가져오기
-        let prevValue: number | null = null;
-        if (seriesRef.current) {
-          const seriesData = seriesRef.current.data() as { time: Time; value: number }[];
-          prevValue = seriesData.length > 0 ? seriesData[seriesData.length - 1].value : null;
-        }
-        
         // 새 값 계산
         let newValue: number;
         
         if (prevValue === null) {
           // 이전 값이 없으면 SMA 사용
           newValue = sma;
+          console.log(`${period}MA 초기값 설정:`, newValue.toFixed(2));
         } else {
           // 이전 값이 있으면 부드러운 전환 적용
           
@@ -405,21 +585,23 @@ export const useChartData = (
           const alpha = 2 / (period + 1);
           const ema = (data[data.length - 1].close - prevValue) * alpha + prevValue;
           
-          // 2. 변화율 제한 적용
+          // 2. 변화율 제한 적용 (실시간 업데이트에서는 제한 완화)
           const changePercent = Math.abs((ema - prevValue) / prevValue * 100);
           
-          // 각 이동평균선별 최대 변화율 설정
+          // 각 이동평균선별 최대 변화율 설정 - 실시간 업데이트를 위해 값 증가
           let maxChangePercent: number;
           if (period <= 60) {
-            maxChangePercent = 0.3; // 60MA는 최대 0.3% 변화
+            maxChangePercent = 1.0; // 60MA는 최대 1.0% 변화
           } else if (period <= 120) {
-            maxChangePercent = 0.25; // 120MA는 최대 0.25% 변화
+            maxChangePercent = 0.9; // 120MA는 최대 0.9% 변화
           } else if (period <= 240) {
-            maxChangePercent = 0.2; // 240MA는 최대 0.2% 변화
+            maxChangePercent = 0.8; // 240MA는 최대 0.8% 변화
           } else if (period <= 360) {
-            maxChangePercent = 0.15; // 360MA는 최대 0.15% 변화
+            maxChangePercent = 0.7; // 360MA는 최대 0.7% 변화
+          } else if (period <= 600) {
+            maxChangePercent = 0.6; // 600MA는 최대 0.6% 변화
           } else {
-            maxChangePercent = 0.1; // 900MA는 최대 0.1% 변화
+            maxChangePercent = 0.5; // 900MA는 최대 0.5% 변화
           }
           
           if (changePercent > maxChangePercent) {
@@ -437,188 +619,76 @@ export const useChartData = (
         };
       };
       
-      // 각 이동평균선 계산
+      // 모든 이동평균선 계산 시도 (단기 이평선)
       const ma60 = calculateSmoothMA(60, sixtyEMASeriesRef);
       const ma120 = calculateSmoothMA(120, oneTwentyEMASeriesRef);
       const ma240 = calculateSmoothMA(240, twoFortyEMASeriesRef);
-      const ma360 = calculateSmoothMA(360, threeHundredSixtyEMASeriesRef);
-      const ma600 = calculateSmoothMA(600, sixHundredEMASeriesRef);
-      const ma900 = calculateSmoothMA(900, nineHundredEMASeriesRef);
       
-      // 이동평균선 차트 업데이트
+      // 장기 이평선 (데이터가 충분할 때)
+      const ma360 = data.length >= 360 ? calculateSmoothMA(360, threeHundredSixtyEMASeriesRef) : null;
+      const ma600 = data.length >= 600 ? calculateSmoothMA(600, sixHundredEMASeriesRef) : null;
+      const ma900 = data.length >= 900 ? calculateSmoothMA(900, nineHundredEMASeriesRef) : null;
+      
+      // 이동평균선 차트 업데이트 - 모든 MA 상태 로깅
+      console.log('이동평균선 업데이트 상태:');
+      
       if (ma60 && sixtyEMASeriesRef.current) {
         sixtyEMASeriesRef.current.update(ma60);
+        sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+        console.log('- 60MA 업데이트:', ma60.value.toFixed(2), showMA.sixty ? '(표시)' : '(숨김)');
+      } else {
+        console.log('- 60MA 업데이트 실패:', ma60 ? '시리즈 참조 없음' : '계산 결과 없음');
       }
       
       if (ma120 && oneTwentyEMASeriesRef.current) {
         oneTwentyEMASeriesRef.current.update(ma120);
+        oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+        console.log('- 120MA 업데이트:', ma120.value.toFixed(2), showMA.oneTwenty ? '(표시)' : '(숨김)');
+      } else {
+        console.log('- 120MA 업데이트 실패:', ma120 ? '시리즈 참조 없음' : '계산 결과 없음');
       }
       
       if (ma240 && twoFortyEMASeriesRef.current) {
         twoFortyEMASeriesRef.current.update(ma240);
+        twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+        console.log('- 240MA 업데이트:', ma240.value.toFixed(2), showMA.twoForty ? '(표시)' : '(숨김)');
+        
+        // 240MA 현재 데이터 확인
+        const currentData = twoFortyEMASeriesRef.current.data() as { time: Time; value: number }[];
+        console.log(`- 240MA 현재 데이터 개수: ${currentData.length}개, 시리즈 표시 상태: ${showMA.twoForty ? '표시' : '숨김'}`);
+      } else {
+        console.log('- 240MA 업데이트 실패:', ma240 ? '시리즈 참조 없음' : '계산 결과 없음');
       }
       
+      // 장기 이평선 업데이트 (360, 600, 900)
       if (ma360 && threeHundredSixtyEMASeriesRef.current) {
         threeHundredSixtyEMASeriesRef.current.update(ma360);
+        threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+        console.log('- 360MA 업데이트:', ma360.value.toFixed(2), showMA.threeHundredSixty ? '(표시)' : '(숨김)');
+      } else if (data.length >= 360) {
+        console.log('- 360MA 업데이트 실패:', ma360 ? '시리즈 참조 없음' : '계산 결과 없음');
+      } else {
+        console.log('- 360MA 업데이트 건너뜀: 데이터 부족 (필요: 360, 현재:', data.length, ')');
       }
       
       if (ma600 && sixHundredEMASeriesRef.current) {
         sixHundredEMASeriesRef.current.update(ma600);
+        sixHundredEMASeriesRef.current.applyOptions({ visible: showMA.sixHundred });
+        console.log('- 600MA 업데이트:', ma600.value.toFixed(2), showMA.sixHundred ? '(표시)' : '(숨김)');
+      } else if (data.length >= 600) {
+        console.log('- 600MA 업데이트 실패:', ma600 ? '시리즈 참조 없음' : '계산 결과 없음');
+      } else {
+        console.log('- 600MA 업데이트 건너뜀: 데이터 부족 (필요: 600, 현재:', data.length, ')');
       }
       
       if (ma900 && nineHundredEMASeriesRef.current) {
         nineHundredEMASeriesRef.current.update(ma900);
-      }
-      
-      // 매수 조건 체크 및 로그 출력 (성능 최적화: 3초마다 한 번씩만 수행)
-      if (ma60 && ma120 && ma240 && ma600 && Date.now() % 3000 < 1000) {
-        // 조건 1: MA240 상향 연속 봉 체크
-        let ma240UpCount = 0;
-        
-        // 이전 MA240 값들 가져오기
-        const ma240Values: number[] = [];
-        if (twoFortyEMASeriesRef.current) {
-          const seriesData = twoFortyEMASeriesRef.current.data() as { time: Time; value: number }[];
-          // 최근 10개 값 가져오기 (현재 값 포함)
-          for (let i = Math.max(0, seriesData.length - 10); i < seriesData.length; i++) {
-            ma240Values.push(seriesData[i].value);
-          }
-        }
-        
-        // 현재 값 추가
-        ma240Values.push(ma240.value);
-        
-        // 상승 추세 확인
-        for (let i = 1; i < ma240Values.length; i++) {
-          if (ma240Values[i] > ma240Values[i-1]) {
-            ma240UpCount++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 2: MA60 > MA120 연속 봉 체크
-        let ma60AboveMa120Count = 0;
-        const ma60Values: number[] = [];
-        const ma120Values: number[] = [];
-        
-        if (sixtyEMASeriesRef.current && oneTwentyEMASeriesRef.current) {
-          const ma60Data = sixtyEMASeriesRef.current.data() as { time: Time; value: number }[];
-          const ma120Data = oneTwentyEMASeriesRef.current.data() as { time: Time; value: number }[];
-          
-          // 최근 10개 값 가져오기
-          for (let i = Math.max(0, ma60Data.length - 10); i < ma60Data.length; i++) {
-            ma60Values.push(ma60Data[i].value);
-          }
-          
-          for (let i = Math.max(0, ma120Data.length - 10); i < ma120Data.length; i++) {
-            ma120Values.push(ma120Data[i].value);
-          }
-        }
-        
-        // 현재 값 추가
-        ma60Values.push(ma60.value);
-        ma120Values.push(ma120.value);
-        
-        // MA60 > MA120 연속 봉 체크
-        const minLength = Math.min(ma60Values.length, ma120Values.length);
-        for (let i = 0; i < minLength; i++) {
-          if (ma60Values[ma60Values.length - 1 - i] > ma120Values[ma120Values.length - 1 - i]) {
-            ma60AboveMa120Count++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 3: MA60 > MA240 연속 봉 체크
-        let ma60AboveMa240Count = 0;
-        
-        // MA60 > MA240 연속 봉 체크
-        for (let i = 0; i < Math.min(ma60Values.length, ma240Values.length); i++) {
-          if (ma60Values[ma60Values.length - 1 - i] > ma240Values[ma240Values.length - 1 - i]) {
-            ma60AboveMa240Count++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 4: MA600 상승세 연속 봉 체크
-        let ma600UpCount = 0;
-        const ma600Values: number[] = [];
-        
-        if (sixHundredEMASeriesRef.current) {
-          const ma600Data = sixHundredEMASeriesRef.current.data() as { time: Time; value: number }[];
-          
-          // 최근 10개 값 가져오기
-          for (let i = Math.max(0, ma600Data.length - 10); i < ma600Data.length; i++) {
-            ma600Values.push(ma600Data[i].value);
-          }
-        }
-        
-        // 현재 값 추가
-        ma600Values.push(ma600.value);
-        
-        // MA600 상승세 연속 봉 체크
-        for (let i = 1; i < ma600Values.length; i++) {
-          if (ma600Values[i] > ma600Values[i-1]) {
-            ma600UpCount++;
-          } else {
-            break;
-          }
-        }
-        
-        // 조건 5: MA60 < MA600 연속 봉 체크
-        let ma60BelowMa600Count = 0;
-        
-        // MA60 < MA600 연속 봉 체크
-        for (let i = 0; i < Math.min(ma60Values.length, ma600Values.length); i++) {
-          if (ma60Values[ma60Values.length - 1 - i] < ma600Values[ma600Values.length - 1 - i]) {
-            ma60BelowMa600Count++;
-          } else {
-            break;
-          }
-        }
-        
-        // 각 조건의 최소 필요 봉 수 설정
-        const minMa240UpCount = 5;
-        const minMa60AboveMa120Count = 3;
-        const minMa60AboveMa240Count = 3;
-        const minMa600UpCount = 2;
-        const minMa60BelowMa600Count = 3;
-        
-        // 각 조건 충족 여부
-        const isMa240UpValid = ma240UpCount >= minMa240UpCount;
-        const isMa60AboveMa120Valid = ma60AboveMa120Count >= minMa60AboveMa120Count;
-        const isMa60AboveMa240Valid = ma60AboveMa240Count >= minMa60AboveMa240Count;
-        const isMa600UpValid = ma600UpCount >= minMa600UpCount;
-        const isMa60BelowMa600Valid = ma60BelowMa600Count >= minMa60BelowMa600Count;
-        
-        // 5번째 조건 사용 여부 체크
-        const { useFifthCondition } = useUpbitStore.getState();
-        const isFifthConditionValid = !useFifthCondition || isMa60BelowMa600Valid;
-        
-        // 모든 조건 로그 출력
-        console.log('\n=== 매수 조건 체크 ===');
-        console.log({
-          '조건 1 (MA240 상향)': `${ma240UpCount}/${minMa240UpCount} 봉 ${isMa240UpValid ? '✅' : '❌'}`,
-          '조건 2 (MA60 > MA120)': `${ma60AboveMa120Count}/${minMa60AboveMa120Count} 봉 ${isMa60AboveMa120Valid ? '✅' : '❌'}`,
-          '조건 3 (MA60 > MA240)': `${ma60AboveMa240Count}/${minMa60AboveMa240Count} 봉 ${isMa60AboveMa240Valid ? '✅' : '❌'}`,
-          '조건 4 (MA600 상승세)': `${ma600UpCount}/${minMa600UpCount} 봉 ${isMa600UpValid ? '✅' : '❌'}`,
-          '조건 5 (MA60 < MA600)': `${ma60BelowMa600Count}/${minMa60BelowMa600Count} 봉 ${isMa60BelowMa600Valid ? '✅' : '❌'} ${!useFifthCondition ? '[비활성화됨]' : ''}`,
-          '최종 판정': (isMa240UpValid && isMa60AboveMa120Valid && isMa60AboveMa240Valid && isMa600UpValid && isFifthConditionValid) ? 
-            '✅ 매수 신호 발생!' : '❌ 매수 조건 불충족'
-        });
-        
-        // 현재 가격과 주요 이동평균선 값 출력
-        const currentPrice = data[data.length - 1].close;
-        console.log('\n=== 현재 가격 및 이동평균선 ===');
-        console.log({
-          '현재 가격': currentPrice.toLocaleString('ko-KR'),
-          'MA60': ma60?.value.toLocaleString('ko-KR'),
-          'MA120': ma120?.value.toLocaleString('ko-KR'),
-          'MA240': ma240?.value.toLocaleString('ko-KR'),
-          'MA600': ma600?.value.toLocaleString('ko-KR')
-        });
+        nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+        console.log('- 900MA 업데이트:', ma900.value.toFixed(2), showMA.nineHundred ? '(표시)' : '(숨김)');
+      } else if (data.length >= 900) {
+        console.log('- 900MA 업데이트 실패:', ma900 ? '시리즈 참조 없음' : '계산 결과 없음');
+      } else {
+        console.log('- 900MA 업데이트 건너뜀: 데이터 부족 (필요: 900, 현재:', data.length, ')');
       }
       
       const endTime = Date.now();
@@ -626,14 +696,22 @@ export const useChartData = (
     } catch (error) {
       console.error('이동평균선 업데이트 오류:', error);
     }
-  }, []);
+  }, [showMA]);
 
   // 실시간 API 업데이트 함수
   const updateRealtimeData = useCallback(async () => {
     // 이미 업데이트 중이면 중복 요청 방지 (단, 3초 이상 걸리면 강제로 새로운 요청 허용)
-    if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/')) return;
+    if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/')) {
+      console.log('실시간 데이터 업데이트 무시: API 비활성화 또는 차트 타입 불일치', {
+        isRealtimeAPIEnabled,
+        chartType
+      });
+      return;
+    }
     
     const now = Date.now();
+    console.log('실시간 데이터 업데이트 시도:', new Date(now).toLocaleTimeString());
+    
     if (ongoingRequestRef.current) {
       const lastRequestTime = ongoingRequestRef.current as unknown as number;
       // 마지막 요청 시작 후 3초가 지났으면 새 요청 허용
@@ -755,7 +833,7 @@ export const useChartData = (
               console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
               console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
               
-              const strategyMarkers = createTradeMarkers(limitedSignals);
+              const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
               setMarkers(strategyMarkers);
               console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
             }
@@ -809,7 +887,7 @@ export const useChartData = (
               console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
               console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
               
-              const strategyMarkers = createTradeMarkers(limitedSignals);
+              const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
               setMarkers(strategyMarkers);
               console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
             }
@@ -871,6 +949,12 @@ export const useChartData = (
   // 실시간 업데이트 타이머 설정
   useEffect(() => {
     if (isRealtimeAPIEnabled && chartType.startsWith('seconds/')) {
+      console.log('실시간 업데이트 타이머 설정 중...', {
+        isRealtimeAPIEnabled,
+        chartType,
+        timestamp: new Date().toLocaleTimeString()
+      });
+      
       // 1초마다 업데이트 (매매 상태를 더 자주 체크하기 위해)
       const timer = setInterval(() => {
         updateRealtimeData();
@@ -878,7 +962,7 @@ export const useChartData = (
       
       timeoutRef.current = timer;
       
-      console.log('실시간 업데이트 타이머 설정: 1초 간격');
+      console.log('실시간 업데이트 타이머 설정 완료: 1초 간격');
       
       return () => {
         if (timeoutRef.current) {
@@ -887,6 +971,12 @@ export const useChartData = (
           console.log('실시간 업데이트 타이머 해제');
         }
       };
+    } else {
+      console.log('실시간 업데이트 타이머를 설정하지 않음:', {
+        isRealtimeAPIEnabled,
+        chartType,
+        timestamp: new Date().toLocaleTimeString()
+      });
     }
   }, [isRealtimeAPIEnabled, chartType, updateRealtimeData]);
 
@@ -904,8 +994,14 @@ export const useChartData = (
       const to = now.toISOString();
       const endpoint = getChartEndpoint(chartType);
       
+      // 데이터 수집 최적화: 900개 이평선 계산을 위해 충분한 데이터 확보
+      const dataNeeded = Math.max(1000, allData.length); // 최소 1000개 또는 현재 보유 데이터 이상
+      let countToFetch = Math.min(1000, dataNeeded); // API 제한을 고려하여 최대 1000개
+      
+      console.log(`자동 업데이트: ${countToFetch}개의 데이터 요청 중...`);
+      
       const response = await fetch(
-        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=200`
+        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${countToFetch}`
       );
       
       if (!response.ok) {
@@ -977,6 +1073,8 @@ export const useChartData = (
         // 전체 통합 데이터로 분석 실행
         const analysisResult = useUpbitStore.getState().analyzeRealtimeData(combinedData);
         
+        console.log('분석 결과:', analysisResult?.signals?.length ?? 0, '개의 신호 발견');
+        
         if (analysisResult && analysisResult.signals) {
           const signals = analysisResult.signals
             .filter((signal: any) => signal.position !== null)
@@ -997,7 +1095,7 @@ export const useChartData = (
           console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
           console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
           
-          const strategyMarkers = createTradeMarkers(limitedSignals);
+          const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
           console.log(`자동 업데이트: 마커 ${strategyMarkers.length}개 생성 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
           
           // 마커 업데이트
@@ -1072,9 +1170,8 @@ export const useChartData = (
       console.log(`전략이 ${currentStrategy}로 변경되어 데이터를 다시 분석합니다.`);
       console.log(`분석할 데이터 크기: ${allData.length}개 캔들`);
       
-      if (currentStrategy === 'BOLLINGER') {
-        console.log('볼링거 전략은 최소 900개의 캔들이 필요합니다.');
-        console.log('5번째 조건(MA60 < MA600) 상태:', useUpbitStore.getState().useFifthCondition ? '활성화' : '비활성화');
+      if (currentStrategy === 'MACD') {
+        console.log('MACD 전략은 최소 35개의 캔들이 필요합니다.');
       }
       
       // 마커 초기화
@@ -1105,7 +1202,7 @@ export const useChartData = (
         console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
         console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
         
-        const strategyMarkers = createTradeMarkers(limitedSignals);
+        const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
         console.log(`전략 변경 후 마커 ${strategyMarkers.length}개 생성 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
         
         // 마커 업데이트
@@ -1168,4 +1265,4 @@ export const useChartData = (
     handleRealtimeAPIToggle,
     updateRealtimeData
   };
-}; 
+};

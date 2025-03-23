@@ -123,7 +123,7 @@ export default function VolumeChartPage() {
             • <strong>캔들스틱 차트</strong>: 가격 변동을 표시하며, 초록색은 상승, 빨간색은 하락을 나타냅니다.
           </p>
           <p className="mb-2">
-            • <strong>볼린저 밴드</strong>: 파란색 선은 상단/하단 밴드, 주황색 선은 20기간 단순이동평균선(SMA)입니다.
+            • <strong>MACD 밴드</strong>: 파란색 선은 상단/하단 밴드, 주황색 선은 20기간 단순이동평균선(SMA)입니다.
           </p>
           <p className="mb-2">
             • <strong>거래량 차이 히스토그램</strong>: 초록색은 매수 우세(매수량큼 , 매도량적음), 빨간색은 매도 우세(매도량큼 , 매수량적음)를 의미합니다.

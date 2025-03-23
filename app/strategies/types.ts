@@ -1,7 +1,7 @@
 import { CandlestickData, Time } from 'lightweight-charts';
 
 // 전략 유형 정의
-export type TradeStrategy = 'BOLLINGER' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' ;
+export type TradeStrategy =   'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' ;
 
 // 포지션 유형 정의
 export type PositionType = 'buy' | 'sell' | null;
