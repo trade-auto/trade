@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useEffect } from 'react';
 import { IChartApi, ISeriesApi, SeriesMarker } from 'lightweight-charts';
 import { ExtendedCandlestickData, Time } from './CandlestickChartTypes';
-import { calculateEMA, createVolumeData, createTradeMarkers } from './CandlestickChartUtils';
+import { calculateEMA, createVolumeData } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
 
@@ -126,6 +126,17 @@ export const useBacktestChart = () => {
     backtestNineHundredEMASeriesRef,
     handleBacktestChartReady
   };
+};
+
+// 마커 생성 함수
+const createTradeMarkers = (signals: any[]): SeriesMarker<Time>[] => {
+  return signals.map(signal => ({
+    time: signal.time as Time,
+    position: signal.position === 'buy' ? 'belowBar' : 'aboveBar',
+    color: signal.position === 'buy' ? '#26a69a' : '#ef5350',
+    shape: signal.position === 'buy' ? 'arrowUp' : 'arrowDown',
+    text: signal.position === 'buy' ? '매수' : '매도'
+  }));
 };
 
 export const BacktestChart: React.FC<BacktestChartProps> = ({

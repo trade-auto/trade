@@ -238,93 +238,117 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         },
       });
       chartRef.current = chart;
-      
-      try {
-        // 캔들스틱 데이터 변환
-        const candlestickData = candleData.map(d => ({
-          time: d.time,
-          open: d.open,
-          high: d.high,
-          low: d.low,
-          close: d.close
-        }));
-        
-        // 볼륨 데이터 변환
-        const volumeData = candleData.map(d => ({
-          time: d.time,
-          value: d.volume,
-          color: d.close >= d.open ? '#26a69a' : '#ef5350'
-        }));
 
-        // MACD 계산
-        const closePrices = candleData.map(d => d.close);
-        const { macdLine, signalLine, histogram } = calculateMACD(closePrices);
-        
-        // MACD 데이터 변환
-        const macdData = candleData.map((d, i) => ({
-          time: d.time,
-          value: macdLine[i] || 0
-        }));
+      // 캔들스틱 시리즈 생성 (상단 60%)
+      const candlestickSeries = chart.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350',
+        priceScaleId: 'right',
+      });
 
-        const signalData = candleData.map((d, i) => ({
-          time: d.time,
-          value: signalLine[i - (macdLine.length - signalLine.length)] || 0
-        }));
+      // MACD 시리즈 생성 (중간 20%)
+      const macdSeries = chart.addLineSeries({
+        color: '#2196F3',
+        lineWidth: 2,
+        priceScaleId: 'macd',
+        priceFormat: {
+          type: 'price',
+          precision: 2,
+        },
+      });
 
-        const histogramData = candleData.map((d, i) => ({
-          time: d.time,
-          value: histogram[i] || 0,
-          color: (histogram[i] || 0) >= 0 ? '#26a69a' : '#ef5350'
-        }));
-        
-        // 캔들스틱 차트 생성
-        const candlestickSeries = chart.addCandlestickSeries({
-          upColor: '#26a69a',
-          downColor: '#ef5350',
-          borderVisible: false,
-          wickUpColor: '#26a69a',
-          wickDownColor: '#ef5350'
-        });
-        
-        // 볼륨 차트 생성
-        const volumeSeries = chart.addHistogramSeries({
-          color: '#26a69a',
-          priceFormat: { type: 'volume' },
-          priceScaleId: 'volume',
-        });
+      const signalSeries = chart.addLineSeries({
+        color: '#FF9800',
+        lineWidth: 2,
+        priceScaleId: 'macd',
+      });
 
-        // MACD 라인 생성
-        const macdSeries = chart.addLineSeries({
-          color: '#2196F3',
-          lineWidth: 2,
-          priceScaleId: 'macd',
-        });
+      const histogramSeries = chart.addHistogramSeries({
+        color: '#26a69a',
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'macd',
+      });
 
-        const signalSeries = chart.addLineSeries({
-          color: '#FF9800',
-          lineWidth: 2,
-          priceScaleId: 'macd',
-        });
+      // 볼륨 시리즈 생성 (하단 20%)
+      const volumeSeries = chart.addHistogramSeries({
+        color: '#26a69a',
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume',
+      });
 
-        const histogramSeries = chart.addHistogramSeries({
-          color: '#26a69a',
-          priceFormat: { type: 'volume' },
-          priceScaleId: 'macd',
-        });
-        
-        // 데이터 설정
-        candlestickSeries.setData(candlestickData);
-        volumeSeries.setData(volumeData);
-        macdSeries.setData(macdData);
-        signalSeries.setData(signalData);
-        histogramSeries.setData(histogramData);
-        
-        // 차트 영역 조정
-        chart.timeScale().fitContent();
-      } catch (seriesErr) {
-        console.error('차트 시리즈 생성 오류:', seriesErr);
-        throw new Error('차트 시리즈를 생성하는 중 오류가 발생했습니다.');
-      }
+      // 데이터 변환 및 설정
+      const candlestickData = candleData.map(d => ({
+        time: d.time,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close
+      }));
+
+      const volumeData = candleData.map(d => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? '#26a69a' : '#ef5350'
+      }));
+
+      const closePrices = candleData.map(d => d.close);
+      const { macdLine, signalLine, histogram } = calculateMACD(closePrices);
+
+      const macdData = candleData.map((d, i) => ({
+        time: d.time,
+        value: macdLine[i] || 0
+      }));
+
+      const signalData = candleData.map((d, i) => ({
+        time: d.time,
+        value: signalLine[i - (macdLine.length - signalLine.length)] || 0
+      }));
+
+      const histogramData = candleData.map((d, i) => ({
+        time: d.time,
+        value: histogram[i] || 0,
+        color: (histogram[i] || 0) >= 0 ? '#26a69a' : '#ef5350'
+      }));
+
+      // 각 시리즈에 데이터 설정
+      candlestickSeries.setData(candlestickData);
+      macdSeries.setData(macdData);
+      signalSeries.setData(signalData);
+      histogramSeries.setData(histogramData);
+      volumeSeries.setData(volumeData);
+
+      // 캔들스틱 영역 설정 (상단 60%)
+      chart.priceScale('right').applyOptions({
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.4,
+        },
+        borderVisible: true,
+      });
+
+      // MACD 영역 설정 (중간 20%)
+      chart.priceScale('macd').applyOptions({
+        scaleMargins: {
+          top: 0.6,
+          bottom: 0.2,
+        },
+        borderVisible: true,
+      });
+
+      // 볼륨 영역 설정 (하단 20%)
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: {
+          top: 0.8,
+          bottom: 0,
+        },
+        borderVisible: true,
+      });
+
+      // 차트 영역 설정
+      chart.timeScale().fitContent();
 
       // 창 크기 변경 시 차트 크기 조정
       const handleResize = () => {

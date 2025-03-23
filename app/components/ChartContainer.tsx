@@ -119,6 +119,17 @@ interface SeriesRefs {
   nineHundredEMA: ISeriesApi<"Line"> | null;
 }
 
+// 마커 생성 함수
+const createTradeMarkers = (signals: any[]): SeriesMarker<Time>[] => {
+  return signals.map(signal => ({
+    time: signal.time as Time,
+    position: signal.position === 'buy' ? 'belowBar' : 'aboveBar',
+    color: signal.position === 'buy' ? '#26a69a' : '#ef5350',
+    shape: signal.position === 'buy' ? 'arrowUp' : 'arrowDown',
+    text: signal.position === 'buy' ? '매수' : '매도'
+  }));
+};
+
 const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isFullscreen,
   chartHeight,
