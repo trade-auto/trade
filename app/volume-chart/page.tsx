@@ -17,6 +17,12 @@ export default function VolumeChartPage() {
     { value: 'KRW-SOL', label: '솔라나' },
     { value: 'KRW-ADA', label: '에이다' },
     { value: 'KRW-AVAX', label: '아발란체' },
+    { value: 'KRW-DOT', label: '폴카닷' },
+    { value: 'KRW-MATIC', label: '폴리곤' },
+    { value: 'KRW-DOGE', label: '도지코인' },
+    { value: 'KRW-SHIB', label: '시바이누' },
+    { value: 'KRW-LINK', label: '체인링크' },
+    { value: 'KRW-ATOM', label: '코스모스' },
   ];
 
   // 인터벌 목록
@@ -44,7 +50,14 @@ export default function VolumeChartPage() {
     <div className="min-h-screen bg-gray-900">
       <NavigationHeader currentPage="volume-chart" />
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-white mb-6">거래량 분석 차트</h1>
+        <h1 className="text-3xl font-bold text-white mb-6 border-b border-gray-700 pb-2">거래량 분석 차트</h1>
+        
+        <div className="bg-gray-800 p-4 rounded-lg mb-6">
+          <p className="text-white mb-4">
+            여기에서 다양한 암호화폐의 거래량 정보를 확인하고 분석할 수 있습니다. 
+            캔들 방향에 따라 매수량과 매도량을 추정하여 보여드립니다.
+          </p>
+        </div>
         
         <div className="flex flex-wrap gap-4 mb-6">
           <div className="min-w-[150px]">
