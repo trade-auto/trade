@@ -10,7 +10,8 @@ export const useChartData = (
   symbol: string,
   chartType: string,
   initialAutoUpdate: boolean,
-  mode?: 'live' | 'test'
+  mode?: 'live' | 'test',
+  initialDataCount: number = 200 // 기본값 200으로 설정
 ) => {
   // 차트 상태
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -173,13 +174,13 @@ export const useChartData = (
       console.log(`예상 캔들 수: ${estimatedCandles}개, 총 일수: ${totalDays}일`);
       
       // 목표 캔들 수 설정
-      let targetCandles = 200; // 기본값
+      let targetCandles = initialDataCount; // 전달받은 initialDataCount 사용
       if (chartType.startsWith('minutes/')) {
         const minutesInterval = parseInt(chartType.split('/')[1]);
         if (minutesInterval === 5) {
-          targetCandles = 576; // 5분봉 576개
+          targetCandles = Math.max(576, initialDataCount); // 5분봉 최소 576개 또는 initialDataCount
         } else if (minutesInterval === 15) {
-          targetCandles = 672; // 15분봉 672개
+          targetCandles = Math.max(672, initialDataCount); // 15분봉 최소 672개 또는 initialDataCount
         }
       }
       
@@ -207,12 +208,13 @@ export const useChartData = (
         if (chartType.startsWith('seconds/')) {
           // 초봉 차트를 위해 내부 API 사용
           const unit = chartType.split('/')[1]; // 60 추출
-          apiUrl = `/api/candles/seconds?market=${symbol}&count=200`; // 초기 로드는 200개 캔들
-          console.log(`초봉 API 요청: ${apiUrl} (내부 API 사용)`);
+          apiUrl = `/api/candles/seconds?market=${symbol}&count=2`; // 실시간 업데이트는 최근 2개만 필요
+          console.log(`초봉 자동 업데이트 API 요청: ${apiUrl} (내부 API 사용)`);
         } else if (chartType.startsWith('minutes/')) {
-          const unit = chartType.split('/')[1]; // 5 또는 15 추출
-          apiUrl = `https://api.upbit.com/v1/candles/minutes/${unit}?market=${symbol}&to=${to}&count=${maxCandlesPerRequest}`;
-          console.log(`${unit}분봉 API 요청: ${apiUrl}`);
+          // 분봉 차트는 기존대로 업비트 API 직접 호출
+          const minUnit = chartType.split('/')[1]; // 5 또는 15 추출
+          apiUrl = `https://api.upbit.com/v1/candles/minutes/${minUnit}?market=${symbol}&to=${to}&count=2`; // 실시간 업데이트는 최근 2개만
+          console.log(`분봉 자동 업데이트 API 요청: ${apiUrl}`);
         } else {
           apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${maxCandlesPerRequest}`;
           console.log(`기타 차트 API 요청: ${apiUrl}`);
@@ -690,6 +692,11 @@ export const useChartData = (
       
       if (!data || data.length === 0) {
         console.log('새로운 데이터 없음');
+        // 요청 완료 후 상태 업데이트
+        setRealtimeUpdateStatus(prev => ({
+          ...prev,
+          isUpdating: false
+        }));
         ongoingRequestRef.current = false;
         return;
       }
@@ -768,8 +775,20 @@ export const useChartData = (
               console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
               
               const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
-              updateMarkers(strategyMarkers);
               console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
+              
+              // 업데이트 상태 갱신
+              setRealtimeUpdateStatus(prev => ({
+                isUpdating: false,
+                lastUpdateTime: new Date().toLocaleString('ko-KR'),
+                updateCount: prev.updateCount + 1,
+                markers: strategyMarkers
+              }));
+              
+              // 마커도 업데이트
+              updateMarkers(strategyMarkers);
+              
+              console.log(`실시간 업데이트 상태 갱신: 마지막 업데이트 ${new Date().toLocaleString('ko-KR')}, 총 업데이트 횟수 증가`);
             }
           }
         } else if ((newCandle.time as number) > (lastCandle.time as number)) {
@@ -823,6 +842,19 @@ export const useChartData = (
               
               const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
               console.log(`마커 업데이트 완료: ${strategyMarkers.length}개 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
+              
+              // 업데이트 상태 갱신
+              setRealtimeUpdateStatus(prev => ({
+                isUpdating: false,
+                lastUpdateTime: new Date().toLocaleString('ko-KR'),
+                updateCount: prev.updateCount + 1,
+                markers: strategyMarkers
+              }));
+              
+              // 마커도 업데이트
+              updateMarkers(strategyMarkers);
+              
+              console.log(`실시간 업데이트 상태 갱신: 마지막 업데이트 ${new Date().toLocaleString('ko-KR')}, 총 업데이트 횟수 증가`);
             }
           }
         } else {
@@ -922,6 +954,11 @@ export const useChartData = (
     
     try {
       console.log('자동 업데이트 시작...');
+      // 업데이트 시작 상태 설정
+      setRealtimeUpdateStatus(prev => ({
+        ...prev,
+        isUpdating: true
+      }));
       
       // 현재 시간 기준으로 최신 데이터 가져오기
       const now = new Date();
@@ -1043,10 +1080,24 @@ export const useChartData = (
           console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
           
           const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
-          console.log(`자동 업데이트: 마커 ${strategyMarkers.length}개 생성 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
-          
-          // 마커 업데이트
           updateMarkers(strategyMarkers);
+          
+          // 백테스트 결과 계산 (전체 신호 사용)
+          const backtestResult = calculateBacktestResult(allData, signals, mode || 'test');
+          setBacktestResult(backtestResult);
+          
+          // 현재 가격 설정
+          if (allData.length > 0) {
+            const lastCandle = allData[allData.length - 1];
+            setChartPrice(lastCandle.close);
+          }
+          
+          // 타임스케일 피팅
+          if (chartRef.current) {
+            chartRef.current.timeScale().fitContent();
+          }
+          
+          console.log('이동평균선 및 마커 설정 완료');
         }
       }
       
@@ -1063,30 +1114,16 @@ export const useChartData = (
       console.error('자동 업데이트 오류:', error);
     } finally {
       ongoingRequestRef.current = false;
+      
+      // 업데이트 완료 상태 설정
+      setRealtimeUpdateStatus(prev => ({
+        isUpdating: false,
+        lastUpdateTime: new Date().toLocaleString('ko-KR'),
+        updateCount: prev.updateCount + 1,
+        markers: prev.markers
+      }));
     }
-  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, symbol, allData, updateMovingAverages, setAllData, updateMarkers, setChartPrice]);
-  
-  // 자동 업데이트 타이머 설정
-  useEffect(() => {
-    if (isAutoUpdate && !isRealtimeAPIEnabled) {
-      // 10초마다 자동 업데이트
-      const timer = setInterval(() => {
-        handleAutoUpdate();
-      }, 10000);
-      
-      timeoutRef.current = timer;
-      
-      console.log('자동 업데이트 타이머 설정: 10초 간격');
-      
-      return () => {
-        if (timeoutRef.current) {
-          clearInterval(timeoutRef.current);
-          timeoutRef.current = null;
-          console.log('자동 업데이트 타이머 해제');
-        }
-      };
-    }
-  }, [isAutoUpdate, isRealtimeAPIEnabled, handleAutoUpdate]);
+  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, symbol, allData, updateMovingAverages]);
 
   // 전략 변경 감지를 위한 구독
   useEffect(() => {

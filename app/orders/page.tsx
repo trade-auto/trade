@@ -375,6 +375,7 @@ export default function OrdersPage() {
             chartType={selectedInterval}
             initialAutoUpdate={true}
             mode={mode}
+            initialDataCount={1000}
             handleOrder={async (params: OrderParams) => {
               try {
                 if (createOrderRef.current) {

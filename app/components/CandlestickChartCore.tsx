@@ -20,6 +20,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     symbol,
     chartType,
     initialAutoUpdate = true,
+    initialDataCount = 200, // 기본값 200으로 설정
     mode,
     handleOrder,
     onOrder,
@@ -49,7 +50,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     handleRealtimeAPIToggle,
     handleChartReady,
     loadData
-  } = useChartData(symbol, chartType, initialAutoUpdate, mode);
+  } = useChartData(symbol, chartType, initialAutoUpdate, mode, initialDataCount);
   
   // CSV 관련 기능 훅
   const {

@@ -16,6 +16,7 @@ export interface CandlestickChartProps {
   chartType: string;
   initialAutoUpdate?: boolean;
   mode?: 'live' | 'test';
+  initialDataCount?: number;
   handleOrder?: (params: OrderParams) => Promise<void>;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onOrder?: (price: number, isMarketOrder: boolean) => void;
