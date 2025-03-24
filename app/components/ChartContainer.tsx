@@ -257,15 +257,30 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       console.log(`차트 데이터 업데이트: ${data.length}개의 데이터 설정 (${chartType} 타입)`);
       seriesRefs.current.candle.setData(data);
     }
-  }, [data, seriesRefs.current.candle, chartType]);
+  }, [data]);
   
   // 차트 타입이 변경되면 차트 업데이트
   useEffect(() => {
     if (chartRef.current && seriesRefs.current.candle && data && data.length > 0) {
       console.log(`차트 타입 변경됨: ${chartType} - 차트 데이터 리셋 및 업데이트`);
+      
+      // 차트 타입 변경 시 모든 시리즈 데이터 리셋
+      seriesRefs.current.candle.setData([]);
+      if (seriesRefs.current.volume) seriesRefs.current.volume.setData([]);
+      if (seriesRefs.current.sixtyEMA) seriesRefs.current.sixtyEMA.setData([]);
+      if (seriesRefs.current.oneTwentyEMA) seriesRefs.current.oneTwentyEMA.setData([]);
+      if (seriesRefs.current.twoFortyEMA) seriesRefs.current.twoFortyEMA.setData([]);
+      if (seriesRefs.current.threeHundredSixtyEMA) seriesRefs.current.threeHundredSixtyEMA.setData([]);
+      if (seriesRefs.current.sixHundredEMA) seriesRefs.current.sixHundredEMA.setData([]);
+      if (seriesRefs.current.nineHundredEMA) seriesRefs.current.nineHundredEMA.setData([]);
+      
+      // 새 데이터 설정
+      seriesRefs.current.candle.setData(data);
+      
+      // 차트 영역 조정
       chartRef.current.timeScale().fitContent();
     }
-  }, [chartType]);
+  }, [chartType, data]);
 
   return (
     <div

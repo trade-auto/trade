@@ -91,6 +91,49 @@ export const useChartData = (
     console.log(`차트 타입이 변경되었습니다: ${chartType}`);
     // 이전 요청 취소
     ongoingRequestRef.current = false;
+    
+    // 실시간 API가 활성화되어 있다면 비활성화
+    if (isRealtimeAPIEnabled) {
+      console.log('차트 타입 변경으로 실시간 API를 비활성화합니다.');
+      setIsRealtimeAPIEnabled(false);
+    }
+    
+    // 타이머가 있다면 정리
+    if (timeoutRef.current) {
+      clearInterval(timeoutRef.current);
+      timeoutRef.current = null;
+      console.log('업데이트 타이머 정리 완료');
+    }
+    
+    // 데이터 초기화
+    setAllData([]);
+    // 캔들 시리즈 초기화
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.setData([]);
+    }
+    // 볼륨 시리즈 초기화
+    if (volumeSeriesRef.current) {
+      volumeSeriesRef.current.setData([]);
+    }
+    // 이동평균선 초기화
+    if (sixtyEMASeriesRef.current) sixtyEMASeriesRef.current.setData([]);
+    if (oneTwentyEMASeriesRef.current) oneTwentyEMASeriesRef.current.setData([]);
+    if (twoFortyEMASeriesRef.current) twoFortyEMASeriesRef.current.setData([]);
+    if (threeHundredSixtyEMASeriesRef.current) threeHundredSixtyEMASeriesRef.current.setData([]);
+    if (sixHundredEMASeriesRef.current) sixHundredEMASeriesRef.current.setData([]);
+    if (nineHundredEMASeriesRef.current) nineHundredEMASeriesRef.current.setData([]);
+    
+    // 마커 초기화
+    setMarkers([]);
+    
+    // 백테스트 결과 초기화
+    setBacktestResult(null);
+    
+    console.log(`차트 타입 변경으로 모든 데이터 초기화 완료. 새로운 타입(${chartType})의 데이터를 로드합니다.`);
+    
+    // 새로운 날짜 범위 설정 (선택적)
+    setDateRange(getInitialDateRange(chartType));
+    
     // 데이터 다시 로드
     loadData();
   }, [chartType]);
@@ -104,7 +147,6 @@ export const useChartData = (
     
     try {
       const endpoint = getChartEndpoint(chartType);
-      const allProcessedData: ExtendedCandlestickData[] = [];
       let currentTo = dateRange.endDate ? dateRange.endDate : new Date();
       const startDate = dateRange.startDate;
       
@@ -130,38 +172,60 @@ export const useChartData = (
       
       console.log(`예상 캔들 수: ${estimatedCandles}개, 총 일수: ${totalDays}일`);
       
-      const batchSize = 200;
-      const expectedBatches = Math.ceil(estimatedCandles / batchSize);
+      // 목표 캔들 수 설정
+      let targetCandles = 200; // 기본값
+      if (chartType.startsWith('minutes/')) {
+        const minutesInterval = parseInt(chartType.split('/')[1]);
+        if (minutesInterval === 5) {
+          targetCandles = 576; // 5분봉 576개
+        } else if (minutesInterval === 15) {
+          targetCandles = 672; // 15분봉 672개
+        }
+      }
+      
+      // API 요청 당 최대 캔들 수 제한 (업비트 API 제한)
+      const maxCandlesPerRequest = 200;
+      
+      // 필요한 API 요청 횟수 계산
+      const requestsNeeded = Math.ceil(targetCandles / maxCandlesPerRequest);
+      console.log(`목표 캔들 수: ${targetCandles}개, 필요한 API 요청 횟수: ${requestsNeeded}회`);
+      
+      let allProcessedData: ExtendedCandlestickData[] = [];
       let currentBatch = 0;
       
-      // 시작 날짜에 도달할 때까지 반복해서 데이터 가져오기
-      while (true) {
+      // 목표 캔들 수에 도달할 때까지 반복해서 데이터 가져오기
+      while (allProcessedData.length < targetCandles) {
         const to = currentTo.toISOString();
         
         // 진행률 업데이트
         currentBatch++;
-        setProgress(Math.min(30, (currentBatch / expectedBatches) * 30));
+        setProgress(Math.min(30, (currentBatch / requestsNeeded) * 30));
         
         // API URL 구성 - 차트 타입에 따라 다른 엔드포인트 사용
         let apiUrl = '';
         
         if (chartType.startsWith('seconds/')) {
           const unit = chartType.split('/')[1]; // 60 추출
-          apiUrl = `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&to=${to}&count=${batchSize}`;
+          apiUrl = `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&to=${to}&count=${maxCandlesPerRequest}`;
           console.log(`초봉 API 요청: ${apiUrl} (실제로는 1분봉 데이터 가져와서 변환)`);
         } else if (chartType.startsWith('minutes/')) {
           const unit = chartType.split('/')[1]; // 5 또는 15 추출
-          apiUrl = `https://api.upbit.com/v1/candles/minutes/${unit}?market=${symbol}&to=${to}&count=${batchSize}`;
+          apiUrl = `https://api.upbit.com/v1/candles/minutes/${unit}?market=${symbol}&to=${to}&count=${maxCandlesPerRequest}`;
           console.log(`${unit}분봉 API 요청: ${apiUrl}`);
         } else {
-          apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${batchSize}`;
+          apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${maxCandlesPerRequest}`;
           console.log(`기타 차트 API 요청: ${apiUrl}`);
         }
+        
+        console.log(`API URL: ${apiUrl} (차트 타입: ${chartType})`);
         
         const response = await fetch(apiUrl);
         
         if (!response.ok) {
-          throw new Error(`데이터 로딩 실패: HTTP ${response.status} - ${apiUrl}`);
+          const errorText = await response.text();
+          console.error(`데이터 로딩 실패: HTTP ${response.status} - ${apiUrl}`);
+          console.error(`에러 응답: ${errorText}`);
+          throw new Error(`데이터 로딩 실패: HTTP ${response.status} - ${errorText}`);
         }
         
         const data: UpbitCandle[] = await response.json();
@@ -189,6 +253,12 @@ export const useChartData = (
         );
         
         allProcessedData.push(...filteredData);
+        
+        // 목표 캔들 수에 도달했거나 더 많다면 중단
+        if (allProcessedData.length >= targetCandles) {
+          console.log(`목표 캔들 수(${targetCandles}개)에 도달했거나 초과했습니다(현재: ${allProcessedData.length}개). 데이터 로드를 중단합니다.`);
+          break;
+        }
         
         // 마지막 캔들의 시간으로 다음 요청의 기준 시간 설정
         const lastCandle = data[data.length - 1];

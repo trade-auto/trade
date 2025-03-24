@@ -88,11 +88,11 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       // 분봉: 기간 설정
       const minutes = parseInt(chartType.split('/')[1]);
       if (minutes === 5) {
-        // 5분봉: 최근 12시간 데이터
-        startDate = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        // 5분봉: 576개 캔들 데이터 (5분 × 576 = 2880분 = 48시간)
+        startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
       } else if (minutes === 15) {
-        // 15분봉: 최근 24시간 데이터
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        // 15분봉: 672개 캔들 데이터 (15분 × 672 = 10080분 = 168시간 = 7일)
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       } else {
         // 기본: 최근 8시간 데이터
         startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000);
@@ -112,12 +112,24 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     }
   }, [symbol, lastSymbol, chartType]);
   
-  // 데이터 로드 트리거
+  // 데이터 로드 트리거 - 날짜 범위 변경 시
   useEffect(() => {
-    // 모든 차트 타입에 대해 데이터 로드
     loadData();
-    console.log(`차트 타입 변경됨: ${chartType} - 데이터 새로 로드`);
-  }, [dateRange, loadData, chartType]);
+    console.log(`날짜 범위 변경됨: ${dateRange.startDate.toLocaleString()} - 데이터 새로 로드`);
+  }, [dateRange, loadData]);
+  
+  // 차트 타입 변경 시 별도의 데이터 로드 트리거
+  useEffect(() => {
+    if (chartType === 'minutes/5') {
+      console.log('5분봉 차트로 변경됨 - 목표: 576개 캔들 데이터 로드');
+    } else if (chartType === 'minutes/15') {
+      console.log('15분봉 차트로 변경됨 - 목표: 672개 캔들 데이터 로드');
+    } else if (chartType === 'seconds/60') {
+      console.log('초봉 차트로 변경됨 - 최근 2시간 데이터 로드');
+    }
+    
+    console.log(`차트 타입 변경됨: ${chartType} - CandlestickChartHooks에서 데이터 로드 처리 중`);
+  }, [chartType]);
   
   // 자동 업데이트는 초봉 차트에만 적용
   useEffect(() => {
@@ -195,7 +207,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
         </div>
         
         {/* 초봉 또는 분봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시 */}
-        {(chartType === 'seconds/60' || chartType === 'minutes/5') && (
+        {(chartType === 'seconds/60' || chartType === 'minutes/5' || chartType === 'minutes/15') && (
           <div className="flex flex-wrap gap-2 mb-2">
             <div className="p-2 bg-gray-700 rounded-lg flex items-center justify-between w-full">
               <div className="text-white font-bold">업데이트 모드</div>

@@ -44,20 +44,46 @@ export async function GET(request: Request) {
 
     const token = sign(payload, secret_key);
 
-    const response = await fetch(`${server_url}/v1/orders/open?${query}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    // 응답 타임아웃 추가 (10초)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API 요청 실패: ${response.status} - ${errorText}`);
+    try {
+      const response = await fetch(`${server_url}/v1/orders/open?${query}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Upbit API 오류 상태: ${response.status}, 응답: ${errorText}`);
+        
+        return NextResponse.json(
+          { error: `체결 대기 주문 조회 실패: ${response.status} - ${errorText.substring(0, 100)}` },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+      return NextResponse.json(data);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      if (fetchError.name === 'AbortError') {
+        console.error('Upbit API 요청 타임아웃');
+        return NextResponse.json(
+          { error: '체결 대기 주문 조회 요청 시간 초과' },
+          { status: 504 }
+        );
+      }
+      
+      throw fetchError;
     }
-
-    const data = await response.json();
-    return NextResponse.json(data);
   } catch (error: any) {
     console.error('Upbit API 오류:', error);
     return NextResponse.json(

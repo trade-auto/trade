@@ -25,10 +25,23 @@ export const getInitialDateRange = (type: string): DateRange => {
   
   if (type.startsWith('seconds/')) {
     // 초봉: 최근 2시간 데이터
-    startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 1시간 -> 2시간
-  } else if (type.startsWith('minutes/')) {
-    // 1분봉: 최근 2시간 데이터
     startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    console.log(`초봉 차트 - 시작 날짜 설정: ${startDate.toLocaleString('ko-KR')}`);
+  } else if (type.startsWith('minutes/')) {
+    // 분봉: 정확히 200개의 캔들을 가져오기 위한 설정
+    const minutesInterval = parseInt(type.split('/')[1]);
+    if (minutesInterval === 5) {
+      // 5분봉: 5분 × 200개 = 1000분 = 16시간 40분
+      startDate = new Date(now.getTime() - (5 * 200) * 60 * 1000);
+      console.log(`5분봉 200개 캔들 - 시작 날짜 설정: ${startDate.toLocaleString('ko-KR')}`);
+    } else if (minutesInterval === 15) {
+      // 15분봉: 15분 × 200개 = 3000분 = 50시간
+      startDate = new Date(now.getTime() - (15 * 200) * 60 * 1000);
+      console.log(`15분봉 200개 캔들 - 시작 날짜 설정: ${startDate.toLocaleString('ko-KR')}`);
+    } else {
+      // 기타 분봉: 기본 2시간 데이터
+      startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    }
   } else {
     // 일봉: 최근 1일 데이터
     startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);

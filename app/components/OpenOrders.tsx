@@ -21,7 +21,19 @@ export const OpenOrders = forwardRef(({ market, onSelectOrder }: OpenOrdersProps
       const data = await getOpenOrders(market);
       setOrders(data);
     } catch (error: any) {
-      setError(error.message);
+      console.error('체결 대기 주문 조회 오류:', error);
+      
+      // 더 친화적인 오류 메시지 표시
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('서버 연결에 실패')) {
+        setError('서버 연결에 실패했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도해주세요.');
+      } else if (error.message?.includes('시간 초과')) {
+        setError('서버 응답 시간이 초과되었습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.');
+      } else {
+        setError(error.message || '체결 대기 주문 조회 중 오류가 발생했습니다.');
+      }
+      
+      // 오류 상태에서는 빈 배열 설정
+      setOrders([]);
     } finally {
       setIsLoading(false);
     }
@@ -122,8 +134,17 @@ export const OpenOrders = forwardRef(({ market, onSelectOrder }: OpenOrdersProps
       </div>
 
       {error && (
-        <div className="bg-red-600 text-white p-4 rounded-lg mb-4">
-          {error}
+        <div className="bg-red-600 text-white p-4 rounded-lg mb-4 flex items-center justify-between">
+          <div>
+            <span className="font-bold">오류: </span>
+            {error}
+          </div>
+          <button 
+            onClick={loadOpenOrders} 
+            className="ml-4 px-3 py-1 bg-white text-red-600 rounded hover:bg-gray-200"
+          >
+            다시 시도
+          </button>
         </div>
       )}
 

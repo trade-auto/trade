@@ -154,20 +154,46 @@ export const getOrdersByIds = async (uuids: string[]): Promise<OrderResponse[]> 
 
 // 체결 대기 주문 조회 함수
 export const getOpenOrders = async (market: string): Promise<OrderResponse[]> => {
-  try {
-    const response = await fetch(`/api/orders/open?market=${market}`);
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || '체결 대기 주문 조회 실패');
-    }
+  let retries = 3; // 최대 3번 재시도
+  
+  while (retries > 0) {
+    try {
+      const response = await fetch(`/api/orders/open?market=${market}`, {
+        // 타임아웃 설정 추가
+        cache: 'no-store',
+        next: { revalidate: 0 }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '응답 형식 오류' }));
+        throw new Error(errorData.error || `체결 대기 주문 조회 실패: ${response.status}`);
+      }
 
-    const data = await response.json();
-    return data;
-  } catch (error: any) {
-    console.error('체결 대기 주문 조회 중 오류:', error);
-    throw new Error(`체결 대기 주문 조회 실패: ${error.message}`);
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      retries--;
+      
+      // 네트워크 오류 특별 처리
+      if (error.message === 'Failed to fetch' || !navigator.onLine) {
+        console.error(`체결 대기 주문 조회 실패 (재시도 남음: ${retries}):`, error);
+        
+        if (retries === 0) {
+          throw new Error('서버 연결에 실패했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도해주세요.');
+        }
+        
+        // 재시도 전 잠시 대기
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      
+      console.error('체결 대기 주문 조회 중 오류:', error);
+      throw new Error(`체결 대기 주문 조회 실패: ${error.message}`);
+    }
   }
+  
+  // 이 코드는 실행되지 않지만 TypeScript 오류를 방지하기 위해 추가
+  throw new Error('체결 대기 주문 조회 실패: 최대 재시도 횟수 초과');
 };
 
 // 종료된 주문 조회 함수
