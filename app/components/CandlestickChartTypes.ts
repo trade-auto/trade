@@ -19,6 +19,7 @@ export interface CandlestickChartProps {
   handleOrder?: (params: OrderParams) => Promise<void>;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onOrder?: (price: number, isMarketOrder: boolean) => void;
+  onChartTypeChange?: (type: string) => void;
 }
 
 export interface RealtimeUpdateStatus {

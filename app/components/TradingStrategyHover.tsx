@@ -26,7 +26,7 @@ const TradingStrategyHover: React.FC<TradingStrategyHoverProps> = ({
                   : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
               }`}
             >
-              {strategy === 'MACD' && 'MACD 전략'}
+             {strategy === 'MACD' && 'MACD 전략'} 
               {strategy === 'MA_CROSS' && 'MA 크로스'}
               {strategy === 'MA_CROSS_DEVIATION' && 'MA 이탈'}
               {strategy === 'SLOPE_FILTER' && '기울기필터4전략'}

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { CandlestickChartProps } from './CandlestickChartTypes';
 import { useChartData } from './CandlestickChartHooks';
 import { useCsvFunctions } from './CandlestickChartCSV';
@@ -23,6 +23,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     mode,
     handleOrder,
     onOrder,
+    onChartTypeChange: propsOnChartTypeChange,
   } = props;
   
   // 차트 데이터 및 기능 훅
@@ -83,6 +84,21 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
       console.log('초봉 차트 - 시작 날짜를 2시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
       setDateRange(prev => ({ ...prev, startDate }));
+    } else if (chartType.startsWith('minutes/')) {
+      // 분봉: 기간 설정
+      const minutes = parseInt(chartType.split('/')[1]);
+      if (minutes === 5) {
+        // 5분봉: 최근 12시간 데이터
+        startDate = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+      } else if (minutes === 15) {
+        // 15분봉: 최근 24시간 데이터
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      } else {
+        // 기본: 최근 8시간 데이터
+        startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000);
+      }
+      console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
+      setDateRange(prev => ({ ...prev, startDate }));
     }
   }, [chartType, setDateRange]);
   
@@ -96,26 +112,25 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     }
   }, [symbol, lastSymbol, chartType]);
   
-  // 자동 업데이트 타이머
+  // 데이터 로드 트리거
+  useEffect(() => {
+    // 모든 차트 타입에 대해 데이터 로드
+    loadData();
+    console.log(`차트 타입 변경됨: ${chartType} - 데이터 새로 로드`);
+  }, [dateRange, loadData, chartType]);
+  
+  // 자동 업데이트는 초봉 차트에만 적용
   useEffect(() => {
     if (chartType === 'seconds/60' && isAutoUpdate) {
       const updateInterval = 10000; // 10초
       
       const updateTimer = setInterval(() => {
-        const now = new Date();
-        setDateRange(prev => ({ ...prev, endDate: now }));
+        loadData();
       }, updateInterval);
       
       return () => clearInterval(updateTimer);
     }
-  }, [isAutoUpdate, chartType, setDateRange]);
-  
-  // 데이터 로드 트리거
-  useEffect(() => {
-    if (chartType === 'seconds/60' && isAutoUpdate) {
-      loadData();
-    }
-  }, [dateRange, loadData, isAutoUpdate, chartType]);
+  }, [isAutoUpdate, chartType, loadData]);
   
   // 백테스트 차트 초기화 핸들러
   const handleBacktestChartInit = (
@@ -179,8 +194,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           </div>
         </div>
         
-        {/* 초봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시 */}
-        {chartType === 'seconds/60' && (
+        {/* 초봉 또는 분봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시 */}
+        {(chartType === 'seconds/60' || chartType === 'minutes/5') && (
           <div className="flex flex-wrap gap-2 mb-2">
             <div className="p-2 bg-gray-700 rounded-lg flex items-center justify-between w-full">
               <div className="text-white font-bold">업데이트 모드</div>
@@ -236,6 +251,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           updateShowMA={updateShowMA}
           chartHeight={chartHeight}
           handleHeightChange={handleHeightChange}
+          chartType={chartType}
+          onChartTypeChange={propsOnChartTypeChange || (() => {})}
         />
         
         {/* 차트 컨테이너 */}

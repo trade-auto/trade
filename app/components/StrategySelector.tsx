@@ -1,102 +1,82 @@
 'use client';
 
-import { TradeStrategy } from '../types/trading';
+import React from 'react';
+import useUpbitStore from '../store/useUpbitStore';
+import { TradeStrategy } from '../strategies/types';
 
 interface StrategySelectorProps {
-  tradeStrategy: TradeStrategy;
-  handleStrategyChange: (strategy: TradeStrategy) => void;
-  disabled: boolean;
+  tradeStrategy?: TradeStrategy;
+  handleStrategyChange?: (strategy: TradeStrategy) => void;
+  disabled?: boolean;
 }
 
-export const StrategySelector: React.FC<StrategySelectorProps> = ({
-  tradeStrategy,
-  handleStrategyChange,
-  disabled
+const StrategySelector: React.FC<StrategySelectorProps> = ({ 
+  tradeStrategy: propTradeStrategy, 
+  handleStrategyChange, 
+  disabled = false 
 }) => {
+  const { tradeStrategy: storeTradeStrategy, updateTradeStrategy } = useUpbitStore();
+  
+  // props에서 가져온 값 또는 store에서 가져온 값 사용
+  const currentStrategy = propTradeStrategy || storeTradeStrategy;
+  
+  // 전략 변경 핸들러
+  const onStrategyChange = (strategy: TradeStrategy) => {
+    // props의 핸들러가 있으면 props의 핸들러 호출
+    if (handleStrategyChange) {
+      handleStrategyChange(strategy);
+    } else {
+      // 없으면 store의 업데이트 함수 호출
+      updateTradeStrategy(strategy);
+    }
+  };
+
+  const strategies = [
+    { id: 'MA_CROSS', label: 'MA 크로스' },
+    { id: 'MA_CROSS_DEVIATION', label: 'MA 이탈' },
+    { id: 'MACD', label: 'MACD전략' },
+    { id: 'SLOPE_FILTER', label: '기울기필터4전략' },
+  ];
+
   return (
-    <div className="flex flex-col gap-2 bg-gray-700 p-4 rounded-lg">
-      <h3 className="text-white font-bold mb-2">매매 전략 선택</h3>
-      <div className="grid grid-cols-1 gap-2">
-        <label className={`flex items-center p-3 rounded cursor-pointer ${
-          tradeStrategy === 'BOLLINGER' 
-            ? 'bg-blue-600 ring-2 ring-white' 
-            : 'bg-gray-600 hover:bg-gray-700'
-        }`}>
-          <input
-            type="radio"
-            name="tradeStrategy"
-            value="BOLLINGER"
-            checked={tradeStrategy === 'BOLLINGER'}
-            onChange={() => handleStrategyChange('BOLLINGER')}
-            disabled={disabled}
-            className="hidden"
-          />
-          <div className="flex flex-col">
-            <span className="text-white font-medium">MACD 밴드 전략</span>
-            <span className="text-gray-300 text-sm">20일 기준, 2 표준편차 상/하단 돌파 시 매매</span>
-          </div>
-        </label>
-
-        <label className={`flex items-center p-3 rounded cursor-pointer ${
-          tradeStrategy === 'MA_CROSS' 
-            ? 'bg-blue-600 ring-2 ring-white' 
-            : 'bg-gray-600 hover:bg-gray-700'
-        }`}>
-          <input
-            type="radio"
-            name="tradeStrategy"
-            value="MA_CROSS"
-            checked={tradeStrategy === 'MA_CROSS'}
-            onChange={() => handleStrategyChange('MA_CROSS')}
-            disabled={disabled}
-            className="hidden"
-          />
-          <div className="flex flex-col">
-            <span className="text-white font-medium">이동평균선 교차 전략</span>
-            <span className="text-gray-300 text-sm">30MA/40MA, 40MA/60MA 교차 시 매매</span>
-          </div>
-        </label>
-
-        <label className={`flex items-center p-3 rounded cursor-pointer ${
-          tradeStrategy === 'MA_CROSS_DEVIATION' 
-            ? 'bg-blue-600 ring-2 ring-white' 
-            : 'bg-gray-600 hover:bg-gray-700'
-        }`}>
-          <input
-            type="radio"
-            name="tradeStrategy"
-            value="MA_CROSS_DEVIATION"
-            checked={tradeStrategy === 'MA_CROSS_DEVIATION'}
-            onChange={() => handleStrategyChange('MA_CROSS_DEVIATION')}
-            disabled={disabled}
-            className="hidden"
-          />
-          <div className="flex flex-col">
-            <span className="text-white font-medium">이격도 MA 교차 전략</span>
-            <span className="text-gray-300 text-sm">60MA/120MA 이격도 2% 이상 시 매매</span>
-          </div>
-        </label>
-
-        <label className={`flex items-center p-3 rounded cursor-pointer ${
-          tradeStrategy === 'SLOPE_FILTER' 
-            ? 'bg-blue-600 ring-2 ring-white' 
-            : 'bg-gray-600 hover:bg-gray-700'
-        }`}>
-          <input
-            type="radio"
-            name="tradeStrategy"
-            value="SLOPE_FILTER"
-            checked={tradeStrategy === 'SLOPE_FILTER'}
-            onChange={() => handleStrategyChange('SLOPE_FILTER')}
-            disabled={disabled}
-            className="hidden"
-          />
-          <div className="flex flex-col">
-            <span className="text-white font-medium">기울기 필터 전략</span>
-            <span className="text-gray-300 text-sm">RSI, MACD, MA 기울기 복합 분석</span>
-          </div>
-        </label>
+    <div className="p-4 bg-gray-800 rounded-lg mb-6">
+      <h3 className="text-xl font-bold text-white mb-4">매매 전략 선택</h3>
+      <div className="grid grid-cols-2 gap-3">
+        {strategies.map((strategy) => (
+          <label
+            key={strategy.id}
+            className={`relative p-4 rounded-lg flex items-center space-x-2 cursor-pointer transition ${
+              disabled ? 'opacity-60 cursor-not-allowed ' : ''
+            }${
+              currentStrategy === strategy.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <input
+              type="radio"
+              name="strategy"
+              value={strategy.id}
+              checked={currentStrategy === strategy.id}
+              onChange={() => !disabled && onStrategyChange(strategy.id as TradeStrategy)}
+              disabled={disabled}
+              className="opacity-0 absolute"
+            />
+            <span className={`w-4 h-4 border-2 rounded-full flex-shrink-0 ${
+              currentStrategy === strategy.id 
+                ? 'border-white bg-white' 
+                : 'border-gray-400'
+            }`}>
+              {currentStrategy === strategy.id && (
+                <span className="block w-2 h-2 mt-0.5 ml-0.5 rounded-full bg-blue-600"></span>
+              )}
+            </span>
+            <span>{strategy.label}</span>
+          </label>
+        ))}
       </div>
     </div>
   );
-}; 
+};
+
+export default StrategySelector; 

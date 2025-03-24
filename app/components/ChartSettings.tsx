@@ -7,13 +7,17 @@ interface ChartSettingsProps {
   updateShowMA: (newShowMA: MASettings) => void;
   chartHeight: number;
   handleHeightChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  chartType: string;
+  onChartTypeChange: (type: string) => void;
 }
 
 const ChartSettings: React.FC<ChartSettingsProps> = ({
   showMA,
   updateShowMA,
   chartHeight,
-  handleHeightChange
+  handleHeightChange,
+  chartType,
+  onChartTypeChange
 }) => {
   // 스토어에서 5번째 조건 상태와 토글 함수 가져오기
   const { useFifthCondition, toggleFifthCondition } = useUpbitStore();
@@ -24,6 +28,13 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
     updatedShowMA[key] = !updatedShowMA[key];
     updateShowMA(updatedShowMA);
   };
+
+  // 차트 인터벌 정의
+  const CHART_INTERVALS = [
+    { value: 'seconds/60', label: '초봉' },
+    { value: 'minutes/5', label: '5분봉' },
+    { value: 'minutes/15', label: '15분봉' },
+  ];
 
   return (
     <div className="mb-4 space-y-4">
@@ -104,6 +115,26 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
             className="flex-1"
           />
           <div className="text-white font-bold w-20 text-center">{chartHeight}px</div>
+        </div>
+      </div>
+
+      {/* 차트 시간 단위 선택 패널 */}
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm mb-2">차트 시간 단위</div>
+        <div className="flex flex-wrap gap-2">
+          {CHART_INTERVALS.map((interval) => (
+            <button
+              key={interval.value}
+              onClick={() => onChartTypeChange(interval.value)}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors duration-150 ${
+                chartType === interval.value
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              {interval.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

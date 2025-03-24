@@ -69,37 +69,38 @@ export const useChartData = (
   const switchToRealtimeAfterUpdate = useCallback(() => {
     console.log('실시간 업데이트로 전환 시작...');
     
-    // 자동 업데이트 중지 - 콜백 사용하여 확실하게 상태 변경 적용
-    setIsAutoUpdate(false);
-    
-    // 상태 업데이트가 완료된 후 실시간 API 활성화 (더 긴 지연 시간 사용)
+    // 일정 시간 후 실시간 API 활성화
     setTimeout(() => {
-      console.log('자동 업데이트 중지 확인:', isAutoUpdate ? '아직 활성화됨' : '비활성화됨');
+      // 설정된 타임아웃 정리
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       
-      // 두 번째 단계: 실시간 API 활성화
-      console.log('실시간 API 활성화 중...');
-      setIsRealtimeAPIEnabled(true);
-      
-      // 변경 사항 확인을 위한 추가 로그
-      setTimeout(() => {
-        console.log('전환 완료 상태 확인:');
-        console.log('- 자동 업데이트:', isAutoUpdate ? '활성화됨 (문제!)' : '비활성화됨 (정상)');
-        console.log('- 실시간 API:', isRealtimeAPIEnabled ? '활성화됨 (정상)' : '비활성화됨 (문제!)');
-        
-        // 전환이 제대로 되지 않았으면 다시 시도
+      timeoutRef.current = setTimeout(() => {
         if (!isRealtimeAPIEnabled) {
           console.log('⚠️ 실시간 API가 활성화되지 않았습니다. 다시 시도합니다.');
-          setIsRealtimeAPIEnabled(true);
+      setIsRealtimeAPIEnabled(true);
         }
-      }, 500);
+    }, 500);
     }, 1500);
   }, [isAutoUpdate, isRealtimeAPIEnabled]);
+
+  // 차트 타입이 변경되면 데이터 다시 로드
+  useEffect(() => {
+    console.log(`차트 타입이 변경되었습니다: ${chartType}`);
+    // 이전 요청 취소
+    ongoingRequestRef.current = false;
+    // 데이터 다시 로드
+    loadData();
+  }, [chartType]);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
     if (ongoingRequestRef.current) return;
     
     ongoingRequestRef.current = true;
+    console.log(`데이터 로드 시작: 차트타입=${chartType}, 기간=${dateRange.startDate.toLocaleString()} ~ ${dateRange.endDate?.toLocaleString() || '현재'}`);
     
     try {
       const endpoint = getChartEndpoint(chartType);
@@ -109,10 +110,25 @@ export const useChartData = (
       
       // 필요한 데이터 개수 계산
       const totalDays = Math.ceil((currentTo.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      const estimatedCandles = chartType.startsWith('minutes/') ? totalDays * 24 * 60 / parseInt(chartType.split('/')[1]) :
-                             chartType === 'days' ? totalDays :
-                             chartType === 'weeks' ? Math.ceil(totalDays / 7) :
-                             Math.ceil(totalDays / 30);
+      let estimatedCandles = 0;
+      
+      if (chartType.startsWith('seconds/')) {
+        // 초봉 차트는 하루에 24시간 * 60분 * 60초 / (초 간격)
+        const secondsInterval = parseInt(chartType.split('/')[1]);
+        estimatedCandles = totalDays * 24 * 60 * 60 / secondsInterval;
+      } else if (chartType.startsWith('minutes/')) {
+        // 분봉 차트는 하루에 24시간 * 60분 / (분 간격)
+        const minutesInterval = parseInt(chartType.split('/')[1]);
+        estimatedCandles = totalDays * 24 * 60 / minutesInterval;
+      } else if (chartType === 'days') {
+        estimatedCandles = totalDays;
+      } else if (chartType === 'weeks') {
+        estimatedCandles = Math.ceil(totalDays / 7);
+      } else {
+        estimatedCandles = Math.ceil(totalDays / 30);
+      }
+      
+      console.log(`예상 캔들 수: ${estimatedCandles}개, 총 일수: ${totalDays}일`);
       
       const batchSize = 200;
       const expectedBatches = Math.ceil(estimatedCandles / batchSize);
@@ -126,17 +142,36 @@ export const useChartData = (
         currentBatch++;
         setProgress(Math.min(30, (currentBatch / expectedBatches) * 30));
         
-        const response = await fetch(
-          `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${batchSize}`
-        );
+        // API URL 구성 - 차트 타입에 따라 다른 엔드포인트 사용
+        let apiUrl = '';
+        
+        if (chartType.startsWith('seconds/')) {
+          const unit = chartType.split('/')[1]; // 60 추출
+          apiUrl = `https://api.upbit.com/v1/candles/minutes/1?market=${symbol}&to=${to}&count=${batchSize}`;
+          console.log(`초봉 API 요청: ${apiUrl} (실제로는 1분봉 데이터 가져와서 변환)`);
+        } else if (chartType.startsWith('minutes/')) {
+          const unit = chartType.split('/')[1]; // 5 또는 15 추출
+          apiUrl = `https://api.upbit.com/v1/candles/minutes/${unit}?market=${symbol}&to=${to}&count=${batchSize}`;
+          console.log(`${unit}분봉 API 요청: ${apiUrl}`);
+        } else {
+          apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${batchSize}`;
+          console.log(`기타 차트 API 요청: ${apiUrl}`);
+        }
+        
+        const response = await fetch(apiUrl);
         
         if (!response.ok) {
-          throw new Error('데이터 로딩 실패');
+          throw new Error(`데이터 로딩 실패: HTTP ${response.status} - ${apiUrl}`);
         }
         
         const data: UpbitCandle[] = await response.json();
         
-        if (!data || data.length === 0) break;
+        if (!data || data.length === 0) {
+          console.log('더 이상 불러올 데이터가 없습니다.');
+          break;
+        }
+        
+        console.log(`데이터 ${data.length}개 수신 완료. 첫번째 캔들 시간: ${data[0].candle_date_time_kst}, 마지막 캔들 시간: ${data[data.length-1].candle_date_time_kst}`);
         
         // 데이터 처리
         const processedData = data.map((candle: UpbitCandle) => ({
@@ -160,10 +195,20 @@ export const useChartData = (
         currentTo = new Date(lastCandle.candle_date_time_kst);
         
         // 시작 날짜에 도달했거나 지났으면 중단
-        if (currentTo <= startDate) break;
+        if (currentTo <= startDate) {
+          console.log('시작 날짜에 도달하여 데이터 로드를 중단합니다.');
+          break;
+        }
         
         // API 호출 제한을 위한 딜레이
         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (allProcessedData.length === 0) {
+        console.error('로드된 데이터가 없습니다. 날짜 범위를 확인하세요.');
+        ongoingRequestRef.current = false;
+        setProgress(0);
+        return;
       }
       
       // 한 번만 정렬
@@ -174,6 +219,7 @@ export const useChartData = (
         return 0;
       });
       
+      console.log(`총 ${allProcessedData.length}개 캔들 데이터 처리 완료`);
       setProgress(50);
       
       // 차트 업데이트를 위한 데이터 준비
@@ -245,31 +291,31 @@ export const useChartData = (
           
           // 긴 기간의 이평선은 데이터가 충분할 때만 설정
           if (ema360Data.length > 0) {
-            threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
+          threeHundredSixtyEMASeriesRef.current.setData(ema360Data);
           }
           
           if (ema600Data.length > 0) {
-            sixHundredEMASeriesRef.current.setData(ema600Data);
+          sixHundredEMASeriesRef.current.setData(ema600Data);
           }
           
           if (ema900Data.length > 0) {
-            nineHundredEMASeriesRef.current.setData(ema900Data);
+          nineHundredEMASeriesRef.current.setData(ema900Data);
           }
           
           // 시리즈 가시성 설정
           console.log('이동평균선 가시성 설정: ', showMA);
           if (sixtyEMASeriesRef.current) {
-            sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
+          sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
             console.log('60MA 가시성 설정:', showMA.sixty);
           }
           
           if (oneTwentyEMASeriesRef.current) {
-            oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
+          oneTwentyEMASeriesRef.current.applyOptions({ visible: showMA.oneTwenty });
             console.log('120MA 가시성 설정:', showMA.oneTwenty);
           }
           
           if (twoFortyEMASeriesRef.current) {
-            twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
+          twoFortyEMASeriesRef.current.applyOptions({ visible: showMA.twoForty });
             console.log('- 240MA 업데이트:', ema240Data.length > 0 ? `첫번째: ${ema240Data[0].value.toFixed(2)}, 마지막: ${ema240Data[ema240Data.length-1].value.toFixed(2)}` : '없음');
             
             // 240MA 현재 데이터 확인
@@ -278,71 +324,71 @@ export const useChartData = (
           }
           
           if (threeHundredSixtyEMASeriesRef.current) {
-            threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
+          threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: showMA.threeHundredSixty });
             console.log('360MA 가시성 설정:', showMA.threeHundredSixty);
           }
           
           if (sixHundredEMASeriesRef.current) {
-            sixHundredEMASeriesRef.current.applyOptions({ visible: showMA.sixHundred });
+          sixHundredEMASeriesRef.current.applyOptions({ visible: showMA.sixHundred });
             console.log('600MA 가시성 설정:', showMA.sixHundred);
           }
           
           if (nineHundredEMASeriesRef.current) {
-            nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
+          nineHundredEMASeriesRef.current.applyOptions({ visible: showMA.nineHundred });
             console.log('900MA 가시성 설정:', showMA.nineHundred);
-          }
+        }
           
           console.log('이동평균선 설정 완료');
-          
-          setProgress(85);
-          
-          // 매매 신호 분석 및 마커 생성
-          const selectedStrategy = useUpbitStore.getState().strategies[useUpbitStore.getState().tradeStrategy];
-          const analysisResult = selectedStrategy.analyze(allProcessedData);
-          const signals = analysisResult.signals
-            .filter(signal => signal.position !== null)
-            .map(signal => ({
-              ...signal,
-              time: signal.time as unknown as Time,
-              position: signal.position as 'buy' | 'sell',
-              metadata: signal.metadata ? {
-                ...signal.metadata,
-                ma60: signal.metadata.ma60 || 0,
-                ma120: signal.metadata.ma120 || 0,
-                ma240: signal.metadata.ma240 || 0,
-                ma900: signal.metadata.ma900 || 0,
-                upperBand: signal.metadata.upperBand || 0,
-                lowerBand: signal.metadata.lowerBand || 0,
-                deviation: signal.metadata.deviation || 0,
-                isAbove900MA: signal.metadata.isAbove900MA || false
-              } : undefined
-            }));
-          
-          // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
-          const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
-          
-          // 로그에 신호 수 출력
-          console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
-          console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
-          
+        
+        setProgress(85);
+        
+        // 매매 신호 분석 및 마커 생성
+        const selectedStrategy = useUpbitStore.getState().strategies[useUpbitStore.getState().tradeStrategy];
+        const analysisResult = selectedStrategy.analyze(allProcessedData);
+        const signals = analysisResult.signals
+          .filter(signal => signal.position !== null)
+          .map(signal => ({
+            ...signal,
+            time: signal.time as unknown as Time,
+            position: signal.position as 'buy' | 'sell',
+            metadata: signal.metadata ? {
+              ...signal.metadata,
+              ma60: signal.metadata.ma60 || 0,
+              ma120: signal.metadata.ma120 || 0,
+              ma240: signal.metadata.ma240 || 0,
+              ma900: signal.metadata.ma900 || 0,
+              upperBand: signal.metadata.upperBand || 0,
+              lowerBand: signal.metadata.lowerBand || 0,
+              deviation: signal.metadata.deviation || 0,
+              isAbove900MA: signal.metadata.isAbove900MA || false
+            } : undefined
+          }));
+        
+        // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
+        const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
+        
+        // 로그에 신호 수 출력
+        console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
+        console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
+        
           const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);  
-          // 매수/매도 포인트 계산
-          setMarkers(strategyMarkers);
-          
-          // 백테스트 결과 계산 (전체 신호 사용)
-          const backtestResult = calculateBacktestResult(allProcessedData, signals, mode || 'test');
-          setBacktestResult(backtestResult);
-          
-          // 현재 가격 설정
-          if (allProcessedData.length > 0) {
-            const lastCandle = allProcessedData[allProcessedData.length - 1];
-            setChartPrice(lastCandle.close);
-          }
-          
-          // 타임스케일 피팅
-          if (chartRef.current) {
-            chartRef.current.timeScale().fitContent();
-          }
+        // 매수/매도 포인트 계산
+        setMarkers(strategyMarkers);
+        
+        // 백테스트 결과 계산 (전체 신호 사용)
+        const backtestResult = calculateBacktestResult(allProcessedData, signals, mode || 'test');
+        setBacktestResult(backtestResult);
+        
+        // 현재 가격 설정
+        if (allProcessedData.length > 0) {
+          const lastCandle = allProcessedData[allProcessedData.length - 1];
+          setChartPrice(lastCandle.close);
+        }
+        
+        // 타임스케일 피팅
+        if (chartRef.current) {
+          chartRef.current.timeScale().fitContent();
+        }
         } else {
           console.error('이동평균선 시리즈 참조가 유효하지 않습니다.');
         }
@@ -397,8 +443,8 @@ export const useChartData = (
         // 데이터가 충분한지 확인 (최소 100개 이상)
         if (allProcessedData.length >= 100) {
           console.log('✅ 데이터가 충분합니다. 실시간 업데이트로 전환합니다.');
-          // 자동 업데이트에서 실시간 업데이트로 전환
-          switchToRealtimeAfterUpdate();
+        // 자동 업데이트에서 실시간 업데이트로 전환
+        switchToRealtimeAfterUpdate();
         } else {
           console.log('❌ 데이터가 부족합니다. 더 많은 데이터를 로드한 후 다시 시도합니다.');
         }
@@ -417,12 +463,11 @@ export const useChartData = (
       }
       
     } catch (error) {
-      console.error('데이터 로드 오류:', error);
+      console.error('차트 데이터 로드 중 오류 발생:', error);
     } finally {
-      setProgress(100);
       ongoingRequestRef.current = false;
     }
-  }, [dateRange, symbol, chartType, showMA, isAutoUpdate, switchToRealtimeAfterUpdate, mode]);
+  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress]);
 
   // 차트 초기화 콜백
   const handleChartReady = useCallback((
@@ -687,7 +732,7 @@ export const useChartData = (
         console.log('- 900MA 업데이트:', ma900.value.toFixed(2), showMA.nineHundred ? '(표시)' : '(숨김)');
       } else if (data.length >= 900) {
         console.log('- 900MA 업데이트 실패:', ma900 ? '시리즈 참조 없음' : '계산 결과 없음');
-      } else {
+          } else {
         console.log('- 900MA 업데이트 건너뜀: 데이터 부족 (필요: 900, 현재:', data.length, ')');
       }
       
@@ -740,9 +785,15 @@ export const useChartData = (
       // API 호출 시작 시간 기록
       const apiStartTime = Date.now();
       
-      const response = await fetch(
-        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=2`
-      );
+      // minutes/5, minutes/15 등의 경우 unit 파라미터를 추가
+      let apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=2`;
+      if (chartType.startsWith('minutes/')) {
+        const unit = chartType.split('/')[1]; // 5 또는 15 추출
+        apiUrl = `https://api.upbit.com/v1/candles/minutes/${unit}?market=${symbol}&to=${to}&count=2`;
+        console.log(`분봉 자동 업데이트 API 요청: ${apiUrl}`);
+      }
+      
+      const response = await fetch(apiUrl);
       
       // API 호출 소요 시간 계산
       const apiTime = Date.now() - apiStartTime;
@@ -1000,9 +1051,15 @@ export const useChartData = (
       
       console.log(`자동 업데이트: ${countToFetch}개의 데이터 요청 중...`);
       
-      const response = await fetch(
-        `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${countToFetch}`
-      );
+      // minutes/5, minutes/15 등의 경우 unit 파라미터를 추가
+      let apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${countToFetch}`;
+      if (chartType.startsWith('minutes/')) {
+        const unit = chartType.split('/')[1]; // 5 또는 15 추출
+        apiUrl = `https://api.upbit.com/v1/candles/minutes/${unit}?market=${symbol}&to=${to}&count=${countToFetch}`;
+        console.log(`분봉 자동 업데이트 API 요청: ${apiUrl}`);
+      }
+      
+      const response = await fetch(apiUrl);
       
       if (!response.ok) {
         throw new Error('자동 업데이트 데이터 로딩 실패');
@@ -1170,7 +1227,7 @@ export const useChartData = (
       console.log(`전략이 ${currentStrategy}로 변경되어 데이터를 다시 분석합니다.`);
       console.log(`분석할 데이터 크기: ${allData.length}개 캔들`);
       
-      if (currentStrategy === 'MACD') {
+      if (currentStrategy === 'MACD' as any) {
         console.log('MACD 전략은 최소 35개의 캔들이 필요합니다.');
       }
       
@@ -1265,4 +1322,4 @@ export const useChartData = (
     handleRealtimeAPIToggle,
     updateRealtimeData
   };
-};
+}; 

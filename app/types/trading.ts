@@ -1,6 +1,6 @@
 import { Time, CandlestickData } from 'lightweight-charts';
 
-export type TradeStrategy = 'BOLLINGER' | 'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+export type TradeStrategy = 'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
 
 export interface OrderParams {
   market: string;

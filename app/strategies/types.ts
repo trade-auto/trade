@@ -1,7 +1,7 @@
 import { CandlestickData, Time } from 'lightweight-charts';
 
 // 전략 유형 정의
-export type TradeStrategy =   'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' ;
+export type TradeStrategy = 'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' ;
 
 // 포지션 유형 정의
 export type PositionType = 'buy' | 'sell' | null;
@@ -192,8 +192,8 @@ export interface TradingStrategy {
   visualizeStrategy?: (data: CandlestickData<Time>[], trades: Trade[]) => Record<string, any[]>;
 }
 
-// 볼린저 전략 인터페이스 (롱 포지션만 사용)
-export interface BollingerStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'analyzeExit'> {
+// MACD 전략 인터페이스 (롱 포지션만 사용)
+export interface MacdStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'analyzeExit'> {
   analyzeEntry?: (data: CandlestickData<Time>[], index: number) => 'buy' | 'nobuyfrequpdown' | null;
   analyzeExit?: (data: CandlestickData<Time>[], index: number, position: 'buy', entryPrice: number) => boolean;
   isUptrend?: (data: CandlestickData<Time>[], index: number, checkBars?: number) => boolean;

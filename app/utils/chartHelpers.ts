@@ -136,6 +136,11 @@ export const getChartEndpoint = (type: string) => {
   if (type.startsWith('seconds/')) {
     return 'seconds'; // 초봉 API 엔드포인트
   }
+  if (type.startsWith('minutes/')) {
+    // minutes/5 또는 minutes/15와 같은 형식인 경우
+    // minutes/5 -> 'minutes'로 변환 (단, 파라미터로 5를 전달)
+    return 'minutes';
+  }
   const minutes = parseInt(type);
   if (minutes <= 240) { // 1분봉, 3분봉, 일봉(240분)
     return `minutes/${type}`;

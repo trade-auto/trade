@@ -22,12 +22,20 @@ const SYMBOLS = [
   { symbol: 'KRW-AUCTION', name: '옥션' }
 ];
 
+// 사용 가능한 차트 인터벌
+const CHART_INTERVALS = [
+  { value: 'seconds/60', label: '초봉' },
+  { value: 'minutes/5', label: '5분봉' },
+  { value: 'minutes/15', label: '15분봉' },
+];
+
 export default function OrdersPage() {
   const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<'live' | 'test'>('test');
   const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
   const [isClient, setIsClient] = useState(false);
+  const [selectedInterval, setSelectedInterval] = useState<string>('seconds/60');
   const openOrdersRef = useRef<{ loadOpenOrders?: () => void }>({});
   const [currentPrice, setCurrentPrice] = useState<number>(3850);
   const [orderQuantity, setOrderQuantity] = useState<number>(12.9870);
@@ -247,18 +255,22 @@ export default function OrdersPage() {
 
         {/* 심볼 선택 */}
         <div className="mb-8">
-          <label className="text-gray-400 block mb-2">코인 선택</label>
-          <select 
-            value={selectedSymbol}
-            onChange={(e) => handleSymbolChange(e.target.value)}
-            className="bg-gray-800 text-white p-2 rounded-lg w-48"
-          >
-            {SYMBOLS.map(({ symbol, name }) => (
-              <option key={symbol} value={symbol}>
-                {name} ({symbol.replace('KRW-', '')})
-              </option>
+          <h2 className="text-xl font-bold text-white mb-4">거래소 선택</h2>
+          <div className="flex flex-wrap gap-2">
+            {SYMBOLS.map((item) => (
+              <button
+                key={item.symbol}
+                onClick={() => setSelectedSymbol(item.symbol)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors duration-150 ${
+                  selectedSymbol === item.symbol
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                {item.name}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
 
         {/* 주문하기 섹션 */}
@@ -353,12 +365,14 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* 초봉 차트 섹션 */}
+        {/* 차트 섹션 */}
         <div className="mb-8">
-          <h2 className="text-xl font-bold text-white mb-4">실시간 초봉 차트</h2>
+          <h2 className="text-xl font-bold text-white mb-4">
+            {selectedInterval === 'seconds/60' ? '실시간 초봉 차트' : selectedInterval === 'minutes/5' ? '실시간 5분봉 차트' : '실시간 15분봉 차트'}
+          </h2>
           <CandlestickChart 
             symbol={selectedSymbol} 
-            chartType="seconds/60"
+            chartType={selectedInterval}
             initialAutoUpdate={true}
             mode={mode}
             handleOrder={async (params: OrderParams) => {
@@ -372,6 +386,7 @@ export default function OrdersPage() {
                 console.error('handleAutomaticTrade 실행 실패:', error);
               }
             }}
+            onChartTypeChange={(type) => setSelectedInterval(type)}
           />
         </div>
 

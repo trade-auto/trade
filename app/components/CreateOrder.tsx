@@ -4,7 +4,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { getCurrentPrice, get3SecMA } from '../api/upbitOrder';
 import useUpbitStore from '../store/useUpbitStore';
 import { OrderForm } from './OrderForm';
-import { StrategySelector } from './StrategySelector';
+import StrategySelector from './StrategySelector';
 import { TradeHistory } from './TradeHistory';
 import { formatElapsedTime, calculateTotalProfit } from '../utils/formatters';
 import { getTradeSignal, calculateOrderVolume } from '../utils/strategies';

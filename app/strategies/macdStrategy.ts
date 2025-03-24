@@ -85,7 +85,7 @@ function analyzeEntryWithMACD(data: CandlestickData<Time>[], index: number): 'bu
     const prevHistogram = histogram[histogram.length - 2];
     
     // MACD 크로스오버 확인 (골든 크로스)
-    const isGoldenCross = prevHistogram <= 0 && currentHistogram > 0;
+    const isGoldenCrossEntry = prevHistogram <= 0 && currentHistogram > 0;
     
     // 시장 데이터 (고정값)
     const market = 'KRW-BTC';
@@ -97,7 +97,7 @@ function analyzeEntryWithMACD(data: CandlestickData<Time>[], index: number): 'bu
     getTradeVolume(market, 100).catch((err: Error) => console.error('거래량 업데이트 실패:', err));
     
     // 매수 신호 확인
-    if (isGoldenCross) {
+    if (isGoldenCrossEntry) {
       console.log('✅ MACD 골든 크로스 발생 → 매수 신호');
       
       // 추가 확인: 거래량 우세 확인
@@ -252,19 +252,19 @@ const macdStrategy = {
       buySellRatio: volumeData.buySellRatio
     };
     
-    console.log(`[MACD 지표] MACD: ${currentMacdLine.toFixed(6)}, 시그널: ${currentSignalLine.toFixed(6)}, 히스토그램: ${currentHistogram.toFixed(6)}`);
+    console.log(`[MACD 지표] MACD: ${currentMacdLine !== undefined ? currentMacdLine.toFixed(6) : 'N/A'}, 시그널: ${currentSignalLine !== undefined ? currentSignalLine.toFixed(6) : 'N/A'}, 히스토그램: ${currentHistogram !== undefined ? currentHistogram.toFixed(6) : 'N/A'}`);
     console.log(`[거래량 지표] 매수: ${volumeData.buyVolume.toFixed(4)}, 매도: ${volumeData.sellVolume.toFixed(4)}, 비율: ${volumeData.buySellRatio.toFixed(2)}`);
       
     // 매수 조건 확인 상태 표시
-    const isGoldenCross = histogram[histogram.length - 2] <= 0 && currentHistogram > 0;
-    const isDeadCross = histogram[histogram.length - 2] >= 0 && currentHistogram < 0;
+    const isGoldenCrossSignal = histogram.length >= 2 && histogram[histogram.length - 2] <= 0 && currentHistogram > 0;
+    const isDeadCross = histogram.length >= 2 && histogram[histogram.length - 2] >= 0 && currentHistogram < 0;
     const hasBuyVolumeAdvantage = volumeData.buySellRatio > 1.0;
       
     console.log('\n=== 매수 조건 체크 ===');
-    console.log(`조건 1 (MACD 골든 크로스): ${isGoldenCross ? '✅' : '❌'}`);
+    console.log(`조건 1 (MACD 골든 크로스): ${isGoldenCrossSignal ? '✅' : '❌'}`);
     console.log(`조건 2 (매수 거래량 우세): ${hasBuyVolumeAdvantage ? '✅' : '❌'} (${volumeData.buySellRatio.toFixed(2)})`);
     
-    if (isGoldenCross) {
+    if (isGoldenCrossSignal) {
       console.log('✅ MACD 골든 크로스 발생: 매수 신호');
     } else if (isDeadCross) {
       console.log('❌ MACD 데드 크로스 발생: 매도 신호');
@@ -487,16 +487,17 @@ const macdStrategy = {
         const currentSignalLine = signalLine[signalLine.length - 1];
         const currentHistogram = histogram[histogram.length - 1];
         
-        console.log(`MACD: ${currentMacdLine.toFixed(6)}`);
-        console.log(`시그널: ${currentSignalLine.toFixed(6)}`);
-        console.log(`히스토그램: ${currentHistogram.toFixed(6)}`);
+        console.log(`MACD: ${currentMacdLine !== undefined ? currentMacdLine.toFixed(6) : 'N/A'}`);
+        console.log(`시그널: ${currentSignalLine !== undefined ? currentSignalLine.toFixed(6) : 'N/A'}`);
+        console.log(`히스토그램: ${currentHistogram !== undefined ? currentHistogram.toFixed(6) : 'N/A'}`);
         
-        // 매수 조건 확인 상태 표시
-        const isGoldenCross = histogram[histogram.length - 2] <= 0 && currentHistogram > 0;
+        // 매수 조건 확인 상태 표시 (isGoldenCross 변수 중복 선언 제거)
+        // 이미 위에서 계산된 값을 사용
+        const isGoldenCrossCheck = histogram.length >= 2 && histogram[histogram.length - 2] <= 0 && currentHistogram > 0;
         
         console.log('\n=== 매수 조건 체크 ===');
-        console.log(`조건 1 (MACD 골든 크로스): ${isGoldenCross ? '✅' : '❌'}`);
-        console.log(`최종 판정: ${isGoldenCross ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
+        console.log(`조건 1 (MACD 골든 크로스): ${isGoldenCrossCheck ? '✅' : '❌'}`);
+        console.log(`최종 판정: ${isGoldenCrossCheck ? '✅ 매수 조건 충족!' : '❌ 매수 조건 불충족'}`);
       }
     } else {
       console.log('\n=== 현재 상태: 매수 완료(매도 대기 중) ===');
@@ -524,12 +525,12 @@ const macdStrategy = {
           const currentSignalLine = signalLine[signalLine.length - 1];
           const currentHistogram = histogram[histogram.length - 1];
           
-          console.log(`MACD: ${currentMacdLine.toFixed(6)}`);
-          console.log(`시그널: ${currentSignalLine.toFixed(6)}`);
-          console.log(`히스토그램: ${currentHistogram.toFixed(6)}`);
+          console.log(`MACD: ${currentMacdLine !== undefined ? currentMacdLine.toFixed(6) : 'N/A'}`);
+          console.log(`시그널: ${currentSignalLine !== undefined ? currentSignalLine.toFixed(6) : 'N/A'}`);
+          console.log(`히스토그램: ${currentHistogram !== undefined ? currentHistogram.toFixed(6) : 'N/A'}`);
           
           // 매도 조건 확인 상태 표시
-          const isDeadCross = histogram[histogram.length - 2] >= 0 && currentHistogram < 0;
+          const isDeadCross = histogram.length >= 2 && histogram[histogram.length - 2] >= 0 && currentHistogram < 0;
           
           console.log('\n=== 매도 조건 체크 ===');
           console.log(`조건 1 (MACD 데드 크로스): ${isDeadCross ? '✅' : '❌'}`);

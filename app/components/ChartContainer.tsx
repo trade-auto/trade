@@ -251,6 +251,22 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     };
   }, []);
 
+  // 차트 데이터가 변경되면 차트 업데이트
+  useEffect(() => {
+    if (seriesRefs.current.candle && data && data.length > 0) {
+      console.log(`차트 데이터 업데이트: ${data.length}개의 데이터 설정 (${chartType} 타입)`);
+      seriesRefs.current.candle.setData(data);
+    }
+  }, [data, seriesRefs.current.candle, chartType]);
+  
+  // 차트 타입이 변경되면 차트 업데이트
+  useEffect(() => {
+    if (chartRef.current && seriesRefs.current.candle && data && data.length > 0) {
+      console.log(`차트 타입 변경됨: ${chartType} - 차트 데이터 리셋 및 업데이트`);
+      chartRef.current.timeScale().fitContent();
+    }
+  }, [chartType]);
+
   return (
     <div
       ref={chartContainerRef}
