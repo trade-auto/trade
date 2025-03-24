@@ -275,11 +275,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
             toggleFullscreen={toggleFullscreen}
             symbol={symbol}
             chartType={chartType}
-            markers={[]}
+            markers={realtimeUpdateStatus.markers || []}
             isAutoUpdate={isAutoUpdate}
             isRealtimeAPIEnabled={isRealtimeAPIEnabled}
             data={allData}
             onChartReady={handleChartReady}
+            showMA={showMA}
           />
         </div>
         

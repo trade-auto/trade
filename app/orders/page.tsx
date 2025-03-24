@@ -386,7 +386,16 @@ export default function OrdersPage() {
                 console.error('handleAutomaticTrade 실행 실패:', error);
               }
             }}
+            onOrder={() => {}}
             onChartTypeChange={(type) => setSelectedInterval(type)}
+            showMA={{
+              sixty: true,
+              oneTwenty: true,
+              twoForty: true,
+              threeHundredSixty: true,
+              sixHundred: true,
+              nineHundred: true
+            }}
           />
         </div>
 

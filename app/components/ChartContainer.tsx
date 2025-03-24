@@ -10,6 +10,46 @@ import {
 } from 'lightweight-charts';
 import useUpbitStore from '../store/useUpbitStore';
 
+// 이동평균선 계산 함수
+const calculateEMA = (data: ExtendedCandlestickData[], period: number) => {
+  if (data.length < period) return [];
+  
+  const result: { time: Time; value: number }[] = [];
+  let sum = 0;
+  
+  // 첫 번째 SMA 계산
+  for (let i = 0; i < period; i++) {
+    sum += data[i].close;
+  }
+  
+  // 첫 번째 EMA는 SMA와 동일
+  const firstEMA = sum / period;
+  result.push({
+    time: data[period - 1].time,
+    value: firstEMA
+  });
+  
+  // 나머지 데이터에 대한 EMA 계산
+  const multiplier = 2 / (period + 1);
+  let previousEMA = firstEMA;
+  
+  for (let i = period; i < data.length; i++) {
+    const currentEMA = (data[i].close - previousEMA) * multiplier + previousEMA;
+    result.push({
+      time: data[i].time,
+      value: currentEMA
+    });
+    previousEMA = currentEMA;
+  }
+  
+  return result;
+};
+
+// 확장된 캔들스틱 데이터 타입 정의
+interface ExtendedCandlestickData extends CandlestickData<Time> {
+  volume?: number;
+}
+
 interface ChartContainerProps {
   isFullscreen: boolean;
   chartHeight: number;
@@ -19,7 +59,15 @@ interface ChartContainerProps {
   markers: SeriesMarker<Time>[];
   isAutoUpdate?: boolean;
   isRealtimeAPIEnabled?: boolean;
-  data?: CandlestickData<Time>[];
+  data?: ExtendedCandlestickData[];
+  showMA?: {
+    sixty: boolean;
+    oneTwenty: boolean;
+    twoForty: boolean;
+    threeHundredSixty: boolean;
+    sixHundred: boolean;
+    nineHundred: boolean;
+  };
   onChartReady: (
     chartApi: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
@@ -140,6 +188,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isAutoUpdate,
   isRealtimeAPIEnabled,
   data,
+  showMA,
   onChartReady,
 }) => {
   const container = useRef<HTMLDivElement>(null);
@@ -211,11 +260,14 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     // MA 시리즈 생성
     Object.entries(MA_COLORS).forEach(([key, color]) => {
       const seriesKey = `${key}EMA` as EMAKey;
+      const isVisible = showMA && showMA[key as keyof typeof showMA];
       (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = chart.addLineSeries({
         color,
         lineWidth: 2,
-        visible: true,
+        visible: isVisible,
+        priceLineVisible: false,
       });
+      console.log(`${key}MA 시리즈 생성 완료, 초기 가시성:`, isVisible);
     });
 
     // 데이터가 제공된 경우 사용
@@ -256,8 +308,72 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     if (seriesRefs.current.candle && data && data.length > 0) {
       console.log(`차트 데이터 업데이트: ${data.length}개의 데이터 설정 (${chartType} 타입)`);
       seriesRefs.current.candle.setData(data);
+      
+      // 볼륨 데이터 설정
+      if (seriesRefs.current.volume) {
+        const volumeData = data.map(d => ({
+          time: d.time,
+          value: d.volume || 0,
+          color: (d.close >= d.open) ? CHART_COLORS.upColor : CHART_COLORS.downColor
+        }));
+        seriesRefs.current.volume.setData(volumeData);
+        console.log(`볼륨 데이터 설정 완료: ${volumeData.length}개 캔들`);
+      }
+      
+      // 이동평균선 데이터 계산 및 설정
+      setTimeout(() => {
+        try {
+          console.log(`이평선 데이터 계산 및 설정 시작: 데이터 ${data.length}개`);
+          
+          if (data.length >= 60 && seriesRefs.current.sixtyEMA) {
+            const ema60Data = calculateEMA(data, 60);
+            seriesRefs.current.sixtyEMA.setData(ema60Data);
+            seriesRefs.current.sixtyEMA.applyOptions({ visible: showMA?.sixty || false });
+            console.log(`60MA 데이터 설정 완료: ${ema60Data.length}개, 표시 상태: ${showMA?.sixty ? '표시' : '숨김'}`);
+          }
+          
+          if (data.length >= 120 && seriesRefs.current.oneTwentyEMA) {
+            const ema120Data = calculateEMA(data, 120);
+            seriesRefs.current.oneTwentyEMA.setData(ema120Data);
+            seriesRefs.current.oneTwentyEMA.applyOptions({ visible: showMA?.oneTwenty || false });
+            console.log(`120MA 데이터 설정 완료: ${ema120Data.length}개, 표시 상태: ${showMA?.oneTwenty ? '표시' : '숨김'}`);
+          }
+          
+          if (data.length >= 240 && seriesRefs.current.twoFortyEMA) {
+            const ema240Data = calculateEMA(data, 240);
+            seriesRefs.current.twoFortyEMA.setData(ema240Data);
+            seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA?.twoForty || false });
+            console.log(`240MA 데이터 설정 완료: ${ema240Data.length}개, 표시 상태: ${showMA?.twoForty ? '표시' : '숨김'}`);
+          }
+          
+          if (data.length >= 360 && seriesRefs.current.threeHundredSixtyEMA) {
+            const ema360Data = calculateEMA(data, 360);
+            seriesRefs.current.threeHundredSixtyEMA.setData(ema360Data);
+            seriesRefs.current.threeHundredSixtyEMA.applyOptions({ visible: showMA?.threeHundredSixty || false });
+            console.log(`360MA 데이터 설정 완료: ${ema360Data.length}개, 표시 상태: ${showMA?.threeHundredSixty ? '표시' : '숨김'}`);
+          }
+          
+          if (data.length >= 600 && seriesRefs.current.sixHundredEMA) {
+            const ema600Data = calculateEMA(data, 600);
+            seriesRefs.current.sixHundredEMA.setData(ema600Data);
+            seriesRefs.current.sixHundredEMA.applyOptions({ visible: showMA?.sixHundred || false });
+            console.log(`600MA 데이터 설정 완료: ${ema600Data.length}개, 표시 상태: ${showMA?.sixHundred ? '표시' : '숨김'}`);
+          }
+          
+          if (data.length >= 900 && seriesRefs.current.nineHundredEMA) {
+            const ema900Data = calculateEMA(data, 900);
+            seriesRefs.current.nineHundredEMA.setData(ema900Data);
+            seriesRefs.current.nineHundredEMA.applyOptions({ visible: showMA?.nineHundred || false });
+            console.log(`900MA 데이터 설정 완료: ${ema900Data.length}개, 표시 상태: ${showMA?.nineHundred ? '표시' : '숨김'}`);
+          }
+          
+          console.log('모든 이평선 데이터 설정 완료');
+        } catch (error) {
+          console.error('이평선 데이터 설정 중 오류 발생:', error);
+        }
+      }, 100); // 약간의 지연을 추가하여 렌더링 타이밍 문제 해결
     }
-  }, [data]);
+  }, [data, chartType, showMA]);
   
   // 차트 타입이 변경되면 차트 업데이트
   useEffect(() => {
@@ -277,10 +393,89 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       // 새 데이터 설정
       seriesRefs.current.candle.setData(data);
       
+      // 볼륨 데이터 설정
+      if (seriesRefs.current.volume) {
+        const volumeData = data.map(d => ({
+          time: d.time,
+          value: d.volume || 0,
+          color: (d.close >= d.open) ? CHART_COLORS.upColor : CHART_COLORS.downColor
+        }));
+        seriesRefs.current.volume.setData(volumeData);
+        console.log(`볼륨 데이터 설정 완료: ${volumeData.length}개`);
+      }
+      
+      // 이동평균선 데이터 계산 및 설정
+      if (data.length >= 60 && seriesRefs.current.sixtyEMA) {
+        const ema60Data = calculateEMA(data, 60);
+        seriesRefs.current.sixtyEMA.setData(ema60Data);
+        seriesRefs.current.sixtyEMA.applyOptions({ visible: showMA?.sixty || false });
+        console.log(`60MA 설정 완료: ${ema60Data.length}개, 표시: ${showMA?.sixty ? '표시' : '숨김'}`);
+      }
+      
+      if (data.length >= 120 && seriesRefs.current.oneTwentyEMA) {
+        const ema120Data = calculateEMA(data, 120);
+        seriesRefs.current.oneTwentyEMA.setData(ema120Data);
+        seriesRefs.current.oneTwentyEMA.applyOptions({ visible: showMA?.oneTwenty || false });
+        console.log(`120MA 설정 완료: ${ema120Data.length}개, 표시: ${showMA?.oneTwenty ? '표시' : '숨김'}`);
+      }
+      
+      if (data.length >= 240 && seriesRefs.current.twoFortyEMA) {
+        const ema240Data = calculateEMA(data, 240);
+        seriesRefs.current.twoFortyEMA.setData(ema240Data);
+        seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA?.twoForty || false });
+        console.log(`240MA 설정 완료: ${ema240Data.length}개, 표시: ${showMA?.twoForty ? '표시' : '숨김'}`);
+      }
+      
+      if (data.length >= 360 && seriesRefs.current.threeHundredSixtyEMA) {
+        const ema360Data = calculateEMA(data, 360);
+        seriesRefs.current.threeHundredSixtyEMA.setData(ema360Data);
+        seriesRefs.current.threeHundredSixtyEMA.applyOptions({ visible: showMA?.threeHundredSixty || false });
+        console.log(`360MA 설정 완료: ${ema360Data.length}개, 표시: ${showMA?.threeHundredSixty ? '표시' : '숨김'}`);
+      }
+      
+      if (data.length >= 600 && seriesRefs.current.sixHundredEMA) {
+        const ema600Data = calculateEMA(data, 600);
+        seriesRefs.current.sixHundredEMA.setData(ema600Data);
+        seriesRefs.current.sixHundredEMA.applyOptions({ visible: showMA?.sixHundred || false });
+        console.log(`600MA 설정 완료: ${ema600Data.length}개, 표시: ${showMA?.sixHundred ? '표시' : '숨김'}`);
+      }
+      
+      if (data.length >= 900 && seriesRefs.current.nineHundredEMA) {
+        const ema900Data = calculateEMA(data, 900);
+        seriesRefs.current.nineHundredEMA.setData(ema900Data);
+        seriesRefs.current.nineHundredEMA.applyOptions({ visible: showMA?.nineHundred || false });
+        console.log(`900MA 설정 완료: ${ema900Data.length}개, 표시: ${showMA?.nineHundred ? '표시' : '숨김'}`);
+      }
+      
       // 차트 영역 조정
       chartRef.current.timeScale().fitContent();
     }
-  }, [chartType, data]);
+  }, [chartType, data, showMA]);
+
+  // 이동평균선 표시 설정이 변경되면 가시성 업데이트
+  useEffect(() => {
+    if (showMA) {
+      if (seriesRefs.current.sixtyEMA) 
+        seriesRefs.current.sixtyEMA.applyOptions({ visible: showMA.sixty });
+      
+      if (seriesRefs.current.oneTwentyEMA) 
+        seriesRefs.current.oneTwentyEMA.applyOptions({ visible: showMA.oneTwenty });
+      
+      if (seriesRefs.current.twoFortyEMA) 
+        seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA.twoForty });
+      
+      if (seriesRefs.current.threeHundredSixtyEMA) 
+        seriesRefs.current.threeHundredSixtyEMA.applyOptions({ visible: showMA.threeHundredSixty });
+      
+      if (seriesRefs.current.sixHundredEMA) 
+        seriesRefs.current.sixHundredEMA.applyOptions({ visible: showMA.sixHundred });
+      
+      if (seriesRefs.current.nineHundredEMA) 
+        seriesRefs.current.nineHundredEMA.applyOptions({ visible: showMA.nineHundred });
+      
+      console.log('이동평균선 표시 설정 업데이트:', showMA);
+    }
+  }, [showMA]);
 
   return (
     <div
