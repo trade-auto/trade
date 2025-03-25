@@ -295,19 +295,21 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
         
         {/* 메인 차트 */}
         <div className="w-full">
-          <ChartContainer
-            onChartReady={isDataImported ? handleBacktestChartInit : handleChartReady}
-            chartHeight={chartHeight}
-            isFullscreen={isFullscreen}
-            toggleFullscreen={toggleFullscreen}
-            symbol={symbol}
-            chartType={chartType}
-            markers={realtimeUpdateStatus.markers || []}
-            isAutoUpdate={isAutoUpdate}
-            isRealtimeAPIEnabled={isRealtimeAPIEnabled}
-            data={isDataImported ? importedData : allData}
-            showMA={chartShowMA}
-          />
+          <div className="mb-4 relative">
+            <ChartContainer
+              chartHeight={chartHeight}
+              isFullscreen={isFullscreen}
+              toggleFullscreen={toggleFullscreen}
+              symbol={symbol}
+              chartType={chartType}
+              markers={realtimeUpdateStatus.markers || []}
+              isAutoUpdate={isAutoUpdate}
+              isRealtimeAPIEnabled={isRealtimeAPIEnabled}
+              data={isDataImported ? importedData : allData}
+              showMA={showMA}
+              onChartReady={isDataImported ? handleBacktestChartInit : handleChartReady}
+            />
+          </div>
         </div>
 
         {/* MACD 관련 차트들 - tradeStrategy가 'MACD'일 때만 표시 */}

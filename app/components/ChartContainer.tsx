@@ -67,21 +67,26 @@ interface ChartContainerProps {
     threeHundredSixty: boolean;
     sixHundred: boolean;
     nineHundred: boolean;
+    five: boolean;
+    ten: boolean;
+    twenty: boolean;
+    thirty: boolean;
+    ninety: boolean;
   };
   onChartReady: (
-    chartApi: IChartApi,
+    chart: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
     volumeSeries: ISeriesApi<"Histogram">,
     fiveEMA: ISeriesApi<"Line">,
     tenEMA: ISeriesApi<"Line">,
     twentyEMA: ISeriesApi<"Line">,
     thirtyEMA: ISeriesApi<"Line">,
-    sixtyEMASeries: ISeriesApi<"Line">,
-    oneTwentyEMASeries: ISeriesApi<"Line">,
-    twoFortyEMASeries: ISeriesApi<"Line">,
-    threeHundredSixtyEMASeries: ISeriesApi<"Line">,
-    sixHundredEMASeries: ISeriesApi<"Line">,
-    nineHundredEMASeries: ISeriesApi<"Line">
+    sixtyEMA: ISeriesApi<"Line">,
+    oneTwentyEMA: ISeriesApi<"Line">,
+    twoFortyEMA: ISeriesApi<"Line">,
+    threeHundredSixtyEMA: ISeriesApi<"Line">,
+    sixHundredEMA: ISeriesApi<"Line">,
+    ninetyEMA: ISeriesApi<"Line">
   ) => void;
 }
 
@@ -149,7 +154,7 @@ const getChartOptions = (width: number, height: number, chartType: string) => ({
   },
 });
 
-type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'sixHundredEMA' | 'nineHundredEMA';
+type EMAKey = 'fiveEMA' | 'tenEMA' | 'twentyEMA' | 'thirtyEMA' | 'sixtyEMA' | 'ninetyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'sixHundredEMA';
 
 interface SeriesRefs {
   candle: ISeriesApi<"Candlestick"> | null;
@@ -159,11 +164,11 @@ interface SeriesRefs {
   twentyEMA: ISeriesApi<"Line"> | null;
   thirtyEMA: ISeriesApi<"Line"> | null;
   sixtyEMA: ISeriesApi<"Line"> | null;
+  ninetyEMA: ISeriesApi<"Line"> | null;
   oneTwentyEMA: ISeriesApi<"Line"> | null;
   twoFortyEMA: ISeriesApi<"Line"> | null;
   threeHundredSixtyEMA: ISeriesApi<"Line"> | null;
   sixHundredEMA: ISeriesApi<"Line"> | null;
-  nineHundredEMA: ISeriesApi<"Line"> | null;
 }
 
 // 마커 생성 함수
@@ -201,11 +206,11 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     twentyEMA: null,
     thirtyEMA: null,
     sixtyEMA: null,
+    ninetyEMA: null,
     oneTwentyEMA: null,
     twoFortyEMA: null,
     threeHundredSixtyEMA: null,
     sixHundredEMA: null,
-    nineHundredEMA: null,
   });
   const { tradeStrategy } = useUpbitStore();
 
@@ -297,6 +302,13 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       title: '60 EMA'
     });
     
+    seriesRefs.current.ninetyEMA = chart.addLineSeries({
+      color: '#FFD700',  // Gold
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '90 EMA'
+    });
+    
     seriesRefs.current.oneTwentyEMA = chart.addLineSeries({
       color: '#1E90FF',  // Dodger Blue
       lineWidth: 1,
@@ -325,7 +337,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       title: '600 EMA'
     });
     
-    seriesRefs.current.nineHundredEMA = chart.addLineSeries({
+    seriesRefs.current.ninetyEMA = chart.addLineSeries({
       color: '#FF00FF',  // Magenta
       lineWidth: 1,
       priceLineVisible: false,
@@ -351,7 +363,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       seriesRefs.current.twoFortyEMA!,
       seriesRefs.current.threeHundredSixtyEMA!,
       seriesRefs.current.sixHundredEMA!,
-      seriesRefs.current.nineHundredEMA!
+      seriesRefs.current.ninetyEMA!
     );
 
     // 초기 리사이즈 이벤트 리스너 설정
@@ -420,46 +432,46 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         try {
           console.log(`이평선 데이터 계산 및 설정 시작: 데이터 ${processedData.length}개`);
           
+          if (processedData.length >= 5 && seriesRefs.current.fiveEMA) {
+            const ema5Data = calculateEMA(processedData, 5);
+            seriesRefs.current.fiveEMA.setData(ema5Data);
+            seriesRefs.current.fiveEMA.applyOptions({ visible: showMA?.five || false });
+            console.log(`5MA 설정 완료: ${ema5Data.length}개, 표시: ${showMA?.five ? '표시' : '숨김'}`);
+          }
+          
+          if (processedData.length >= 10 && seriesRefs.current.tenEMA) {
+            const ema10Data = calculateEMA(processedData, 10);
+            seriesRefs.current.tenEMA.setData(ema10Data);
+            seriesRefs.current.tenEMA.applyOptions({ visible: showMA?.ten || false });
+            console.log(`10MA 설정 완료: ${ema10Data.length}개, 표시: ${showMA?.ten ? '표시' : '숨김'}`);
+          }
+          
+          if (processedData.length >= 20 && seriesRefs.current.twentyEMA) {
+            const ema20Data = calculateEMA(processedData, 20);
+            seriesRefs.current.twentyEMA.setData(ema20Data);
+            seriesRefs.current.twentyEMA.applyOptions({ visible: showMA?.twenty || false });
+            console.log(`20MA 설정 완료: ${ema20Data.length}개, 표시: ${showMA?.twenty ? '표시' : '숨김'}`);
+          }
+          
+          if (processedData.length >= 30 && seriesRefs.current.thirtyEMA) {
+            const ema30Data = calculateEMA(processedData, 30);
+            seriesRefs.current.thirtyEMA.setData(ema30Data);
+            seriesRefs.current.thirtyEMA.applyOptions({ visible: showMA?.thirty || false });
+            console.log(`30MA 설정 완료: ${ema30Data.length}개, 표시: ${showMA?.thirty ? '표시' : '숨김'}`);
+          }
+          
           if (processedData.length >= 60 && seriesRefs.current.sixtyEMA) {
             const ema60Data = calculateEMA(processedData, 60);
             seriesRefs.current.sixtyEMA.setData(ema60Data);
             seriesRefs.current.sixtyEMA.applyOptions({ visible: showMA?.sixty || false });
-            console.log(`60MA 데이터 설정 완료: ${ema60Data.length}개, 표시 상태: ${showMA?.sixty ? '표시' : '숨김'}`);
+            console.log(`60MA 설정 완료: ${ema60Data.length}개, 표시: ${showMA?.sixty ? '표시' : '숨김'}`);
           }
           
-          if (processedData.length >= 120 && seriesRefs.current.oneTwentyEMA) {
-            const ema120Data = calculateEMA(processedData, 120);
-            seriesRefs.current.oneTwentyEMA.setData(ema120Data);
-            seriesRefs.current.oneTwentyEMA.applyOptions({ visible: showMA?.oneTwenty || false });
-            console.log(`120MA 데이터 설정 완료: ${ema120Data.length}개, 표시 상태: ${showMA?.oneTwenty ? '표시' : '숨김'}`);
-          }
-          
-          if (processedData.length >= 240 && seriesRefs.current.twoFortyEMA) {
-            const ema240Data = calculateEMA(processedData, 240);
-            seriesRefs.current.twoFortyEMA.setData(ema240Data);
-            seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA?.twoForty || false });
-            console.log(`240MA 데이터 설정 완료: ${ema240Data.length}개, 표시 상태: ${showMA?.twoForty ? '표시' : '숨김'}`);
-          }
-          
-          if (processedData.length >= 360 && seriesRefs.current.threeHundredSixtyEMA) {
-            const ema360Data = calculateEMA(processedData, 360);
-            seriesRefs.current.threeHundredSixtyEMA.setData(ema360Data);
-            seriesRefs.current.threeHundredSixtyEMA.applyOptions({ visible: showMA?.threeHundredSixty || false });
-            console.log(`360MA 데이터 설정 완료: ${ema360Data.length}개, 표시 상태: ${showMA?.threeHundredSixty ? '표시' : '숨김'}`);
-          }
-          
-          if (processedData.length >= 600 && seriesRefs.current.sixHundredEMA) {
-            const ema600Data = calculateEMA(processedData, 600);
-            seriesRefs.current.sixHundredEMA.setData(ema600Data);
-            seriesRefs.current.sixHundredEMA.applyOptions({ visible: showMA?.sixHundred || false });
-            console.log(`600MA 데이터 설정 완료: ${ema600Data.length}개, 표시 상태: ${showMA?.sixHundred ? '표시' : '숨김'}`);
-          }
-          
-          if (processedData.length >= 900 && seriesRefs.current.nineHundredEMA) {
-            const ema900Data = calculateEMA(processedData, 900);
-            seriesRefs.current.nineHundredEMA.setData(ema900Data);
-            seriesRefs.current.nineHundredEMA.applyOptions({ visible: showMA?.nineHundred || false });
-            console.log(`900MA 데이터 설정 완료: ${ema900Data.length}개, 표시 상태: ${showMA?.nineHundred ? '표시' : '숨김'}`);
+          if (processedData.length >= 90 && seriesRefs.current.ninetyEMA) {
+            const ema90Data = calculateEMA(processedData, 90);
+            seriesRefs.current.ninetyEMA.setData(ema90Data);
+            seriesRefs.current.ninetyEMA.applyOptions({ visible: showMA?.ninety || false });
+            console.log(`90MA 설정 완료: ${ema90Data.length}개, 표시: ${showMA?.ninety ? '표시' : '숨김'}`);
           }
           
           console.log('모든 이평선 데이터 설정 완료');
@@ -483,7 +495,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       if (seriesRefs.current.twoFortyEMA) seriesRefs.current.twoFortyEMA.setData([]);
       if (seriesRefs.current.threeHundredSixtyEMA) seriesRefs.current.threeHundredSixtyEMA.setData([]);
       if (seriesRefs.current.sixHundredEMA) seriesRefs.current.sixHundredEMA.setData([]);
-      if (seriesRefs.current.nineHundredEMA) seriesRefs.current.nineHundredEMA.setData([]);
+      if (seriesRefs.current.ninetyEMA) seriesRefs.current.ninetyEMA.setData([]);
       
       // 데이터 전처리: 시간 기준으로 정렬하고 중복 제거
       const processedData = [...data]
@@ -528,6 +540,34 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       }
       
       // 이동평균선 데이터 계산 및 설정
+      if (processedData.length >= 5 && seriesRefs.current.fiveEMA) {
+        const ema5Data = calculateEMA(processedData, 5);
+        seriesRefs.current.fiveEMA.setData(ema5Data);
+        seriesRefs.current.fiveEMA.applyOptions({ visible: showMA?.five || false });
+        console.log(`5MA 설정 완료: ${ema5Data.length}개, 표시: ${showMA?.five ? '표시' : '숨김'}`);
+      }
+      
+      if (processedData.length >= 10 && seriesRefs.current.tenEMA) {
+        const ema10Data = calculateEMA(processedData, 10);
+        seriesRefs.current.tenEMA.setData(ema10Data);
+        seriesRefs.current.tenEMA.applyOptions({ visible: showMA?.ten || false });
+        console.log(`10MA 설정 완료: ${ema10Data.length}개, 표시: ${showMA?.ten ? '표시' : '숨김'}`);
+      }
+      
+      if (processedData.length >= 20 && seriesRefs.current.twentyEMA) {
+        const ema20Data = calculateEMA(processedData, 20);
+        seriesRefs.current.twentyEMA.setData(ema20Data);
+        seriesRefs.current.twentyEMA.applyOptions({ visible: showMA?.twenty || false });
+        console.log(`20MA 설정 완료: ${ema20Data.length}개, 표시: ${showMA?.twenty ? '표시' : '숨김'}`);
+      }
+      
+      if (processedData.length >= 30 && seriesRefs.current.thirtyEMA) {
+        const ema30Data = calculateEMA(processedData, 30);
+        seriesRefs.current.thirtyEMA.setData(ema30Data);
+        seriesRefs.current.thirtyEMA.applyOptions({ visible: showMA?.thirty || false });
+        console.log(`30MA 설정 완료: ${ema30Data.length}개, 표시: ${showMA?.thirty ? '표시' : '숨김'}`);
+      }
+      
       if (processedData.length >= 60 && seriesRefs.current.sixtyEMA) {
         const ema60Data = calculateEMA(processedData, 60);
         seriesRefs.current.sixtyEMA.setData(ema60Data);
@@ -535,39 +575,11 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         console.log(`60MA 설정 완료: ${ema60Data.length}개, 표시: ${showMA?.sixty ? '표시' : '숨김'}`);
       }
       
-      if (processedData.length >= 120 && seriesRefs.current.oneTwentyEMA) {
-        const ema120Data = calculateEMA(processedData, 120);
-        seriesRefs.current.oneTwentyEMA.setData(ema120Data);
-        seriesRefs.current.oneTwentyEMA.applyOptions({ visible: showMA?.oneTwenty || false });
-        console.log(`120MA 설정 완료: ${ema120Data.length}개, 표시: ${showMA?.oneTwenty ? '표시' : '숨김'}`);
-      }
-      
-      if (processedData.length >= 240 && seriesRefs.current.twoFortyEMA) {
-        const ema240Data = calculateEMA(processedData, 240);
-        seriesRefs.current.twoFortyEMA.setData(ema240Data);
-        seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA?.twoForty || false });
-        console.log(`240MA 설정 완료: ${ema240Data.length}개, 표시: ${showMA?.twoForty ? '표시' : '숨김'}`);
-      }
-      
-      if (processedData.length >= 360 && seriesRefs.current.threeHundredSixtyEMA) {
-        const ema360Data = calculateEMA(processedData, 360);
-        seriesRefs.current.threeHundredSixtyEMA.setData(ema360Data);
-        seriesRefs.current.threeHundredSixtyEMA.applyOptions({ visible: showMA?.threeHundredSixty || false });
-        console.log(`360MA 설정 완료: ${ema360Data.length}개, 표시: ${showMA?.threeHundredSixty ? '표시' : '숨김'}`);
-      }
-      
-      if (processedData.length >= 600 && seriesRefs.current.sixHundredEMA) {
-        const ema600Data = calculateEMA(processedData, 600);
-        seriesRefs.current.sixHundredEMA.setData(ema600Data);
-        seriesRefs.current.sixHundredEMA.applyOptions({ visible: showMA?.sixHundred || false });
-        console.log(`600MA 설정 완료: ${ema600Data.length}개, 표시: ${showMA?.sixHundred ? '표시' : '숨김'}`);
-      }
-      
-      if (processedData.length >= 900 && seriesRefs.current.nineHundredEMA) {
-        const ema900Data = calculateEMA(processedData, 900);
-        seriesRefs.current.nineHundredEMA.setData(ema900Data);
-        seriesRefs.current.nineHundredEMA.applyOptions({ visible: showMA?.nineHundred || false });
-        console.log(`900MA 설정 완료: ${ema900Data.length}개, 표시: ${showMA?.nineHundred ? '표시' : '숨김'}`);
+      if (processedData.length >= 90 && seriesRefs.current.ninetyEMA) {
+        const ema90Data = calculateEMA(processedData, 90);
+        seriesRefs.current.ninetyEMA.setData(ema90Data);
+        seriesRefs.current.ninetyEMA.applyOptions({ visible: showMA?.ninety || false });
+        console.log(`90MA 설정 완료: ${ema90Data.length}개, 표시: ${showMA?.ninety ? '표시' : '숨김'}`);
       }
       
       // 차트 영역 조정
@@ -578,6 +590,18 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   // 이동평균선 표시 설정이 변경되면 가시성 업데이트
   useEffect(() => {
     if (showMA) {
+      if (seriesRefs.current.fiveEMA) 
+        seriesRefs.current.fiveEMA.applyOptions({ visible: showMA.five });
+      
+      if (seriesRefs.current.tenEMA) 
+        seriesRefs.current.tenEMA.applyOptions({ visible: showMA.ten });
+      
+      if (seriesRefs.current.twentyEMA) 
+        seriesRefs.current.twentyEMA.applyOptions({ visible: showMA.twenty });
+      
+      if (seriesRefs.current.thirtyEMA) 
+        seriesRefs.current.thirtyEMA.applyOptions({ visible: showMA.thirty });
+      
       if (seriesRefs.current.sixtyEMA) 
         seriesRefs.current.sixtyEMA.applyOptions({ visible: showMA.sixty });
       
@@ -593,8 +617,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       if (seriesRefs.current.sixHundredEMA) 
         seriesRefs.current.sixHundredEMA.applyOptions({ visible: showMA.sixHundred });
       
-      if (seriesRefs.current.nineHundredEMA) 
-        seriesRefs.current.nineHundredEMA.applyOptions({ visible: showMA.nineHundred });
+      if (seriesRefs.current.ninetyEMA) 
+        seriesRefs.current.ninetyEMA.applyOptions({ visible: showMA.ninety });
       
       console.log('이동평균선 표시 설정 업데이트:', showMA);
     }
