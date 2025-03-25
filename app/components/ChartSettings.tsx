@@ -59,10 +59,9 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
       {/* MA 설정 패널 */}
       <div className="grid grid-cols-1 gap-4 bg-gray-800 p-4 rounded-lg">
         <div className="bg-gray-700 p-3 rounded-lg">
-          <div className="text-gray-400 text-sm mb-2">MA 설정</div>
+          <div className="text-white text-sm mb-2 font-bold">이동평균선 설정</div>
           <div className="flex flex-wrap items-center gap-2">
             <div>
-              <h3 className="mb-2 text-lg font-semibold">이동평균선 설정</h3>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center">
                   <input
@@ -72,7 +71,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.five}
                     onChange={() => updateShowMA({ ...showMA, five: !showMA.five })}
                   />
-                  <label htmlFor="five-ma" className="text-sm">5 EMA</label>
+                  <label htmlFor="five-ma" className="text-sm text-white">5 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -83,7 +82,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.ten}
                     onChange={() => updateShowMA({ ...showMA, ten: !showMA.ten })}
                   />
-                  <label htmlFor="ten-ma" className="text-sm">10 EMA</label>
+                  <label htmlFor="ten-ma" className="text-sm text-white">10 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -94,7 +93,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.twenty}
                     onChange={() => updateShowMA({ ...showMA, twenty: !showMA.twenty })}
                   />
-                  <label htmlFor="twenty-ma" className="text-sm">20 EMA</label>
+                  <label htmlFor="twenty-ma" className="text-sm text-white">20 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -105,7 +104,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.thirty}
                     onChange={() => updateShowMA({ ...showMA, thirty: !showMA.thirty })}
                   />
-                  <label htmlFor="thirty-ma" className="text-sm">30 EMA</label>
+                  <label htmlFor="thirty-ma" className="text-sm text-white">30 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -116,7 +115,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.sixty}
                     onChange={() => updateShowMA({ ...showMA, sixty: !showMA.sixty })}
                   />
-                  <label htmlFor="sixty-ma" className="text-sm">60 EMA</label>
+                  <label htmlFor="sixty-ma" className="text-sm text-white">60 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -127,7 +126,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.oneTwenty}
                     onChange={() => updateShowMA({ ...showMA, oneTwenty: !showMA.oneTwenty })}
                   />
-                  <label htmlFor="onetwenty-ma" className="text-sm">120 EMA</label>
+                  <label htmlFor="onetwenty-ma" className="text-sm text-white">120 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -138,7 +137,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.twoForty}
                     onChange={() => updateShowMA({ ...showMA, twoForty: !showMA.twoForty })}
                   />
-                  <label htmlFor="twoforty-ma" className="text-sm">240 EMA</label>
+                  <label htmlFor="twoforty-ma" className="text-sm text-white">240 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -149,7 +148,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.threeHundredSixty}
                     onChange={() => updateShowMA({ ...showMA, threeHundredSixty: !showMA.threeHundredSixty })}
                   />
-                  <label htmlFor="threesixty-ma" className="text-sm">360 EMA</label>
+                  <label htmlFor="threesixty-ma" className="text-sm text-white">360 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -160,7 +159,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.sixHundred}
                     onChange={() => updateShowMA({ ...showMA, sixHundred: !showMA.sixHundred })}
                   />
-                  <label htmlFor="sixhundred-ma" className="text-sm">600 EMA</label>
+                  <label htmlFor="sixhundred-ma" className="text-sm text-white">600 EMA</label>
                 </div>
                 
                 <div className="flex items-center">
@@ -171,7 +170,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
                     checked={showMA.nineHundred}
                     onChange={() => updateShowMA({ ...showMA, nineHundred: !showMA.nineHundred })}
                   />
-                  <label htmlFor="ninehundred-ma" className="text-sm">900 EMA</label>
+                  <label htmlFor="ninehundred-ma" className="text-sm text-white">900 EMA</label>
                 </div>
               </div>
             </div>
@@ -181,7 +180,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
       
       {/* 차트 높이 조절 패널 */}
       <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">차트 높이 조절</div>
+        <div className="text-white text-sm mb-2 font-bold">차트 높이 조절</div>
         <div className="flex items-center space-x-4">
           <input
             type="range"
@@ -198,7 +197,7 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
 
       {/* 차트 시간 단위 선택 패널 */}
       <div className="bg-gray-800 p-4 rounded-lg">
-        <div className="text-gray-400 text-sm mb-2">차트 시간 단위</div>
+        <div className="text-white text-sm mb-2 font-bold">차트 시간 단위</div>
         <div className="flex flex-wrap gap-2">
           {CHART_INTERVALS.map((interval) => (
             <button

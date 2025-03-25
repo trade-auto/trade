@@ -19,16 +19,21 @@ const getTimeAsTimestamp = (time: Time): number => {
   }
 };
 
-// 초기 이동평균선 설정 불러오기
-const loadInitialMASettings = () => {
-  try {
-    const savedSettings = localStorage.getItem('maSettings');
-    if (savedSettings) {
-      return JSON.parse(savedSettings);
+// 초기 이동평균선 설정을 로드하는 함수
+const loadInitialMASettings = (): MASettings => {
+  // 로컬 스토리지에서 설정 불러오기
+  if (typeof window !== 'undefined') {
+    try {
+      const savedSettings = localStorage.getItem('maSettings');
+      if (savedSettings) {
+        return JSON.parse(savedSettings);
+      }
+    } catch (error) {
+      console.error('이동평균선 설정 로드 실패:', error);
     }
-  } catch (error) {
-    console.error('이동평균선 설정 로드 실패:', error);
   }
+  
+  // 기본 설정값
   return {
     five: false,
     ten: false,
@@ -37,9 +42,9 @@ const loadInitialMASettings = () => {
     sixty: true,
     oneTwenty: true,
     twoForty: true,
-    threeHundredSixty: true,
-    sixHundred: true,
-    nineHundred: true,
+    threeHundredSixty: false,
+    sixHundred: false,
+    nineHundred: false
   };
 };
 
@@ -60,8 +65,29 @@ export const useChartData = (
   const [backtestResult, setBacktestResult] = useState<any | null>(null);
   
   // 자동 업데이트 및 실시간 API 상태
-  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(initialAutoUpdate);
-  const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState<boolean>(false);
+  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('chartAutoUpdate');
+        return saved !== null ? JSON.parse(saved) : initialAutoUpdate;
+      } catch (error) {
+        console.error('자동 업데이트 설정 로드 실패:', error);
+      }
+    }
+    return initialAutoUpdate;
+  });
+  
+  const [isRealtimeAPIEnabled, setIsRealtimeAPIEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('chartRealtimeUpdate');
+        return saved !== null ? JSON.parse(saved) : false;
+      } catch (error) {
+        console.error('실시간 업데이트 설정 로드 실패:', error);
+      }
+    }
+    return false;
+  });
   const [lastSymbol, setLastSymbol] = useState<string>(symbol);
   const [currentStrategy, setCurrentStrategy] = useState<TradeStrategy>(useUpbitStore.getState().tradeStrategy);
   
@@ -216,6 +242,20 @@ export const useChartData = (
     // 데이터 다시 로드
     loadData();
   }, [chartType]);
+
+  // 데이터 개수가 변경되면 데이터 다시 로드
+  useEffect(() => {
+    console.log(`데이터 개수가 변경되었습니다: ${initialDataCount}개`);
+    
+    // 초봉 차트일 경우 데이터 개수 변경은 무시 (API 제한 때문)
+    if (chartType.startsWith('seconds/')) {
+      console.log('초봉 차트는 데이터 개수 변경으로 다시 로드하지 않습니다.');
+      return;
+    }
+    
+    // 데이터 다시 로드
+    loadData();
+  }, [initialDataCount]);
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
@@ -373,8 +413,9 @@ export const useChartData = (
       // 모든 데이터 저장
       setAllData(sortedAllData);
       
-      // 모든 데이터 처리가 완료되면 결과 적용
-      processLoadedData(sortedAllData);
+      // 이동평균선 업데이트
+      updateMovingAverages(sortedAllData);
+      setProgress(100);
       
       // 전체 데이터 로드 후 실시간 API로 전환 (자동 업데이트 모드일 경우)
       console.log('데이터 로드 완료, 실시간 전환 조건 확인:', {
@@ -705,20 +746,32 @@ export const useChartData = (
     }
   }, [showMA]);
 
-  // 자동 업데이트 토글 핸들러 수정
+  // 자동 업데이트 토글
   const handleAutoUpdateToggle = useCallback(() => {
     setIsAutoUpdate(prev => {
       const newValue = !prev;
-      if (!newValue && allData.length > 0) {
-        updateMovingAverages(allData);
+      // localStorage에 설정 저장
+      try {
+        localStorage.setItem('chartAutoUpdate', JSON.stringify(newValue));
+      } catch (error) {
+        console.error('자동 업데이트 설정 저장 실패:', error);
       }
       return newValue;
     });
-  }, [allData, updateMovingAverages]);
+  }, []);
 
-  // 실시간 API 토글 핸들러
+  // 실시간 API 토글
   const handleRealtimeAPIToggle = useCallback(() => {
-    setIsRealtimeAPIEnabled(prev => !prev);
+    setIsRealtimeAPIEnabled(prev => {
+      const newValue = !prev;
+      // localStorage에 설정 저장
+      try {
+        localStorage.setItem('chartRealtimeUpdate', JSON.stringify(newValue));
+      } catch (error) {
+        console.error('실시간 업데이트 설정 저장 실패:', error);
+      }
+      return newValue;
+    });
   }, []);
 
   // 실시간 API 업데이트 함수
@@ -912,423 +965,14 @@ export const useChartData = (
       // 전체 소요 시간 계산
       const totalTime = Date.now() - now;
       console.log(`실시간 업데이트 완료: ${totalTime}ms 소요`);
-      
     } catch (error) {
-      console.error('실시간 데이터 업데이트 오류:', error);
+      console.error('실시간 데이터 업데이트 중 오류 발생:', error);
     } finally {
       ongoingRequestRef.current = false;
-      setRealtimeUpdateStatus(prev => ({
-        ...prev,
-        isUpdating: false
-      }));
     }
-  }, [isRealtimeAPIEnabled, chartType, symbol, allData, updateMovingAverages]);
-
-  // 실시간 업데이트 타이머 설정
-  useEffect(() => {
-    if (isRealtimeAPIEnabled && chartType.startsWith('seconds/')) {
-      console.log('실시간 업데이트 타이머 설정 중...', {
-        isRealtimeAPIEnabled,
-        chartType,
-        timestamp: new Date().toLocaleTimeString()
-      });
-      
-      // 1초마다 업데이트 (매매 상태를 더 자주 체크하기 위해)
-      const timer = setInterval(() => {
-        updateRealtimeData();
-      }, 1000);
-      
-      timeoutRef.current = timer;
-      
-      console.log('실시간 업데이트 타이머 설정 완료: 1초 간격');
-      
-      return () => {
-        if (timeoutRef.current) {
-          clearInterval(timeoutRef.current);
-          timeoutRef.current = null;
-          console.log('실시간 업데이트 타이머 해제');
-        }
-      };
-    } else {
-      console.log('실시간 업데이트 타이머를 설정하지 않음:', {
-        isRealtimeAPIEnabled,
-        chartType,
-        timestamp: new Date().toLocaleTimeString()
-      });
-    }
-  }, [isRealtimeAPIEnabled, chartType, updateRealtimeData]);
-
-  // 자동 업데이트 함수 (실시간 API 사용하지 않을 때)
-  const handleAutoUpdate = useCallback(async () => {
-    if (!isAutoUpdate || isRealtimeAPIEnabled || ongoingRequestRef.current) return;
-    
-    ongoingRequestRef.current = true;
-    
-    try {
-      console.log('자동 업데이트 시작...');
-      // 업데이트 시작 상태 설정
-      setRealtimeUpdateStatus(prev => ({
-        ...prev,
-        isUpdating: true
-      }));
-      
-      // 현재 시간 기준으로 최신 데이터 가져오기
-      const now = new Date();
-      const to = now.toISOString();
-      const endpoint = getChartEndpoint(chartType);
-      
-      // 데이터 수집 최적화: 900개 이평선 계산을 위해 충분한 데이터 확보
-      const dataNeeded = Math.max(1000, allData.length); // 최소 1000개 또는 현재 보유 데이터 이상
-      let countToFetch = Math.min(1000, dataNeeded); // API 제한을 고려하여 최대 1000개
-      
-      console.log(`자동 업데이트: ${countToFetch}개의 데이터 요청 중...`);
-      
-      // minutes/5, minutes/15 등의 경우 unit 파라미터를 추가
-      let apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${countToFetch}`;
-      if (chartType.startsWith('minutes/')) {
-        const unit = chartType.split('/')[1]; // 5 또는 15 추출
-        apiUrl = `https://api.upbit.com/v1/candles/minutes/${unit}?market=${symbol}&to=${to}&count=${countToFetch}`;
-        console.log(`분봉 자동 업데이트 API 요청: ${apiUrl}`);
-      }
-      
-      const response = await fetch(apiUrl);
-      
-      if (!response.ok) {
-        throw new Error('자동 업데이트 데이터 로딩 실패');
-      }
-      
-      const data: UpbitCandle[] = await response.json();
-      
-      if (!data || data.length === 0) {
-        console.log('새로운 데이터 없음');
-        return;
-      }
-      
-      // 데이터 처리
-      const processedData = data.map((candle: UpbitCandle) => ({
-        time: new Date(candle.candle_date_time_kst).getTime() / 1000 as Time,
-        open: candle.opening_price,
-        high: candle.high_price,
-        low: candle.low_price,
-        close: candle.trade_price,
-        volume: candle.candle_acc_trade_volume,
-      })).reverse(); // 시간 순으로 정렬
-      
-      // 기존 데이터와 새 데이터를 결합하여 연속성 유지
-      // 중복 제거를 위해 시간별로 그룹화
-      const timeMap = new Map();
-      
-      // 기존 데이터 추가
-      allData.forEach(candle => {
-        timeMap.set(candle.time, candle);
-      });
-      
-      // 새 데이터 추가 (덮어쓰기)
-      processedData.forEach(candle => {
-        timeMap.set(candle.time, candle);
-      });
-      
-      // 맵을 배열로 변환하고 시간순으로 정렬
-      const combinedData = Array.from(timeMap.values())
-        .sort((a, b) => (a.time as number) - (b.time as number));
-      
-      console.log(`통합 데이터: 총 ${combinedData.length}개 캔들 (기존: ${allData.length}, 새로운: ${processedData.length})`);
-      
-      // 차트 업데이트 - 통합된 데이터 사용
-      if (candleSeriesRef.current) {
-        // 전체 데이터로 캔들 차트 업데이트 (setData는 기존 데이터를 대체함)
-        candleSeriesRef.current.setData(combinedData);
-        console.log('캔들 차트 업데이트 완료: 통합 데이터 사용');
-      }
-      
-      // 볼륨 업데이트 - 통합된 데이터 사용
-      if (volumeSeriesRef.current) {
-        const volumeData = combinedData.map((d) => ({
-          time: d.time,
-          value: d.volume,
-          color: d.close >= d.open ? '#26a69a' : '#ef5350',
-        }));
-        volumeSeriesRef.current.setData(volumeData);
-        console.log('볼륨 차트 업데이트 완료: 통합 데이터 사용');
-      }
-      
-      // 이동평균선 업데이트 - 통합된 데이터 사용
-      updateMovingAverages(combinedData);
-      
-      // 통합 데이터로 분석 및 마커 업데이트
-      if (combinedData.length > 900) {
-        console.log('자동 업데이트: 전략 분석 실행 및 마커 업데이트...');
-        
-        // 전체 통합 데이터로 분석 실행
-        const analysisResult = useUpbitStore.getState().analyzeRealtimeData(combinedData);
-        
-        console.log('분석 결과:', analysisResult?.signals?.length ?? 0, '개의 신호 발견');
-        
-        if (analysisResult && analysisResult.signals) {
-          const signals = analysisResult.signals
-            .filter((signal: any) => signal.position !== null)
-            .map((signal: any) => ({
-              ...signal,
-              time: signal.time as unknown as Time,
-              position: signal.position as 'buy' | 'sell',
-              metadata: signal.metadata ? {
-                ...signal.metadata,
-                ma60: signal.metadata.ma60 || 0,
-                ma120: signal.metadata.ma120 || 0,
-                ma240: signal.metadata.ma240 || 0,
-                ma900: signal.metadata.ma900 || 0,
-                upperBand: signal.metadata.upperBand || 0,
-                lowerBand: signal.metadata.lowerBand || 0,
-                deviation: signal.metadata.deviation || 0,
-                isAbove900MA: signal.metadata.isAbove900MA || false
-              } : undefined
-            }));
-          
-          // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
-          const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
-          
-          // 로그에 신호 수 출력
-          console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
-          console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
-          
-          const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
-          updateMarkers(strategyMarkers);
-          
-          // 백테스트 결과 계산 (전체 신호 사용)
-          const backtestResult = calculateBacktestResult(allData, signals, mode || 'test');
-          setBacktestResult(backtestResult);
-          
-          // 현재 가격 설정
-          if (allData.length > 0) {
-            const lastCandle = allData[allData.length - 1];
-            setChartPrice(lastCandle.close);
-          }
-          
-          // 타임스케일 피팅
-          if (chartRef.current) {
-            chartRef.current.timeScale().fitContent();
-          }
-          
-          console.log('이동평균선 및 마커 설정 완료');
-        }
-      }
-      
-      // 통합 데이터를 차트에 저장
-      setAllData(combinedData);
-      
-      // 현재 가격 업데이트
-      if (combinedData.length > 0) {
-        setChartPrice(combinedData[combinedData.length - 1].close);
-      }
-      
-      console.log('자동 업데이트 완료: 차트와 마커가 업데이트되었습니다.');
-    } catch (error) {
-      console.error('자동 업데이트 오류:', error);
-    } finally {
-      ongoingRequestRef.current = false;
-      
-      // 업데이트 완료 상태 설정
-      setRealtimeUpdateStatus(prev => ({
-        isUpdating: false,
-        lastUpdateTime: new Date().toLocaleString('ko-KR'),
-        updateCount: prev.updateCount + 1,
-        markers: prev.markers
-      }));
-    }
-  }, [isAutoUpdate, isRealtimeAPIEnabled, chartType, symbol, allData, updateMovingAverages]);
-
-  // 전략 변경 감지를 위한 구독
-  useEffect(() => {
-    // 초기 전략 설정
-    setCurrentStrategy(useUpbitStore.getState().tradeStrategy);
-    
-    // 스토어 구독
-    const unsubscribe = useUpbitStore.subscribe((state) => {
-      const newStrategy = state.tradeStrategy;
-      // 현재 상태에서 최신 값을 가져옴
-      setCurrentStrategy(prevStrategy => {
-        if (newStrategy !== prevStrategy) {
-          console.log(`전략 변경 감지: ${prevStrategy} -> ${newStrategy}`);
-          return newStrategy;
-        }
-        return prevStrategy;
-      });
-    });
-    
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // 전략 변경 시 데이터 재분석
-  useEffect(() => {
-    if (allData.length > 0) {
-      console.log(`전략이 ${currentStrategy}로 변경되어 데이터를 다시 분석합니다.`);
-      console.log(`분석할 데이터 크기: ${allData.length}개 캔들`);
-      
-      if (currentStrategy === 'MACD' as any) {
-        console.log('MACD 전략은 최소 35개의 캔들이 필요합니다.');
-      }
-      
-      // 마커 초기화
-      setMarkers([]);
-      
-      // 데이터 재분석
-      const analysisResult = useUpbitStore.getState().analyzeRealtimeData(allData);
-      
-      console.log('분석 결과:', analysisResult?.signals?.length ?? 0, '개의 신호 발견');
-      
-      if (analysisResult && analysisResult.signals) {
-        const signals = analysisResult.signals
-          .filter((signal: any) => signal.position !== null)
-          .map((signal: any) => ({
-            ...signal,
-            time: signal.time as unknown as Time,
-            position: signal.position as 'buy' | 'sell',
-            metadata: signal.metadata ? {
-              ...signal.metadata,
-              ma60: signal.metadata.ma60 || 0
-            } : undefined
-          }));
-        
-        // 차트에 표시할 신호 수 제한 (최근 50개만 표시)
-        const limitedSignals = signals.length > 50 ? signals.slice(-50) : signals;
-        
-        // 로그에 신호 수 출력
-        console.log(`총 신호 수: ${signals.length}, 차트에 표시될 신호 수: ${limitedSignals.length}`);
-        console.log(`매수 신호: ${(signals as any[]).filter(s => s.position === 'buy').length}, 매도 신호: ${(signals as any[]).filter(s => s.position === 'sell').length}`);
-        
-        const strategyMarkers = createTradeMarkers(limitedSignals as TradeSignal[]);
-        console.log(`전략 변경 후 마커 ${strategyMarkers.length}개 생성 (매수: ${(signals as any[]).filter(s => s.position === 'buy').length}개, 매도: ${(signals as any[]).filter(s => s.position === 'sell').length}개)`);
-        
-        // 마커 업데이트
-        updateMarkers(strategyMarkers);
-      }
-    }
-  }, [currentStrategy, allData]);
-
-  const processLoadedData = useCallback((allProcessedData: ExtendedCandlestickData[]) => {
-    // 캔들 데이터 설정
-    if (candleSeriesRef.current) {
-      candleSeriesRef.current.setData(allProcessedData);
-      console.log(`캔들 데이터 설정 완료: ${allProcessedData.length}개`);
-    }
-    
-    // 볼륨 데이터 설정
-    if (volumeSeriesRef.current) {
-      const volumeData = allProcessedData.map((d) => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? '#26a69a' : '#ef5350',
-      }));
-      volumeSeriesRef.current.setData(volumeData);
-      console.log(`볼륨 데이터 설정 완료: ${volumeData.length}개`);
-    }
-    
-    // 이동평균선 업데이트
-    const updateEMAs = () => {
-      console.log('이동평균선 업데이트 시작...', new Date().toISOString());
-      
-      try {
-        // 데이터가 없으면 종료
-        if (allData.length === 0) {
-          console.warn('이동평균선 업데이트를 위한 데이터가 없습니다.');
-          return;
-        }
-        
-        // 캔들스틱 데이터 처리 (시간순 정렬)
-        const sortedData = [...allData].sort((a, b) => {
-          return getTimeAsTimestamp(a.time) - getTimeAsTimestamp(b.time);
-        });
-        
-        // 전략 설정에 따른 신호 생성
-        // TradeStrategy 타입 관련 오류 해결을 위해 주석 처리
-        // const signals = currentStrategy && mode === 'test' ? currentStrategy.analyze(sortedData) : [];
-        const signals: any[] = []; // 임시 빈 배열로 대체
-        
-        // 이동평균선 계산
-        try {
-          // 단기 이평선 계산 (5, 10, 20, 30, 60, 120)
-          const ema5Data = calculateEMA(sortedData, 5);
-          const ema10Data = calculateEMA(sortedData, 10);
-          const ema20Data = calculateEMA(sortedData, 20);
-          const ema30Data = calculateEMA(sortedData, 30);
-          const ema60Data = calculateEMA(sortedData, 60);
-          const ema120Data = calculateEMA(sortedData, 120);
-          const ema240Data = calculateEMA(sortedData, 240);
-          
-          // 새로운 이평선 데이터 설정
-          if (fiveEMASeriesRef.current) {
-            fiveEMASeriesRef.current.setData(ema5Data);
-            fiveEMASeriesRef.current.applyOptions({ 
-              visible: showMA.five,
-              color: '#FF00FF',  // 마젠타색
-              lineWidth: 1
-            });
-            console.log(`5MA 설정 완료 (표시: ${showMA.five ? '보임' : '숨김'}, 데이터: ${ema5Data.length}개)`);
-          }
-          
-          if (tenEMASeriesRef.current) {
-            tenEMASeriesRef.current.setData(ema10Data);
-            tenEMASeriesRef.current.applyOptions({ 
-              visible: showMA.ten,
-              color: '#00FFFF',  // 시안색
-              lineWidth: 1
-            });
-            console.log(`10MA 설정 완료 (표시: ${showMA.ten ? '보임' : '숨김'}, 데이터: ${ema10Data.length}개)`);
-          }
-          
-          if (twentyEMASeriesRef.current) {
-            twentyEMASeriesRef.current.setData(ema20Data);
-            twentyEMASeriesRef.current.applyOptions({ 
-              visible: showMA.twenty,
-              color: '#FFA500',  // 오렌지색
-              lineWidth: 1
-            });
-            console.log(`20MA 설정 완료 (표시: ${showMA.twenty ? '보임' : '숨김'}, 데이터: ${ema20Data.length}개)`);
-          }
-          
-          if (thirtyEMASeriesRef.current) {
-            thirtyEMASeriesRef.current.setData(ema30Data);
-            thirtyEMASeriesRef.current.applyOptions({ 
-              visible: showMA.thirty,
-              color: '#32CD32',  // 라임그린
-              lineWidth: 1
-            });
-            console.log(`30MA 설정 완료 (표시: ${showMA.thirty ? '보임' : '숨김'}, 데이터: ${ema30Data.length}개)`);
-          }
-          
-          // 기존 이평선 설정 코드는 그대로 유지
-          if (sixtyEMASeriesRef.current) {
-            sixtyEMASeriesRef.current.setData(ema60Data);
-            sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
-            console.log(`60MA 설정 완료 (표시: ${showMA.sixty ? '보임' : '숨김'}, 데이터: ${ema60Data.length}개)`);
-            
-            // 시리즈 데이터 및 속성 검증
-            const currentData = sixtyEMASeriesRef.current.data();
-            console.log(`60MA 설정 후 실제 데이터 확인: ${(currentData as any[]).length}개`);
-            
-            // 시리즈 옵션 확인
-            const options = sixtyEMASeriesRef.current.options();
-            console.log('60MA 옵션:', options);
-          }
-          
-          // 이하 기존 코드는 그대로 유지
-          // ... existing code ...
-        } catch (error) {
-          console.error('이동평균선 계산 및 설정 중 오류 발생:', error);
-        }
-      } catch (error) {
-        console.error('이동평균선 업데이트 중 오류 발생:', error);
-      }
-    };
-    
-    // 이동평균선 업데이트 함수 호출
-    updateEMAs();
-  }, [allData, showMA, mode, updateMarkers]);
+  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress]);
 
   return {
-    // 상태
     isFullscreen,
     chartHeight,
     chartPrice,
@@ -1339,11 +983,9 @@ export const useChartData = (
     isAutoUpdate,
     isRealtimeAPIEnabled,
     lastSymbol,
+    currentStrategy,
     dateRange,
     showMA,
-    realtimeUpdateStatus,
-    
-    // 레퍼런스
     chartRef,
     candleSeriesRef,
     volumeSeriesRef,
@@ -1360,29 +1002,17 @@ export const useChartData = (
     markerPluginRef,
     ongoingRequestRef,
     timeoutRef,
-    
-    // 함수
-    setIsFullscreen,
-    setChartHeight,
-    setChartPrice,
-    setProgress,
-    setAllData,
-    setMarkers,
-    setBacktestResult,
-    setIsAutoUpdate,
-    setIsRealtimeAPIEnabled,
-    setLastSymbol,
-    setDateRange,
-    setShowMA,
-    setRealtimeUpdateStatus,
+    realtimeUpdateStatus,
+    updateMarkers,
     switchToRealtimeAfterUpdate,
     loadData,
     handleChartReady,
     toggleFullscreen,
     updateShowMA,
     handleHeightChange,
+    updateMovingAverages,
     handleAutoUpdateToggle,
     handleRealtimeAPIToggle,
     updateRealtimeData
   };
-}; 
+};

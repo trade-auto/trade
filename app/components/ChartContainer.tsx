@@ -92,7 +92,6 @@ const CHART_COLORS = {
   grid: '#2B2B2B',
   upColor: '#26a69a',
   downColor: '#ef5350',
-  volume: '#26a69a',
 } as const;
 
 const MA_COLORS = {
@@ -265,10 +264,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     });
 
     seriesRefs.current.volume = chart.addHistogramSeries({
-      color: CHART_COLORS.volume,
-      priceFormat: {
-        type: 'volume',
-      },
+      color: CHART_COLORS.upColor,
+      priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
     });
 

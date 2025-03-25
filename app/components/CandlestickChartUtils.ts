@@ -3,12 +3,17 @@ import { ExtendedCandlestickData } from '../types/candlestick';
 import { TradeSignal } from '../strategies/types';
 import { formatDate, calculateEMA, getChartEndpoint, calculateBacktestResult } from '../utils/chartHelpers';
 
+export interface DateRange {
+  startDate: Date;
+  endDate: Date | null;
+}
+
 /**
  * 매매 신호를 기반으로 차트 마커를 생성합니다.
  */
-export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker[] => {
+export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[] => {
   return signals.map(signal => ({
-    time: signal.time,
+    time: signal.time as Time,
     position: signal.position === 'buy' ? 'belowBar' : 'aboveBar',
     color: signal.position === 'buy' ? '#26a69a' : '#ef5350',
     shape: signal.position === 'buy' ? 'arrowUp' : 'arrowDown',
@@ -42,16 +47,16 @@ export const getInitialDateRange = (type: string): DateRange => {
     // 초봉: 최근 2시간 데이터 (기존 설정 유지)
     startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
   } else if (type.startsWith('minutes/')) {
-    // 분봉: 캔들 갯수에 맞게 시간 설정
+    // 분봉: 정확히 200개의 캔들을 가져오기 위한 설정
     const minutesInterval = parseInt(type.split('/')[1]);
     if (minutesInterval === 5) {
-      // 5분봉: 5분 × 576개 = 2880분 = 48시간
-      startDate = new Date(now.getTime() - (5 * 576) * 60 * 1000);
-      console.log(`5분봉 576개를 위한 시작 시간 설정: ${startDate.toLocaleString('ko-KR')}`);
+      // 5분봉: 5분 × 200개 = 1000분 = 16시간 40분
+      startDate = new Date(now.getTime() - (5 * 200) * 60 * 1000);
+      console.log(`5분봉 200개를 위한 시작 시간 설정: ${startDate.toLocaleString('ko-KR')}`);
     } else if (minutesInterval === 15) {
-      // 15분봉: 15분 × 672개 = 10080분 = 168시간 = 7일
-      startDate = new Date(now.getTime() - (15 * 672) * 60 * 1000);
-      console.log(`15분봉 672개를 위한 시작 시간 설정: ${startDate.toLocaleString('ko-KR')}`);
+      // 15분봉: 15분 × 200개 = 3000분 = 50시간
+      startDate = new Date(now.getTime() - (15 * 200) * 60 * 1000);
+      console.log(`15분봉 200개를 위한 시작 시간 설정: ${startDate.toLocaleString('ko-KR')}`);
     } else {
       // 기타 분봉: 기본 2시간 데이터
       startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);

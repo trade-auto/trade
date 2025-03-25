@@ -6,6 +6,7 @@ import { useBacktestChart } from './CandlestickChartBacktest';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
 import PolMACDChart from './PolMACDChart';
+import MonMACDChart from './MonMACDChart';
 import MACDChart from './MACDChart';
 
 // 컴포넌트
@@ -20,7 +21,7 @@ import TradingStrategyHover from './TradingStrategyHover';
 const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   const {
     symbol,
-    chartType,
+    chartType: propsChartType,
     initialAutoUpdate = true,
     initialDataCount = 200, // 기본값 200으로 설정
     mode,
@@ -28,6 +29,72 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     onOrder,
     onChartTypeChange: propsOnChartTypeChange,
   } = props;
+  
+  // 차트 타입의 기본값을 5분봉으로 설정
+  const [chartType, setChartType] = React.useState<string>(propsChartType || 'minutes/5');
+  const [dataCount, setDataCount] = React.useState<number>(initialDataCount);
+  
+  // 차트 타입이 변경될 때 props에 전달된 onChartTypeChange 함수 호출
+  React.useEffect(() => {
+    if (propsOnChartTypeChange && typeof propsOnChartTypeChange === 'function') {
+      propsOnChartTypeChange(chartType);
+    }
+  }, [chartType, propsOnChartTypeChange]);
+  
+  // 캔들 개수 증가 함수
+  const increaseDataCount = useCallback(() => {
+    setDataCount(prev => {
+      const newCount = prev + 100;
+      // localStorage에 저장
+      try {
+        localStorage.setItem('chartDataCount', newCount.toString());
+      } catch (error) {
+        console.error('캔들 개수 저장 실패:', error);
+      }
+      return newCount;
+    });
+  }, []);
+  
+  // 캔들 개수 감소 함수
+  const decreaseDataCount = useCallback(() => {
+    setDataCount(prev => {
+      // 최소 200개는 유지
+      const newCount = Math.max(200, prev - 100);
+      // localStorage에 저장
+      try {
+        localStorage.setItem('chartDataCount', newCount.toString());
+      } catch (error) {
+        console.error('캔들 개수 저장 실패:', error);
+      }
+      return newCount;
+    });
+  }, []);
+  
+  // 전역 window 객체에 함수 등록 (ChartControls 컴포넌트에서 접근 가능하도록)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).decreaseDataCount = decreaseDataCount;
+    }
+    
+    return () => {
+      // 컴포넌트 언마운트 시 제거
+      if (typeof window !== 'undefined') {
+        delete (window as any).decreaseDataCount;
+      }
+    };
+  }, [decreaseDataCount]);
+  
+  // 컴포넌트 마운트 시 localStorage에서 캔들 개수 불러오기
+  React.useEffect(() => {
+    try {
+      const savedCount = localStorage.getItem('chartDataCount');
+      if (savedCount) {
+        setDataCount(parseInt(savedCount, 10));
+      }
+    } catch (error) {
+      console.error('저장된 캔들 개수 로드 실패:', error);
+    }
+  }, []);
   
   // 차트 데이터 및 기능 훅
   const {
@@ -52,7 +119,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     handleRealtimeAPIToggle,
     handleChartReady,
     loadData
-  } = useChartData(symbol, chartType, initialAutoUpdate, mode, initialDataCount);
+  } = useChartData(symbol, chartType, initialAutoUpdate, mode, dataCount);
   
   // CSV 관련 기능 훅
   const {
@@ -79,29 +146,33 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   
   // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
   useEffect(() => {
-    const now = new Date();
-    let startDate: Date;
-    
-    if (chartType.startsWith('seconds/')) {
-      // 초봉: 최근 2시간 데이터로 명시적 설정
-      startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-      console.log('초봉 차트 - 시작 날짜를 2시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
-      setDateRange(prev => ({ ...prev, startDate }));
-    } else if (chartType.startsWith('minutes/')) {
-      // 분봉: 기간 설정
-      const minutes = parseInt(chartType.split('/')[1]);
-      if (minutes === 5) {
-        // 5분봉: 576개 캔들 데이터 (5분 × 576 = 2880분 = 48시간)
-        startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-      } else if (minutes === 15) {
-        // 15분봉: 672개 캔들 데이터 (15분 × 672 = 10080분 = 168시간 = 7일)
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      } else {
-        // 기본: 최근 8시간 데이터
-        startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000);
+    if (setDateRange && typeof setDateRange === 'function') {
+      const now = new Date();
+      let startDate: Date;
+      
+      if (chartType.startsWith('seconds/')) {
+        // 초봉: 최근 2시간 데이터로 명시적 설정
+        startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+        console.log('초봉 차트 - 시작 날짜를 2시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
+        setDateRange(prev => ({ ...prev, startDate }));
+      } else if (chartType.startsWith('minutes/')) {
+        // 분봉: 기간 설정
+        const minutes = parseInt(chartType.split('/')[1]);
+        if (minutes === 5) {
+          // 5분봉: 576개 캔들 데이터 (5분 × 576 = 2880분 = 48시간)
+          startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+        } else if (minutes === 15) {
+          // 15분봉: 672개 캔들 데이터 (15분 × 672 = 10080분 = 168시간 = 7일)
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        } else {
+          // 기본: 최근 8시간 데이터
+          startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000);
+        }
+        console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
+        setDateRange(prev => ({ ...prev, startDate }));
       }
-      console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
-      setDateRange(prev => ({ ...prev, startDate }));
+    } else {
+      console.error('setDateRange 함수가 없거나 함수가 아닙니다.');
     }
   }, [chartType, setDateRange]);
   
@@ -197,6 +268,14 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
               handleDateRangeChange={(date) => setDateRange(prev => ({ ...prev, startDate: date }))}
               handleEndDateChange={(date) => setDateRange(prev => ({ ...prev, endDate: date }))}
               progress={progress}
+              isAutoUpdate={isAutoUpdate}
+              isRealtimeAPIEnabled={isRealtimeAPIEnabled}
+              handleAutoUpdateToggle={handleAutoUpdateToggle}
+              handleRealtimeAPIToggle={handleRealtimeAPIToggle}
+              realtimeUpdateStatus={realtimeUpdateStatus}
+              dataCount={dataCount}
+              increaseDataCount={increaseDataCount}
+              decreaseDataCount={decreaseDataCount}
             />
           </div>
           
@@ -223,11 +302,14 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           />
         </div>
 
-        {/* PolMACD 차트 - tradeStrategy가 'MACD'일 때만 표시 */}
+        {/* MACD 관련 차트들 - tradeStrategy가 'MACD'일 때만 표시 */}
         {tradeStrategy === 'MACD' && (
           <>
             <div className="w-full" style={{ height: '300px' }}>
               <PolMACDChart data={isDataImported ? importedData : allData} />
+            </div>
+            <div className="w-full" style={{ height: '300px' }}>
+              <MonMACDChart data={isDataImported ? importedData : allData} />
             </div>
             <div className="w-full" style={{ height: '300px' }}>
               <MACDChart data={isDataImported ? importedData : allData} />
@@ -244,7 +326,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
               chartHeight={chartHeight}
               handleHeightChange={handleHeightChange}
               chartType={chartType}
-              onChartTypeChange={propsOnChartTypeChange || (() => {})}
+              onChartTypeChange={(type) => setChartType(type)}
             />
           </div>
           <div className="w-full md:w-1/2">

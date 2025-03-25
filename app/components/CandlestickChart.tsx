@@ -8,28 +8,97 @@
 // - CandlestickChartCSV.tsx: CSV 관련 기능
 
 import PolMACDChart from './PolMACDChart';
+import { forwardRef, useState, useCallback } from 'react';
+import { useCandlestickChart } from './CandlestickChartHooks';
 
+// CandlestickChartCore를 CandlestickChart로 내보냅니다
 export { default as CandlestickChart } from './CandlestickChartCore';
 export type { OrderParams } from './CandlestickChartTypes';
 
-const CandlestickChart: React.FC<CandlestickChartProps> = ({
+// 이 컴포넌트는 다른 이름으로 내보냅니다 (예: ChartWithControls)
+const ChartWithControls = forwardRef<ChartRef, CandlestickChartProps>(({
+  symbol,
+  chartType,
+  initialData,
+  onPriceChange,
+  onChangeQuantity,
+  onMouseLeave,
+  onOrder,
+  onChartTypeChange,
+  showMA: initialShowMA,
+  mode = 'test',
+}, ref) => {
+  // 기존 상태 및 훅은 그대로 유지
   // ... existing code ...
-}) => {
-  // ... existing code ...
-
+  
+  // 자동 업데이트 및 실시간 업데이트 상태 불러오기
+  const [isAutoUpdate, setIsAutoUpdate] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('chartAutoUpdate');
+      return saved !== null ? JSON.parse(saved) : true;
+    }
+    return true;
+  });
+  
+  const [isRealtimeEnabled, setIsRealtimeEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('chartRealtimeUpdate');
+      return saved !== null ? JSON.parse(saved) : false;
+    }
+    return false;
+  });
+  
+  // 자동 업데이트 토글 함수
+  const toggleAutoUpdate = useCallback(() => {
+    const newValue = !isAutoUpdate;
+    setIsAutoUpdate(newValue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('chartAutoUpdate', JSON.stringify(newValue));
+    }
+  }, [isAutoUpdate]);
+  
+  // 실시간 업데이트 토글 함수
+  const toggleRealtimeUpdate = useCallback(() => {
+    const newValue = !isRealtimeEnabled;
+    setIsRealtimeEnabled(newValue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('chartRealtimeUpdate', JSON.stringify(newValue));
+    }
+  }, [isRealtimeEnabled]);
+  
+  // 기존 UI 코드를 수정해서 버튼 추가
   return (
-    <div className="flex flex-col gap-4">
-      {/* 기존 차트 */}
-      <div className="relative" style={{ height: `${chartHeight}px` }}>
-        {/* ... existing code ... */}
+    <div className="relative">
+      {/* 차트 컨트롤 영역 추가 */}
+      <div className="flex justify-between items-center mb-2">
+        <div className="text-lg font-bold text-white">{symbol} 차트</div>
+        <div className="flex space-x-2">
+          <button 
+            className={`px-3 py-1 rounded text-sm ${isAutoUpdate ? 'bg-green-600' : 'bg-gray-600'}`}
+            onClick={toggleAutoUpdate}
+          >
+            자동 업데이트 {isAutoUpdate ? '켜짐' : '꺼짐'}
+          </button>
+          <button 
+            className={`px-3 py-1 rounded text-sm ${isRealtimeEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}
+            onClick={toggleRealtimeUpdate}
+          >
+            실시간 업데이트 {isRealtimeEnabled ? '켜짐' : '꺼짐'}
+          </button>
+        </div>
       </div>
-
-      {/* 폴MACD 차트 */}
-      <div className="relative" style={{ height: '300px' }}>
-        <PolMACDChart data={allData} />
+      
+      {/* 기존 차트 컴포넌트 */}
+      <div className="relative bg-gray-900 rounded-lg overflow-hidden">
+        {/* ... existing chart container code ... */}
+        
+        {/* chart component here... */}
       </div>
     </div>
   );
-};
+});
 
-export default CandlestickChart;
+ChartWithControls.displayName = 'ChartWithControls';
+
+export { ChartWithControls };
+// export type { OrderParams }; // 이미 위에서 내보냈으므로 제거

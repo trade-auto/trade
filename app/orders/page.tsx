@@ -35,7 +35,17 @@ export default function OrdersPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
   const [isClient, setIsClient] = useState(false);
-  const [selectedInterval, setSelectedInterval] = useState<string>('seconds/60');
+  const [selectedInterval, setSelectedInterval] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('selectedChartInterval');
+        return saved || 'minutes/5';
+      } catch (error) {
+        console.warn('localStorage is not available:', error);
+      }
+    }
+    return 'minutes/5';
+  });
   const openOrdersRef = useRef<{ loadOpenOrders?: () => void }>({});
   const [currentPrice, setCurrentPrice] = useState<number>(3850);
   const [orderQuantity, setOrderQuantity] = useState<number>(12.9870);
@@ -70,6 +80,11 @@ export default function OrdersPage() {
       const saved = localStorage.getItem('selectedSymbol');
       if (saved) {
         setSelectedSymbol(saved);
+      }
+      
+      const savedInterval = localStorage.getItem('selectedChartInterval');
+      if (savedInterval) {
+        setSelectedInterval(savedInterval);
       }
     } catch (error) {
       console.warn('localStorage is not available:', error);
@@ -197,6 +212,17 @@ export default function OrdersPage() {
   const handleQuantityUpdate = (quantity: number) => {
     if (quantity) setOrderQuantity(quantity);
   };
+
+  const handleIntervalChange = useCallback((interval: string) => {
+    setSelectedInterval(interval);
+    if (mounted) {
+      try {
+        localStorage.setItem('selectedChartInterval', interval);
+      } catch (error) {
+        console.warn('Failed to save chart interval to localStorage:', error);
+      }
+    }
+  }, [mounted]);
 
   if (!mounted) {
     return (
@@ -370,6 +396,12 @@ export default function OrdersPage() {
           <h2 className="text-xl font-bold text-white mb-4">
             {selectedInterval === 'seconds/60' ? '실시간 초봉 차트' : selectedInterval === 'minutes/5' ? '실시간 5분봉 차트' : '실시간 15분봉 차트'}
           </h2>
+          
+          {/* 캔들 증가 설명 */}
+          <div className="bg-blue-800 p-3 rounded-lg mb-2 text-white">
+            <span className="font-bold">💡 팁:</span> 차트 컨트롤 영역의 「캔들 데이터 설정」에서 「캔들 +100개 추가」 버튼을 클릭하면 더 많은 과거 데이터를 볼 수 있습니다.
+          </div>
+          
           <CandlestickChart 
             symbol={selectedSymbol} 
             chartType={selectedInterval}
@@ -388,7 +420,7 @@ export default function OrdersPage() {
               }
             }}
             onOrder={() => {}}
-            onChartTypeChange={(type) => setSelectedInterval(type)}
+            onChartTypeChange={(type) => handleIntervalChange(type)}
             showMA={{
               sixty: true,
               oneTwenty: true,
