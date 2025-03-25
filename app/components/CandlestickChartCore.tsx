@@ -6,6 +6,7 @@ import { useBacktestChart } from './CandlestickChartBacktest';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
 import PolMACDChart from './PolMACDChart';
+import MACDChart from './MACDChart';
 
 // 컴포넌트
 import ChartControls from './ChartControls';
@@ -224,9 +225,14 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
 
         {/* PolMACD 차트 - tradeStrategy가 'MACD'일 때만 표시 */}
         {tradeStrategy === 'MACD' && (
-          <div className="w-full" style={{ height: '300px' }}>
-            <PolMACDChart data={isDataImported ? importedData : allData} />
-          </div>
+          <>
+            <div className="w-full" style={{ height: '300px' }}>
+              <PolMACDChart data={isDataImported ? importedData : allData} />
+            </div>
+            <div className="w-full" style={{ height: '300px' }}>
+              <MACDChart data={isDataImported ? importedData : allData} />
+            </div>
+          </>
         )}
         
         {/* 설정 및 결과 섹션 */}
