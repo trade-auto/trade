@@ -243,20 +243,6 @@ export const useChartData = (
     loadData();
   }, [chartType]);
 
-  // 데이터 개수가 변경되면 데이터 다시 로드
-  useEffect(() => {
-    console.log(`데이터 개수가 변경되었습니다: ${initialDataCount}개`);
-    
-    // 초봉 차트일 경우 데이터 개수 변경은 무시 (API 제한 때문)
-    if (chartType.startsWith('seconds/')) {
-      console.log('초봉 차트는 데이터 개수 변경으로 다시 로드하지 않습니다.');
-      return;
-    }
-    
-    // 데이터 다시 로드
-    loadData();
-  }, [initialDataCount]);
-
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
     if (ongoingRequestRef.current) return;
@@ -972,6 +958,22 @@ export const useChartData = (
     }
   }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress]);
 
+  // 실시간 업데이트를 위한 useEffect
+  useEffect(() => {
+    if (!isRealtimeAPIEnabled || !chartType.startsWith('seconds/')) {
+      return;
+    }
+
+    // 초봉 차트일 경우 1초마다 업데이트
+    const intervalId = setInterval(() => {
+      updateRealtimeData();
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isRealtimeAPIEnabled, chartType, updateRealtimeData]);
+
   return {
     isFullscreen,
     chartHeight,
@@ -1015,4 +1017,4 @@ export const useChartData = (
     handleRealtimeAPIToggle,
     updateRealtimeData
   };
-};
+}; 

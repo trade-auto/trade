@@ -57,21 +57,29 @@ export const useUpbitWebSocket = (market: string) => {
       };
 
       socketRef.current.onerror = (error: Event) => {
+        const ws = error.target as WebSocket;
         console.error('WebSocket 오류:', {
           type: error.type,
           timeStamp: error.timeStamp,
-          target: (error.target as WebSocket)?.url || 'unknown',
-          readyState: (error.target as WebSocket)?.readyState || 'unknown'
+          url: ws?.url || 'unknown',
+          readyState: ws?.readyState || 'unknown',
+          message: ws?.bufferedAmount || 'unknown'
         });
+        
         setIsConnected(false);
         
-        // 3초 후 재연결 시도
-        setTimeout(() => {
-          if (socketRef.current?.readyState === WebSocket.CLOSED) {
-            console.log('WebSocket 재연결 시도...');
-            connect();
+        // 연결이 끊어진 경우에만 재연결 시도
+        if (ws?.readyState === WebSocket.CLOSED) {
+          if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            console.log(`${RECONNECT_DELAY / 1000}초 후 재연결 시도 (${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+            reconnectTimeoutRef.current = setTimeout(() => {
+              reconnectAttemptsRef.current += 1;
+              connect();
+            }, RECONNECT_DELAY);
+          } else {
+            console.error(`최대 재연결 시도 횟수(${MAX_RECONNECT_ATTEMPTS})에 도달했습니다.`);
           }
-        }, 3000);
+        }
       };
 
       socketRef.current.onclose = (event) => {

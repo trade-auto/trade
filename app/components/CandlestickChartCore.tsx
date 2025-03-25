@@ -6,9 +6,9 @@ import { useBacktestChart } from './CandlestickChartBacktest';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
 import { DateRange } from '../types/candlestick';
-import PolMACDChart from './PolMACDChart';
-import MonMACDChart from './MonMACDChart';
+import { CandlestickChart } from './CandlestickChart';
 import MACDChart from './MACDChart';
+import PolMACDChart from './PolMACDChart';
 
 // 컴포넌트
 import ChartControls from './ChartControls';
@@ -19,7 +19,7 @@ import CsvDownloader from './CsvDownloader';
 import ChartContainer from './ChartContainer';
 import TradingStrategyHover from './TradingStrategyHover';
 
-const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
+const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   const {
     symbol,
     chartType: propsChartType,
@@ -39,6 +39,20 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   const [localDateRange, setLocalDateRange] = React.useState<DateRange>({
     startDate: new Date(new Date().getTime() - 48 * 60 * 60 * 1000), // 기본 48시간
     endDate: null
+  });
+  
+  // 이동평균선 표시 상태 초기화
+  const [showMA, setShowMA] = React.useState({
+    five: false,
+    ten: false,
+    twenty: false,
+    thirty: false,
+    sixty: false,
+    oneTwenty: false,
+    twoForty: false,
+    threeHundredSixty: false,
+    sixHundred: false,
+    nineHundred: false
   });
   
   // 차트 타입이 변경될 때 props에 전달된 onChartTypeChange 함수 호출
@@ -99,18 +113,23 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     isAutoUpdate,
     isRealtimeAPIEnabled,
     lastSymbol,
-    showMA,
+    showMA: chartShowMA,
     realtimeUpdateStatus,
     
     // 함수
     toggleFullscreen,
     updateShowMA,
-    handleHeightChange,
+    handleHeightChange: handleHeightChangeEvent,
     handleAutoUpdateToggle,
     handleRealtimeAPIToggle,
     handleChartReady,
     loadData
   } = useChartData(symbol, chartType, initialAutoUpdate, mode, dataCount);
+  
+  // 차트 높이 변경 핸들러
+  const handleHeightChange = (height: number) => {
+    handleHeightChangeEvent({ target: { value: height.toString() } } as React.ChangeEvent<HTMLInputElement>);
+  };
   
   // CSV 관련 기능 훅
   const {
@@ -247,9 +266,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
       />
       <div className="grid grid-cols-1 gap-4">
         {/* 가격 정보 및 컨트롤 섹션 */}
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col gap-4">
           {/* 차트 컨트롤 */}
-          <div className="w-full md:w-1/2">
+          <div className="flex flex-wrap items-center gap-4">
             <ChartControls
               dateRange={localDateRange}
               handleDateRangeChange={(date) => setLocalDateRange((prev: DateRange) => ({ ...prev, startDate: date }))}
@@ -267,7 +286,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           </div>
           
           {/* 가격 정보 */}
-          <div className="w-full md:w-1/2">
+          <div className="flex items-center gap-4">
             <ChartPrice chartPrice={chartPrice} market={symbol} />
           </div>
         </div>
@@ -285,18 +304,15 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
             isAutoUpdate={isAutoUpdate}
             isRealtimeAPIEnabled={isRealtimeAPIEnabled}
             data={isDataImported ? importedData : allData}
-            showMA={showMA}
+            showMA={chartShowMA}
           />
         </div>
 
         {/* MACD 관련 차트들 - tradeStrategy가 'MACD'일 때만 표시 */}
         {tradeStrategy === 'MACD' && (
           <>
-            <div className="w-full" style={{ height: '300px' }}>
-              <PolMACDChart data={isDataImported ? importedData : allData} />
-            </div>
-            <div className="w-full" style={{ height: '300px' }}>
-              <MonMACDChart data={isDataImported ? importedData : allData} />
+            <div className="w-full" style={{ height: '400px' }}>
+              <PolMACDChart data={isDataImported ? importedData : allData} height={400} />
             </div>
             <div className="w-full" style={{ height: '300px' }}>
               <MACDChart data={isDataImported ? importedData : allData} />
@@ -309,7 +325,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           <div className="w-full md:w-1/2">
             <ChartSettings
               showMA={showMA}
-              updateShowMA={updateShowMA}
+              updateShowMA={setShowMA}
               chartHeight={chartHeight}
               handleHeightChange={handleHeightChange}
               chartType={chartType}
@@ -348,4 +364,4 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   );
 };
 
-export default CandlestickChart; 
+export default CandlestickChartCore; 
