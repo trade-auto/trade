@@ -157,7 +157,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
   useEffect(() => {
     const now = new Date();
-    let startDate: Date;
+    let startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000); // 기본값 설정
     
     if (chartType.startsWith('seconds/')) {
       // 초봉: 최근 2시간 데이터로 명시적 설정
@@ -173,13 +173,14 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
       } else if (minutes === 15) {
         // 15분봉: 672개 캔들 데이터 (15분 × 672 = 10080분 = 168시간 = 7일)
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      } else {
-        // 기본: 최근 8시간 데이터
-        startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000);
       }
       console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
       setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
     }
+
+    // MACD 계산을 위한 추가 데이터 기간 설정
+    const macdStartDate = new Date(startDate.getTime() - 26 * 24 * 60 * 60 * 1000); // 26일 추가
+    setLocalDateRange((prev: DateRange) => ({ ...prev, startDate: macdStartDate }));
   }, [chartType]);
   
   // 초봉 차트일 경우 자동 업데이트 및 실시간 API 효과

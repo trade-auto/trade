@@ -121,19 +121,10 @@ const getChartOptions = (width: number, height: number, chartType: string) => ({
     borderColor: CHART_COLORS.grid,
     tickMarkFormatter: (time: number) => {
       const date = new Date(time * 1000);
-      return chartType.startsWith('seconds/') 
-        ? date.toLocaleTimeString('ko-KR', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit' 
-          })
-        : date.toLocaleString('ko-KR', { 
-            year: 'numeric', 
-            month: '2-digit', 
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      const seconds = date.getSeconds().toString().padStart(2, '0');
+      return `${hours}:${minutes}:${seconds}`;
     }
   },
   rightPriceScale: {

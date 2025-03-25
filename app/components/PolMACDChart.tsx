@@ -295,10 +295,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400 }) => {
       overboughtLine.setData(overboughtData);
       oversoldLine.setData(oversoldData);
 
-      // 시간축 설정
+      // 시간축 설정 - 캔들차트와 동일한 시간 범위 사용
       const timeScale = chart.timeScale();
       timeScale.setVisibleRange({
-        from: startTime as Time,
+        from: data[0].time as Time,
         to: data[data.length - 1].time as Time,
       });
       timeScale.fitContent();
