@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 
+interface UpbitMinuteCandle {
+  candle_date_time_kst: string;
+  candle_date_time_utc: string;
+  [key: string]: any;
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const market = searchParams.get('market');
@@ -23,7 +29,7 @@ export async function GET(request: Request) {
     
     // 1분봉 데이터를 초봉 형태로 변환
     // 현재 시간을 기준으로 마지막 캔들의 시간을 조정
-    const secondsData = minuteData.map(candle => {
+    const secondsData = minuteData.map((candle: UpbitMinuteCandle) => {
       // 캔들 시간 파싱
       const candleTime = new Date(candle.candle_date_time_kst);
       

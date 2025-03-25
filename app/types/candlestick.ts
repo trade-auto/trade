@@ -114,6 +114,10 @@ export interface BacktestResult {
 }
 
 export interface MASettings {
+  five: boolean;
+  ten: boolean;
+  twenty: boolean;
+  thirty: boolean;
   sixty: boolean;
   oneTwenty: boolean;
   twoForty: boolean;

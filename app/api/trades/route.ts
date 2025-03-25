@@ -11,15 +11,28 @@ export async function GET(request: Request) {
 
   try {
     const response = await fetch(
-      `https://api.upbit.com/v1/trades/ticks?market=${market}&count=${count}`
+      `https://api.upbit.com/v1/trades/ticks?market=${market}&count=${count}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      }
     );
     
     if (!response.ok) {
-      throw new Error('업비트 API 요청 실패');
+      const errorText = await response.text();
+      console.error('업비트 API 응답 오류:', errorText);
+      throw new Error(`업비트 API 요청 실패: ${response.status}`);
     }
 
     const data = await response.json();
     
+    if (!Array.isArray(data) || data.length === 0) {
+      console.error('거래 데이터가 없음:', data);
+      return NextResponse.json({ error: '거래 데이터를 찾을 수 없습니다.' }, { status: 404 });
+    }
+
     // 디버깅을 위한 로그 추가
     console.log('Raw trade prices:', data.map((trade: any) => trade.trade_price));
     const sortedPrices = data
@@ -30,6 +43,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(data);
   } catch (error: any) {
+    console.error('체결 내역 조회 중 오류:', error);
     return NextResponse.json(
       { error: error.message || '체결 내역 조회 중 오류가 발생했습니다.' },
       { status: 500 }

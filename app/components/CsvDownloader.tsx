@@ -13,6 +13,11 @@ interface CsvDownloaderProps {
   allData: CandlestickData[] | UpbitCandle[];
   setCsvDateRange: (range: { startDate: Date | null; endDate: Date | null }) => void;
   saveToCSV: () => void;
+  isDataImported?: boolean;
+  importProgress?: number;
+  fileInputRef?: React.RefObject<HTMLInputElement>;
+  onFileImport?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  triggerFileInput?: () => void;
 }
 
 const CsvDownloader: React.FC<CsvDownloaderProps> = ({
@@ -21,7 +26,12 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
   csvProgress,
   allData,
   setCsvDateRange,
-  saveToCSV
+  saveToCSV,
+  isDataImported,
+  importProgress,
+  fileInputRef,
+  onFileImport,
+  triggerFileInput
 }) => {
   // 진행 상태 메시지 생성
   const getProgressMessage = (progress: number) => {
@@ -70,7 +80,7 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
     <div className="mb-4">
       <div className="bg-gray-800 p-4 rounded-lg">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-gray-400 text-sm">CSV 다운로드 기간 설정</div>
+          <div className="text-gray-400 text-sm">CSV 다운로드/임포트</div>
           <div className="flex flex-wrap gap-3">
             <div>
               <DatePicker
@@ -128,6 +138,16 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
             >
               {csvLoading ? '다운로드 중...' : 'CSV 다운로드'}
             </button>
+
+            {/* CSV 임포트 버튼 */}
+            {triggerFileInput && (
+              <button
+                onClick={triggerFileInput}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold"
+              >
+                CSV 파일 임포트
+              </button>
+            )}
           </div>
         </div>
         
@@ -161,7 +181,34 @@ const CsvDownloader: React.FC<CsvDownloaderProps> = ({
             </div>
           </div>
         )}
+
+        {/* 임포트 진행 상태 */}
+        {isDataImported && importProgress !== undefined && importProgress < 100 && (
+          <div className="mt-4 p-4 bg-gray-900 rounded-lg">
+            <div className="flex justify-between items-center mb-2">
+              <div className="text-gray-300 font-medium">CSV 파일 임포트 중...</div>
+              <div className="text-gray-400 font-bold">{importProgress}%</div>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-3">
+              <div 
+                className="bg-green-600 h-3 rounded-full transition-all duration-300"
+                style={{ width: `${importProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* 파일 입력 필드 */}
+      {fileInputRef && onFileImport && (
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={onFileImport}
+          accept=".csv"
+          className="hidden"
+        />
+      )}
     </div>
   );
 };

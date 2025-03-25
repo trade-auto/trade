@@ -1,5 +1,5 @@
 import { Time } from 'lightweight-charts';
-import { ExtendedCandlestickData, DateRange, BacktestResult, MASettings } from '../types/candlestick';
+import { ExtendedCandlestickData, DateRange, BacktestResult } from '../types/candlestick';
 import { UpbitCandle } from '../types/candlestick';
 
 export interface OrderParams {
@@ -60,4 +60,17 @@ export interface BacktestChartRefs {
   backtestNineHundredEMASeriesRef: React.MutableRefObject<any>;
 }
 
-export type { ExtendedCandlestickData, DateRange, BacktestResult, MASettings, UpbitCandle, Time }; 
+export interface MASettings {
+  five: boolean;       // 5 EMA
+  ten: boolean;        // 10 EMA
+  twenty: boolean;     // 20 EMA
+  thirty: boolean;     // 30 EMA
+  sixty: boolean;
+  oneTwenty: boolean;
+  twoForty: boolean;
+  threeHundredSixty: boolean;
+  sixHundred: boolean;
+  nineHundred: boolean;
+}
+
+export type { ExtendedCandlestickData, DateRange, BacktestResult, UpbitCandle, Time }; 

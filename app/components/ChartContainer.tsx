@@ -72,6 +72,10 @@ interface ChartContainerProps {
     chartApi: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
     volumeSeries: ISeriesApi<"Histogram">,
+    fiveEMA: ISeriesApi<"Line">,
+    tenEMA: ISeriesApi<"Line">,
+    twentyEMA: ISeriesApi<"Line">,
+    thirtyEMA: ISeriesApi<"Line">,
     sixtyEMASeries: ISeriesApi<"Line">,
     oneTwentyEMASeries: ISeriesApi<"Line">,
     twoFortyEMASeries: ISeriesApi<"Line">,
@@ -88,6 +92,7 @@ const CHART_COLORS = {
   grid: '#2B2B2B',
   upColor: '#26a69a',
   downColor: '#ef5350',
+  volume: '#26a69a',
 } as const;
 
 const MA_COLORS = {
@@ -159,6 +164,10 @@ type EMAKey = 'sixtyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEM
 interface SeriesRefs {
   candle: ISeriesApi<"Candlestick"> | null;
   volume: ISeriesApi<"Histogram"> | null;
+  fiveEMA: ISeriesApi<"Line"> | null;
+  tenEMA: ISeriesApi<"Line"> | null;
+  twentyEMA: ISeriesApi<"Line"> | null;
+  thirtyEMA: ISeriesApi<"Line"> | null;
   sixtyEMA: ISeriesApi<"Line"> | null;
   oneTwentyEMA: ISeriesApi<"Line"> | null;
   twoFortyEMA: ISeriesApi<"Line"> | null;
@@ -197,6 +206,10 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   const seriesRefs = useRef<SeriesRefs>({
     candle: null,
     volume: null,
+    fiveEMA: null,
+    tenEMA: null,
+    twentyEMA: null,
+    thirtyEMA: null,
     sixtyEMA: null,
     oneTwentyEMA: null,
     twoFortyEMA: null,
@@ -252,22 +265,83 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     });
 
     seriesRefs.current.volume = chart.addHistogramSeries({
-      color: CHART_COLORS.upColor,
-      priceFormat: { type: 'volume' },
+      color: CHART_COLORS.volume,
+      priceFormat: {
+        type: 'volume',
+      },
       priceScaleId: 'volume',
     });
 
-    // MA 시리즈 생성
-    Object.entries(MA_COLORS).forEach(([key, color]) => {
-      const seriesKey = `${key}EMA` as EMAKey;
-      const isVisible = showMA && showMA[key as keyof typeof showMA];
-      (seriesRefs.current as Record<EMAKey, ISeriesApi<"Line"> | null>)[seriesKey] = chart.addLineSeries({
-        color,
-        lineWidth: 2,
-        visible: isVisible,
-        priceLineVisible: false,
-      });
-      console.log(`${key}MA 시리즈 생성 완료, 초기 가시성:`, isVisible);
+    // Create the EMA series - 새로운 이평선 추가
+    seriesRefs.current.fiveEMA = chart.addLineSeries({
+      color: '#FF00FF',  // 마젠타색
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '5 EMA'
+    });
+    
+    seriesRefs.current.tenEMA = chart.addLineSeries({
+      color: '#00FFFF',  // 시안색
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '10 EMA'
+    });
+    
+    seriesRefs.current.twentyEMA = chart.addLineSeries({
+      color: '#FFA500',  // 오렌지색
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '20 EMA'
+    });
+    
+    seriesRefs.current.thirtyEMA = chart.addLineSeries({
+      color: '#32CD32',  // 라임그린
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '30 EMA'
+    });
+    
+    // 기존 이평선
+    seriesRefs.current.sixtyEMA = chart.addLineSeries({
+      color: '#8A2BE2',  // Blue Violet
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '60 EMA'
+    });
+    
+    seriesRefs.current.oneTwentyEMA = chart.addLineSeries({
+      color: '#1E90FF',  // Dodger Blue
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '120 EMA'
+    });
+    
+    seriesRefs.current.twoFortyEMA = chart.addLineSeries({
+      color: '#FFFF00',  // Yellow
+      lineWidth: 2,
+      priceLineVisible: false,
+      title: '240 EMA'
+    });
+    
+    seriesRefs.current.threeHundredSixtyEMA = chart.addLineSeries({
+      color: '#FF4500',  // Orange Red
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '360 EMA'
+    });
+    
+    seriesRefs.current.sixHundredEMA = chart.addLineSeries({
+      color: '#FF0000',  // Red
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '600 EMA'
+    });
+    
+    seriesRefs.current.nineHundredEMA = chart.addLineSeries({
+      color: '#FF00FF',  // Magenta
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '900 EMA'
     });
 
     // 데이터가 제공된 경우 사용
@@ -280,6 +354,10 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       chart,
       seriesRefs.current.candle!,
       seriesRefs.current.volume!,
+      seriesRefs.current.fiveEMA!,
+      seriesRefs.current.tenEMA!,
+      seriesRefs.current.twentyEMA!,
+      seriesRefs.current.thirtyEMA!,
       seriesRefs.current.sixtyEMA!,
       seriesRefs.current.oneTwentyEMA!,
       seriesRefs.current.twoFortyEMA!,

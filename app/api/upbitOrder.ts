@@ -347,21 +347,36 @@ export const get3SecMA = async (market: string): Promise<number> => {
     const response = await fetch(`/api/trades?market=${market}&count=3`);
     
     if (!response.ok) {
-      throw new Error('3초 중간값 조회 실패');
+      const errorData = await response.json();
+      console.error('3초 중간값 조회 실패:', errorData);
+      throw new Error(errorData.error || '3초 중간값 조회 실패');
     }
 
     const data = await response.json();
     
+    if (!Array.isArray(data) || data.length === 0) {
+      console.error('거래 데이터가 없음:', data);
+      throw new Error('거래 데이터를 찾을 수 없습니다.');
+    }
+    
     // 가격들을 배열로 추출하고 정렬
     const prices = data
       .map((trade: any) => Number(trade.trade_price))
+      .filter((price: number) => !isNaN(price))
       .sort((a: number, b: number) => a - b);
     
+    if (prices.length === 0) {
+      console.error('유효한 가격 데이터가 없음');
+      throw new Error('유효한 가격 데이터가 없습니다.');
+    }
+
     if (prices.length < 3) {
-      return prices[0] || 0;
+      console.log('3개 미만의 가격 데이터, 첫 번째 가격 반환:', prices[0]);
+      return prices[0];
     }
 
     // 정렬된 배열에서 중간 인덱스(1)의 값을 반환
+    console.log('중간값 반환:', prices[1]);
     return prices[1];
 
   } catch (error: any) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MASettings } from '../types/candlestick';
+import { MASettings } from '../components/CandlestickChartTypes';
 import useUpbitStore from '../store/useUpbitStore';
 
 interface ChartSettingsProps {
@@ -61,42 +61,120 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
         <div className="bg-gray-700 p-3 rounded-lg">
           <div className="text-gray-400 text-sm mb-2">MA 설정</div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => toggleMA('sixty')}
-              className={`px-2 py-1 rounded ${showMA.sixty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.sixty ? '✓ 60MA 보기' : '60MA 숨김'}
-            </button>
-            <button
-              onClick={() => toggleMA('oneTwenty')}
-              className={`px-2 py-1 rounded ${showMA.oneTwenty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.oneTwenty ? '✓ 120MA 보기' : '120MA 숨김'}
-            </button>
-            <button
-              onClick={() => toggleMA('twoForty')}
-              className={`px-2 py-1 rounded ${showMA.twoForty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.twoForty ? '✓ 240MA 보기' : '240MA 숨김'}
-            </button>
-            <button
-              onClick={() => toggleMA('threeHundredSixty')}
-              className={`px-2 py-1 rounded ${showMA.threeHundredSixty ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.threeHundredSixty ? '✓ 360MA 보기' : '360MA 숨김'}
-            </button>
-            <button
-              onClick={() => toggleMA('sixHundred')}
-              className={`px-2 py-1 rounded ${showMA.sixHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.sixHundred ? '✓ 600MA 보기' : '600MA 숨김'}
-            </button>
-            <button
-              onClick={() => toggleMA('nineHundred')}
-              className={`px-2 py-1 rounded ${showMA.nineHundred ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              {showMA.nineHundred ? '✓ 900MA 보기' : '900MA 숨김'}
-            </button>
+            <div>
+              <h3 className="mb-2 text-lg font-semibold">이동평균선 설정</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="five-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.five}
+                    onChange={() => updateShowMA({ ...showMA, five: !showMA.five })}
+                  />
+                  <label htmlFor="five-ma" className="text-sm">5 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="ten-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.ten}
+                    onChange={() => updateShowMA({ ...showMA, ten: !showMA.ten })}
+                  />
+                  <label htmlFor="ten-ma" className="text-sm">10 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="twenty-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.twenty}
+                    onChange={() => updateShowMA({ ...showMA, twenty: !showMA.twenty })}
+                  />
+                  <label htmlFor="twenty-ma" className="text-sm">20 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="thirty-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.thirty}
+                    onChange={() => updateShowMA({ ...showMA, thirty: !showMA.thirty })}
+                  />
+                  <label htmlFor="thirty-ma" className="text-sm">30 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="sixty-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.sixty}
+                    onChange={() => updateShowMA({ ...showMA, sixty: !showMA.sixty })}
+                  />
+                  <label htmlFor="sixty-ma" className="text-sm">60 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="onetwenty-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.oneTwenty}
+                    onChange={() => updateShowMA({ ...showMA, oneTwenty: !showMA.oneTwenty })}
+                  />
+                  <label htmlFor="onetwenty-ma" className="text-sm">120 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="twoforty-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.twoForty}
+                    onChange={() => updateShowMA({ ...showMA, twoForty: !showMA.twoForty })}
+                  />
+                  <label htmlFor="twoforty-ma" className="text-sm">240 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="threesixty-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.threeHundredSixty}
+                    onChange={() => updateShowMA({ ...showMA, threeHundredSixty: !showMA.threeHundredSixty })}
+                  />
+                  <label htmlFor="threesixty-ma" className="text-sm">360 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="sixhundred-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.sixHundred}
+                    onChange={() => updateShowMA({ ...showMA, sixHundred: !showMA.sixHundred })}
+                  />
+                  <label htmlFor="sixhundred-ma" className="text-sm">600 EMA</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="ninehundred-ma"
+                    className="mr-2 h-4 w-4"
+                    checked={showMA.nineHundred}
+                    onChange={() => updateShowMA({ ...showMA, nineHundred: !showMA.nineHundred })}
+                  />
+                  <label htmlFor="ninehundred-ma" className="text-sm">900 EMA</label>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

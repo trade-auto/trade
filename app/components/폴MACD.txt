@@ -1,0 +1,55 @@
+study("폴MACD", overlay=false)
+
+// 폴MACD
+lengthMA_MACD = input(34, title="폴MACD Length") // 변수명 변경
+lengthSignal = input(9, title="폴MACD Signal Length")
+
+calc_smma(src, len) =>
+    smma=na(smma[1]) ? sma(src, len) : (smma[1] * (len - 1) + src) / len
+    smma
+
+calc_zlema(src, length) =>
+    ema1=ema(src, length)
+    ema2=ema(ema1, length)
+    d=ema1-ema2
+    ema1+d
+
+src=hlc3
+hi=calc_smma(high, lengthMA_MACD) // 수정된 변수명 적용
+lo=calc_smma(low, lengthMA_MACD) // 수정된 변수명 적용
+mi=calc_zlema(src, lengthMA_MACD) // 수정된 변수명 적용
+
+md=(mi>hi)? (mi-hi) : (mi<lo) ? (mi - lo) : 0
+sb=sma(md, lengthSignal)
+mdc=src>mi?src>hi?blue:blue:src<lo?blue:blue
+
+plot(0, color=gray, linewidth=1, title="MidLine")
+
+// 폴MACD 선의 불투명도를 100% (transp=0)으로 설정
+plot(md, color=mdc, linewidth=2, title="폴MACD", style=line, transp=0)
+
+// 폴MACDCDSignal 선의 불투명도를 100% (transp=0)으로 설정
+plot(sb, color=red, linewidth=2, title="폴MACDCDSignal", transp=0)
+
+// EMA Wave Indicator
+alength=input(5, title="Wave A Length")
+blength=input(25, title="Wave B Length")
+clength=input(50, title="Wave C Length")
+lengthMA_Trend=input(4, title="Wave SMA Length") // 변수명 변경
+mse=input(false, title="Identify Trend/Exhaustions")
+cutoff = input(10, title="Cutoff")
+ebc=input(false, title="Color Bars on Trend/Exhaustions")
+
+ma(s,l) => ema(s,l)
+wa=sma(src-ma(src, alength), lengthMA_Trend) // 수정된 변수명 적용
+wb=sma(src-ma(src, blength), lengthMA_Trend) // 수정된 변수명 적용
+wc=sma(src-ma(src, clength), lengthMA_Trend) // 수정된 변수명 적용
+wcf=(wb != 0) ? (wc/wb > cutoff) : false
+wbf=(wa != 0) ? (wb/wa > cutoff) : false
+
+// 컬럼 색상 변경: 0선 위 파랑, 0선 아래 빨강
+plot(wc, color=wc > 0 ? aqua : red, style=columns, linewidth=3, title="WaveC", transp=80)
+plot(mse and wcf?wc:na, color=fuchsia, style=columns, linewidth=3, title="Wave Trend", transp=70)
+plot(wb, color=wb > 0 ? black : black, style=columns, linewidth=3, title="WaveB", transp=90)
+plot(mse and wbf?wb:na, color=fuchsia, style=columns, linewidth=3, title="WaveB Trend", transp=70)
+plot(wa, color=wa > 0 ? black : black, style=columns, linewidth=3, title="WaveA", transp=90)

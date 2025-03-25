@@ -5,6 +5,7 @@ import { useCsvFunctions } from './CandlestickChartCSV';
 import { useBacktestChart } from './CandlestickChartBacktest';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
+import PolMACDChart from './PolMACDChart';
 
 // 컴포넌트
 import ChartControls from './ChartControls';
@@ -175,12 +176,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   };
   
   // 파일 임포트 핸들러
-  const onFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImportWithStrategy = (event: React.ChangeEvent<HTMLInputElement>) => {
     handleFileImport(event, tradeStrategy as TradeStrategy);
   };
 
   return (
-    <div className="relative">
+    <div className="flex flex-col w-full h-full">
       <TradingStrategyHover 
         tradeStrategy={tradeStrategy}
         updateTradeStrategy={updateTradeStrategy}
@@ -200,120 +201,73 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           
           {/* 가격 정보 */}
           <div className="w-full md:w-1/2">
-            <ChartPrice 
-              market={symbol}
-              chartPrice={chartPrice}
-            />
+            <ChartPrice chartPrice={chartPrice} market={symbol} />
           </div>
         </div>
         
-        {/* 초봉 또는 분봉 차트일 경우 자동 업데이트 및 실시간 API 버튼 표시 */}
-        {(chartType === 'seconds/60' || chartType === 'minutes/5' || chartType === 'minutes/15') && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            <div className="p-2 bg-gray-700 rounded-lg flex items-center justify-between w-full">
-              <div className="text-white font-bold">업데이트 모드</div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleAutoUpdateToggle}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    isAutoUpdate 
-                      ? 'bg-green-600 hover:bg-green-700' 
-                      : 'bg-gray-600 hover:bg-gray-700'
-                  } text-white flex items-center`}
-                >
-                  {isAutoUpdate 
-                    ? <><span className="mr-1">✓</span> 자동 업데이트 중...</> 
-                    : '자동 업데이트'
-                  }
-                </button>
-                
-                <button
-                  onClick={handleRealtimeAPIToggle}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    isRealtimeAPIEnabled 
-                      ? 'bg-blue-600 hover:bg-blue-700' 
-                      : 'bg-gray-600 hover:bg-gray-700'
-                  } text-white flex items-center`}
-                >
-                  {isRealtimeAPIEnabled 
-                    ? <><span className="mr-1">✓</span> 실시간 업데이트 중...</> 
-                    : '실시간 업데이트'
-                  }
-                </button>
-              </div>
-            </div>
-            {isRealtimeAPIEnabled && (
-              <div className="w-full flex justify-between items-center text-sm px-2">
-                <div className="text-gray-400">
-                  {realtimeUpdateStatus.isUpdating ? (
-                    <span>데이터 업데이트 중...</span>
-                  ) : (
-                    <span>
-                      마지막 업데이트: {realtimeUpdateStatus.lastUpdateTime || '없음'} (총 {realtimeUpdateStatus.updateCount}회)
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* 차트 설정 컴포넌트 추가 */}
-        <ChartSettings
-          showMA={showMA}
-          updateShowMA={updateShowMA}
-          chartHeight={chartHeight}
-          handleHeightChange={handleHeightChange}
-          chartType={chartType}
-          onChartTypeChange={propsOnChartTypeChange || (() => {})}
-        />
-        
-        {/* 차트 컨테이너 */}
-        <div className="relative w-full">
+        {/* 메인 차트 */}
+        <div className="w-full">
           <ChartContainer
-            isFullscreen={isFullscreen}
+            onChartReady={isDataImported ? handleBacktestChartInit : handleChartReady}
             chartHeight={chartHeight}
+            isFullscreen={isFullscreen}
             toggleFullscreen={toggleFullscreen}
             symbol={symbol}
             chartType={chartType}
             markers={realtimeUpdateStatus.markers || []}
             isAutoUpdate={isAutoUpdate}
             isRealtimeAPIEnabled={isRealtimeAPIEnabled}
-            data={allData}
-            onChartReady={handleChartReady}
+            data={isDataImported ? importedData : allData}
             showMA={showMA}
           />
         </div>
-        
-        {/* 백테스트 결과 */}
-        {csvBacktestResult && (
-          <BacktestResults backtestResult={csvBacktestResult} />
+
+        {/* PolMACD 차트 - tradeStrategy가 'MACD'일 때만 표시 */}
+        {tradeStrategy === 'MACD' && (
+          <div className="w-full" style={{ height: '300px' }}>
+            <PolMACDChart data={isDataImported ? importedData : allData} />
+          </div>
         )}
         
-        {/* CSV 다운로드 버튼 */}
-        <CsvDownloader
-          csvDateRange={csvDateRange}
-          csvLoading={csvLoading}
-          csvProgress={csvProgress}
-          allData={allData}
-          setCsvDateRange={(range) => setCsvDateRange(range as any)}
-          saveToCSV={saveToCSV}
-        />
+        {/* 설정 및 결과 섹션 */}
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="w-full md:w-1/2">
+            <ChartSettings
+              showMA={showMA}
+              updateShowMA={updateShowMA}
+              chartHeight={chartHeight}
+              handleHeightChange={handleHeightChange}
+              chartType={chartType}
+              onChartTypeChange={propsOnChartTypeChange || (() => {})}
+            />
+          </div>
+          <div className="w-full md:w-1/2">
+            <BacktestResults backtestResult={csvBacktestResult} />
+          </div>
+        </div>
         
-        {/* 파일 임포트 버튼 */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={onFileImport}
-          accept=".csv"
-          className="hidden"
-        />
-        <button
-          onClick={triggerFileInput}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-        >
-          CSV 파일 임포트
-        </button>
+        {/* CSV 다운로더 */}
+        <div className="w-full">
+          <CsvDownloader
+            csvDateRange={csvDateRange}
+            setCsvDateRange={(range) => {
+              const newRange = {
+                startDate: range.startDate || csvDateRange.startDate,
+                endDate: range.endDate || csvDateRange.endDate
+              };
+              setCsvDateRange(newRange);
+            }}
+            csvLoading={csvLoading}
+            csvProgress={csvProgress}
+            allData={allData}
+            saveToCSV={saveToCSV}
+            isDataImported={isDataImported}
+            importProgress={importProgress}
+            fileInputRef={fileInputRef}
+            onFileImport={handleFileImportWithStrategy}
+            triggerFileInput={triggerFileInput}
+          />
+        </div>
       </div>
     </div>
   );

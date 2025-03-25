@@ -2,6 +2,7 @@
 import { TradeSignal, ExtendedMetadata, AnalyzeOptions, AnalysisResult, TradeStrategy } from './types';
 import useUpbitStore from '../store/useUpbitStore';
 import { getCachedVolumeData, getTradeVolume, hasBuySignal, hasSellSignal } from './volumeUtils';
+import { PolMACD } from '../indicators/PolMACD';
 
 // ExtendedMetadata 타입 확장
 declare module './types' {
@@ -12,6 +13,9 @@ declare module './types' {
     macdLine?: number;
     signalLine?: number;
     histogram?: number;
+    waveA?: number;
+    waveB?: number;
+    waveC?: number;
   }
 }
 
@@ -71,54 +75,41 @@ function calculateMACD(prices: number[], fastPeriod = 12, slowPeriod = 26, signa
 
 // MACD 기반 매수 신호 분석
 function analyzeEntryWithMACD(data: CandlestickData<Time>[], index: number): 'buy' | 'nobuyfrequpdown' | null {
-  if (index < 35) return null; // 최소 데이터 필요 (26 + 9 = 35)
+  if (index < 35) return null;
 
   try {
-    // 가격 데이터 추출
-    const prices = data.slice(index - 35, index + 1).map(d => d.close);
-    
-    // MACD 계산
-    const { macdLine, signalLine, histogram } = calculateMACD(prices);
-    
-    // 현재와 이전 히스토그램 값 비교
-    const currentHistogram = histogram[histogram.length - 1];
-    const prevHistogram = histogram[histogram.length - 2];
-    
-    // MACD 크로스오버 확인 (골든 크로스)
-    const isGoldenCrossEntry = prevHistogram <= 0 && currentHistogram > 0;
+    const polMACD = new PolMACD();
+    const results = polMACD.calculate(data.slice(index - 35, index + 1));
+    const currentResult = results[results.length - 1];
+    const prevResult = results[results.length - 2];
+
+    // PolMACD 기반 매수 신호
+    const isGoldenCrossEntry = prevResult.waveC <= 0 && currentResult.waveC > 0;
     
     // 시장 데이터 (고정값)
     const market = 'KRW-BTC';
-    
-    // 거래량 데이터 가져오기
     const volumeData = getCachedVolumeData(market);
     
-    // API 조회 백그라운드 실행
     getTradeVolume(market, 100).catch((err: Error) => console.error('거래량 업데이트 실패:', err));
     
-    // 매수 신호 확인
     if (isGoldenCrossEntry) {
-      console.log('✅ MACD 골든 크로스 발생 → 매수 신호');
+      console.log('✅ PolMACD Wave C 골든 크로스 발생 → 매수 신호');
       
-      // 추가 확인: 거래량 우세 확인
       if (hasBuySignal(volumeData.buyVolume, volumeData.sellVolume)) {
-        console.log('✅ 매수 거래량 우세 + MACD 골든 크로스 → 강력한 매수 신호');
+        console.log('✅ 매수 거래량 우세 + PolMACD 골든 크로스 → 강력한 매수 신호');
         return 'buy';
       }
-      
-      // 거래량이 우세하지 않아도 매수 신호 유지
       return 'buy';
     }
     
-    // 횡보장 감지 
-    if (Math.abs(currentHistogram) < 0.0001 && Math.abs(prevHistogram) < 0.0001) {
-      console.log('⚠️ MACD 히스토그램 값이 작음 → 횡보장 감지');
+    if (Math.abs(currentResult.waveC) < 0.0001) {
+      console.log('⚠️ PolMACD Wave C 값이 작음 → 횡보장 감지');
       return 'nobuyfrequpdown';
     }
     
     return null;
   } catch (error) {
-    console.error('MACD 기반 매수 분석 실패:', error);
+    console.error('PolMACD 기반 매수 분석 실패:', error);
     return null;
   }
 }
@@ -224,51 +215,29 @@ const macdStrategy = {
       return {} as ExtendedMetadata;
     }
     
-    // 가격 데이터 추출
-    const prices = data.slice(index - 35, index + 1).map((d: CandlestickData<Time>) => d.close);
+    const polMACD = new PolMACD();
+    const results = polMACD.calculate(data.slice(index - 35, index + 1));
+    const currentResult = results[results.length - 1];
     
-    // MACD 계산
-    const { macdLine, signalLine, histogram } = calculateMACD(prices);
-    
-    // 현재 값 가져오기
-    const currentMacdLine = macdLine[macdLine.length - 1];
-    const currentSignalLine = signalLine[signalLine.length - 1];
-    const currentHistogram = histogram[histogram.length - 1];
-    
-    // 거래량 데이터 가져오기
-    const market = 'KRW-BTC'; // 기본값 사용
+    const market = 'KRW-BTC';
     const volumeData = getCachedVolumeData(market);
     
-    // API 조회 시작 (백그라운드로 실행)
     getTradeVolume(market, 100).catch((err: Error) => console.error('거래량 업데이트 실패:', err));
     
     const metadata: ExtendedMetadata = {
-      macdLine: currentMacdLine,
-      signalLine: currentSignalLine,
-      histogram: currentHistogram,
-      // 거래량 관련 데이터 추가
+      macdLine: currentResult.macd,
+      signalLine: currentResult.signal,
+      waveA: currentResult.waveA,
+      waveB: currentResult.waveB,
+      waveC: currentResult.waveC,
       buyVolume: volumeData.buyVolume,
       sellVolume: volumeData.sellVolume,
       buySellRatio: volumeData.buySellRatio
     };
     
-    console.log(`[MACD 지표] MACD: ${currentMacdLine !== undefined ? currentMacdLine.toFixed(6) : 'N/A'}, 시그널: ${currentSignalLine !== undefined ? currentSignalLine.toFixed(6) : 'N/A'}, 히스토그램: ${currentHistogram !== undefined ? currentHistogram.toFixed(6) : 'N/A'}`);
+    console.log(`[PolMACD 지표] MACD: ${currentResult.macd.toFixed(6)}, 시그널: ${currentResult.signal.toFixed(6)}`);
+    console.log(`[Wave] A: ${currentResult.waveA.toFixed(6)}, B: ${currentResult.waveB.toFixed(6)}, C: ${currentResult.waveC.toFixed(6)}`);
     console.log(`[거래량 지표] 매수: ${volumeData.buyVolume.toFixed(4)}, 매도: ${volumeData.sellVolume.toFixed(4)}, 비율: ${volumeData.buySellRatio.toFixed(2)}`);
-      
-    // 매수 조건 확인 상태 표시
-    const isGoldenCrossSignal = histogram.length >= 2 && histogram[histogram.length - 2] <= 0 && currentHistogram > 0;
-    const isDeadCross = histogram.length >= 2 && histogram[histogram.length - 2] >= 0 && currentHistogram < 0;
-    const hasBuyVolumeAdvantage = volumeData.buySellRatio > 1.0;
-      
-    console.log('\n=== 매수 조건 체크 ===');
-    console.log(`조건 1 (MACD 골든 크로스): ${isGoldenCrossSignal ? '✅' : '❌'}`);
-    console.log(`조건 2 (매수 거래량 우세): ${hasBuyVolumeAdvantage ? '✅' : '❌'} (${volumeData.buySellRatio.toFixed(2)})`);
-    
-    if (isGoldenCrossSignal) {
-      console.log('✅ MACD 골든 크로스 발생: 매수 신호');
-    } else if (isDeadCross) {
-      console.log('❌ MACD 데드 크로스 발생: 매도 신호');
-    }
     
     return metadata;
   },
@@ -377,7 +346,7 @@ const macdStrategy = {
               position: 'buy',
               price,
               strategy: 'MACD' as TradeStrategy,
-              reason: 'MACD 골든 크로스',
+              reason: 'PolMACD Wave C 골든 크로스',
               metadata: {
                 macdLine: this.calculateIndicators(data, i).macdLine,
                 signalLine: this.calculateIndicators(data, i).signalLine,

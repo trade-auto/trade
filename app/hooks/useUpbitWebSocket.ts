@@ -56,9 +56,22 @@ export const useUpbitWebSocket = (market: string) => {
         }
       };
 
-      socketRef.current.onerror = (error) => {
-        console.error('WebSocket 오류:', error);
+      socketRef.current.onerror = (error: Event) => {
+        console.error('WebSocket 오류:', {
+          type: error.type,
+          timeStamp: error.timeStamp,
+          target: (error.target as WebSocket)?.url || 'unknown',
+          readyState: (error.target as WebSocket)?.readyState || 'unknown'
+        });
         setIsConnected(false);
+        
+        // 3초 후 재연결 시도
+        setTimeout(() => {
+          if (socketRef.current?.readyState === WebSocket.CLOSED) {
+            console.log('WebSocket 재연결 시도...');
+            connect();
+          }
+        }, 3000);
       };
 
       socketRef.current.onclose = (event) => {
