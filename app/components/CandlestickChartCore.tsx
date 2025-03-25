@@ -47,6 +47,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     ten: false,
     twenty: false,
     thirty: false,
+    ninety: false,
     sixty: false,
     oneTwenty: false,
     twoForty: false,
@@ -313,7 +314,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
         {tradeStrategy === 'MACD' && (
           <>
             <div className="w-full" style={{ height: '400px' }}>
-              <PolMACDChart data={isDataImported ? importedData : allData} height={400} />
+              <PolMACDChart data={isDataImported ? importedData : allData} height={400} showMA={showMA} />
             </div>
             <div className="w-full" style={{ height: '300px' }}>
               <MACDChart data={isDataImported ? importedData : allData} />

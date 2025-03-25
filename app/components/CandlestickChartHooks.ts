@@ -34,18 +34,20 @@ const loadInitialMASettings = (): MASettings => {
   }
   
   // 기본 설정값
-  return {
+  const defaultSettings: MASettings = {
     five: false,
     ten: false,
     twenty: false,
     thirty: false,
-    sixty: true,
-    oneTwenty: true,
-    twoForty: true,
+    ninety: false,
+    sixty: false,
+    oneTwenty: false,
+    twoForty: false,
     threeHundredSixty: false,
     sixHundred: false,
-    nineHundred: false
+    nineHundred: false,
   };
+  return defaultSettings;
 };
 
 export const useChartData = (

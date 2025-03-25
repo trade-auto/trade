@@ -105,6 +105,16 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
           <div className="flex items-center">
             <input
               type="checkbox"
+              id="ninety-ma"
+              className="mr-2 h-4 w-4"
+              checked={showMA.ninety}
+              onChange={() => updateShowMA({ ...showMA, ninety: !showMA.ninety })}
+            />
+            <label htmlFor="ninety-ma" className="text-sm text-white">90 EMA</label>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
               id="sixty-ma"
               className="mr-2 h-4 w-4"
               checked={showMA.sixty}
