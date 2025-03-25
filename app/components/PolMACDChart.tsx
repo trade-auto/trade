@@ -10,6 +10,7 @@ interface PolMACDChartProps {
 const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const macdRef = useRef<ISeriesApi<'Line'> | null>(null);
   const signalRef = useRef<ISeriesApi<'Line'> | null>(null);
   const histogramRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -130,11 +131,26 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400 }) => {
     });
     chartRef.current = chart;
 
+    // 캔들차트 추가
+    candleRef.current = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+      priceScaleId: 'candle',
+    });
+
     // MACD 라인 (녹색)
     macdRef.current = chart.addLineSeries({
       color: '#4CAF50',
       lineWidth: 2,
       title: 'MACD',
+      priceScaleId: 'left',
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+      },
     });
 
     // 시그널 라인 (보라색)
@@ -142,6 +158,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400 }) => {
       color: '#9C27B0',
       lineWidth: 2,
       title: 'Signal',
+      priceScaleId: 'left',
       lastValueVisible: false,
       priceLineVisible: false,
       crosshairMarkerVisible: true,
@@ -155,11 +172,19 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400 }) => {
         type: 'price',
         precision: 2,
       },
-      priceScaleId: 'right',
+      priceScaleId: 'histogram',
+    });
+
+    // MACD 스케일 마진 설정
+    chart.priceScale('left').applyOptions({
+      scaleMargins: {
+        top: 0.1,
+        bottom: 0.1,
+      },
     });
 
     // 히스토그램의 스케일 마진 설정
-    chart.priceScale('right').applyOptions({
+    chart.priceScale('histogram').applyOptions({
       scaleMargins: {
         top: 0.8,
         bottom: 0,
@@ -219,6 +244,11 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400 }) => {
 
     // 데이터 업데이트
     if (data.length > 0) {
+      // 캔들차트 데이터 설정
+      if (candleRef.current) {
+        candleRef.current.setData(data);
+      }
+
       const macdData = calculateMACD(data);
       const stochData = calculateStochastic(data);
 
