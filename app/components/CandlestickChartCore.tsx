@@ -5,6 +5,7 @@ import { useCsvFunctions } from './CandlestickChartCSV';
 import { useBacktestChart } from './CandlestickChartBacktest';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
+import { DateRange } from '../types/candlestick';
 import PolMACDChart from './PolMACDChart';
 import MonMACDChart from './MonMACDChart';
 import MACDChart from './MACDChart';
@@ -33,6 +34,12 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   // 차트 타입의 기본값을 5분봉으로 설정
   const [chartType, setChartType] = React.useState<string>(propsChartType || 'minutes/5');
   const [dataCount, setDataCount] = React.useState<number>(initialDataCount);
+  
+  // 직접 dateRange 상태 관리
+  const [localDateRange, setLocalDateRange] = React.useState<DateRange>({
+    startDate: new Date(new Date().getTime() - 48 * 60 * 60 * 1000), // 기본 48시간
+    endDate: null
+  });
   
   // 차트 타입이 변경될 때 props에 전달된 onChartTypeChange 함수 호출
   React.useEffect(() => {
@@ -70,20 +77,6 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     });
   }, []);
   
-  // 전역 window 객체에 함수 등록 (ChartControls 컴포넌트에서 접근 가능하도록)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (window as any).decreaseDataCount = decreaseDataCount;
-    }
-    
-    return () => {
-      // 컴포넌트 언마운트 시 제거
-      if (typeof window !== 'undefined') {
-        delete (window as any).decreaseDataCount;
-      }
-    };
-  }, [decreaseDataCount]);
-  
   // 컴포넌트 마운트 시 localStorage에서 캔들 개수 불러오기
   React.useEffect(() => {
     try {
@@ -106,12 +99,10 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
     isAutoUpdate,
     isRealtimeAPIEnabled,
     lastSymbol,
-    dateRange,
     showMA,
     realtimeUpdateStatus,
     
     // 함수
-    setDateRange,
     toggleFullscreen,
     updateShowMA,
     handleHeightChange,
@@ -146,35 +137,31 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   
   // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
   useEffect(() => {
-    if (setDateRange && typeof setDateRange === 'function') {
-      const now = new Date();
-      let startDate: Date;
-      
-      if (chartType.startsWith('seconds/')) {
-        // 초봉: 최근 2시간 데이터로 명시적 설정
-        startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-        console.log('초봉 차트 - 시작 날짜를 2시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
-        setDateRange(prev => ({ ...prev, startDate }));
-      } else if (chartType.startsWith('minutes/')) {
-        // 분봉: 기간 설정
-        const minutes = parseInt(chartType.split('/')[1]);
-        if (minutes === 5) {
-          // 5분봉: 576개 캔들 데이터 (5분 × 576 = 2880분 = 48시간)
-          startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-        } else if (minutes === 15) {
-          // 15분봉: 672개 캔들 데이터 (15분 × 672 = 10080분 = 168시간 = 7일)
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        } else {
-          // 기본: 최근 8시간 데이터
-          startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000);
-        }
-        console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
-        setDateRange(prev => ({ ...prev, startDate }));
+    const now = new Date();
+    let startDate: Date;
+    
+    if (chartType.startsWith('seconds/')) {
+      // 초봉: 최근 2시간 데이터로 명시적 설정
+      startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      console.log('초봉 차트 - 시작 날짜를 2시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
+      setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
+    } else if (chartType.startsWith('minutes/')) {
+      // 분봉: 기간 설정
+      const minutes = parseInt(chartType.split('/')[1]);
+      if (minutes === 5) {
+        // 5분봉: 576개 캔들 데이터 (5분 × 576 = 2880분 = 48시간)
+        startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      } else if (minutes === 15) {
+        // 15분봉: 672개 캔들 데이터 (15분 × 672 = 10080분 = 168시간 = 7일)
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else {
+        // 기본: 최근 8시간 데이터
+        startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000);
       }
-    } else {
-      console.error('setDateRange 함수가 없거나 함수가 아닙니다.');
+      console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
+      setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
     }
-  }, [chartType, setDateRange]);
+  }, [chartType]);
   
   // 초봉 차트일 경우 자동 업데이트 및 실시간 API 효과
   useEffect(() => {
@@ -189,8 +176,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
   // 데이터 로드 트리거 - 날짜 범위 변경 시
   useEffect(() => {
     loadData();
-    console.log(`날짜 범위 변경됨: ${dateRange.startDate.toLocaleString()} - 데이터 새로 로드`);
-  }, [dateRange, loadData]);
+    console.log(`날짜 범위 변경됨: ${localDateRange.startDate.toLocaleString()} - 데이터 새로 로드`);
+  }, [localDateRange, loadData]);
   
   // 차트 타입 변경 시 별도의 데이터 로드 트리거
   useEffect(() => {
@@ -264,9 +251,9 @@ const CandlestickChart: React.FC<CandlestickChartProps> = (props) => {
           {/* 차트 컨트롤 */}
           <div className="w-full md:w-1/2">
             <ChartControls
-              dateRange={dateRange}
-              handleDateRangeChange={(date) => setDateRange(prev => ({ ...prev, startDate: date }))}
-              handleEndDateChange={(date) => setDateRange(prev => ({ ...prev, endDate: date }))}
+              dateRange={localDateRange}
+              handleDateRangeChange={(date) => setLocalDateRange((prev: DateRange) => ({ ...prev, startDate: date }))}
+              handleEndDateChange={(date) => setLocalDateRange((prev: DateRange) => ({ ...prev, endDate: date }))}
               progress={progress}
               isAutoUpdate={isAutoUpdate}
               isRealtimeAPIEnabled={isRealtimeAPIEnabled}

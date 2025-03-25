@@ -3,8 +3,8 @@ import axios from 'axios';
 import { ExtendedCandlestickData, DateRange, Time, UpbitCandle } from './CandlestickChartTypes';
 import { formatDate, createTradeMarkers, calculateBacktestResult } from './CandlestickChartUtils';
 import useUpbitStore from '../store/useUpbitStore';
-import { TradeStrategy, TradeSignal } from '../types/trading';
-import { TradeSignal as StrategyTradeSignal } from '../strategies/types';
+import { TradeStrategy } from '../types/trading';
+import { TradeSignal } from '../strategies/types';
 
 export const useCsvFunctions = (symbol: string) => {
   // CSV 상태
@@ -220,7 +220,7 @@ export const useCsvFunctions = (symbol: string) => {
           .filter(signal => signal.position === 'buy' || signal.position === 'sell')
           .map(signal => ({
             ...signal,
-            time: (Number(signal.time) as unknown) as Time,
+            time: Number(signal.time),
             position: signal.position as 'buy' | 'sell',
             metadata: signal.metadata ? {
               ...signal.metadata,
@@ -234,7 +234,7 @@ export const useCsvFunctions = (symbol: string) => {
         // 백테스트 결과 계산
         const csvResult = useUpbitStore.getState().calculateBacktestResult(
           parsedData,
-          convertedSignals as unknown as StrategyTradeSignal[],
+          convertedSignals,
           'test'
         );
         setCsvBacktestResult(csvResult);
