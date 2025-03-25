@@ -31,6 +31,17 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 300 }) => {
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
       },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: true,
+        tickMarkFormatter: (time: any) => {
+          const date = new Date(time * 1000);
+          const hours = date.getHours().toString().padStart(2, '0');
+          const minutes = date.getMinutes().toString().padStart(2, '0');
+          const seconds = date.getSeconds().toString().padStart(2, '0');
+          return `${hours}:${minutes}:${seconds}`;
+        },
+      },
     });
     chartRef.current = chart;
 
