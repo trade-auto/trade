@@ -132,6 +132,7 @@ interface UpbitStore {
   ) => BacktestResult;
   lastAnalysisResult: any;
   analyzeRealtimeData: (data: CandlestickData<Time>[]) => any;
+  chartTimeRange: { from: Time; to: Time } | null;
 }
 
 // 로컬 스토리지에서 MA 설정 불러오기
@@ -594,7 +595,8 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
       
       return analysisResult;
     },
-    lastSellTime: 0
+    lastSellTime: 0,
+    chartTimeRange: null
   };
 });
 

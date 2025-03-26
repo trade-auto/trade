@@ -261,14 +261,36 @@ export const calculateSlope = (data: ExtendedCandlestickData[], period: number):
 
 // 시간 표시 형식
 export const formatTime = (time: Time | number): string => {
-  if (typeof time === 'number') {
-    return new Date(time * 1000).toLocaleString();
-  } else if (typeof time === 'object' && time !== null) {
-    // BusinessDay 객체인 경우
-    const businessDay = time as BusinessDay;
-    return new Date(businessDay.year, businessDay.month - 1, businessDay.day).toLocaleDateString();
+  if (time === null || time === undefined) {
+    return '-';
   }
-  return String(time);
+  
+  try {
+    if (typeof time === 'number') {
+      // 타임스탬프가 초 단위인지 밀리초 단위인지 확인
+      // 13자리면 밀리초, 10자리면 초로 간주
+      const timestamp = time.toString().length > 10 ? time : time * 1000;
+      return new Date(timestamp).toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } else if (typeof time === 'string') {
+      // ISO 날짜 문자열
+      return new Date(time).toLocaleString('ko-KR');
+    } else if (typeof time === 'object' && time !== null) {
+      // BusinessDay 객체인 경우
+      const businessDay = time as BusinessDay;
+      return new Date(businessDay.year, businessDay.month - 1, businessDay.day).toLocaleDateString('ko-KR');
+    }
+    return String(time);
+  } catch (error) {
+    console.error('시간 형식 변환 오류:', error, '원본 시간:', time);
+    return String(time);
+  }
 };
 
 // VMA 계산 함수

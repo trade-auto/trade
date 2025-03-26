@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { CandlestickData } from '../types/candlestick';
+import useUpbitStore from '../store/useUpbitStore';
 
 interface MACDChartProps {
   data: CandlestickData[];
@@ -321,6 +322,9 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
         const range = chart.timeScale().getVisibleRange();
         if (range) {
           stochChart.timeScale().setVisibleRange(range);
+          
+          // 범위를 스토어에 저장하여 다른 차트와 동기화
+          useUpbitStore.setState({ chartTimeRange: range });
         }
       });
 
@@ -328,8 +332,18 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
         const range = stochChart.timeScale().getVisibleRange();
         if (range) {
           chart.timeScale().setVisibleRange(range);
+          
+          // 범위를 스토어에 저장하여 다른 차트와 동기화
+          useUpbitStore.setState({ chartTimeRange: range });
         }
       });
+      
+      // 업비트 스토어에서 시간 범위 불러오기
+      const upbitStore = useUpbitStore.getState();
+      if (upbitStore.chartTimeRange) {
+        chart.timeScale().setVisibleRange(upbitStore.chartTimeRange);
+        stochChart.timeScale().setVisibleRange(upbitStore.chartTimeRange);
+      }
     }
 
     return () => {

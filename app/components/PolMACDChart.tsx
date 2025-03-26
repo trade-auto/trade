@@ -313,22 +313,33 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       totalValue = totalValue * (1 + returnValue);
     }
     
+    // 시간 순으로 거래 정렬
+    const sortedTrades = [...trades].sort((a, b) => {
+      const timeA = typeof a.entryTime === 'number' ? a.entryTime : 
+                    typeof a.entryTime === 'string' ? new Date(a.entryTime).getTime() / 1000 : 0;
+      const timeB = typeof b.entryTime === 'number' ? b.entryTime : 
+                    typeof b.entryTime === 'string' ? new Date(b.entryTime).getTime() / 1000 : 0;
+      return timeA - timeB;
+    });
+    
     // 승률 계산
-    const winningTrades = trades.filter(trade => trade.return > 0);
+    const winningTrades = sortedTrades.filter(trade => trade.return > 0);
     const feeRate = 0.0005; // 0.05% 수수료
     const totalReturn = (totalValue / 10000000) - 1;
-    const totalNetReturn = totalReturn - (trades.length * feeRate * 2); // 매수, 매도 수수료 고려
+    const totalNetReturn = totalReturn - (sortedTrades.length * feeRate * 2); // 매수, 매도 수수료 고려
     
     const result: BacktestResult = {
-      totalTrades: trades.length,
+      totalTrades: sortedTrades.length,
       successfulTrades: winningTrades.length,
       totalReturn: totalReturn,
       totalNetReturn: totalNetReturn,
-      successRate: trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0,
-      averageReturn: trades.length > 0 ? totalReturn / trades.length : 0,
-      averageNetReturn: trades.length > 0 ? totalNetReturn / trades.length : 0,
-      trades: trades
+      successRate: sortedTrades.length > 0 ? (winningTrades.length / sortedTrades.length) * 100 : 0,
+      averageReturn: sortedTrades.length > 0 ? totalReturn / sortedTrades.length : 0,
+      averageNetReturn: sortedTrades.length > 0 ? totalNetReturn / sortedTrades.length : 0,
+      trades: sortedTrades
     };
+    
+    console.log('백테스트 계산 완료:', result.trades.length, '개 거래 발견');
     
     setBacktestResult(result);
     
@@ -381,7 +392,14 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       timeScale: {
         borderColor: '#d1d4dc',
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: true,
+        tickMarkFormatter: (time: any) => {
+          const date = new Date(time * 1000);
+          const hours = date.getHours().toString().padStart(2, '0');
+          const minutes = date.getMinutes().toString().padStart(2, '0');
+          const seconds = date.getSeconds().toString().padStart(2, '0');
+          return `${hours}:${minutes}:${seconds}`;
+        },
       },
     });
 
@@ -467,7 +485,24 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       },
     });
 
+    // 차트 시간 축 맞춤
+    chart.timeScale().fitContent();
+
     chartRef.current = chart;
+
+    // 업비트 스토어에서 다른 차트와 시간 동기화
+    const upbitStore = useUpbitStore.getState();
+    if (upbitStore.chartTimeRange) {
+      chart.timeScale().setVisibleRange(upbitStore.chartTimeRange);
+    }
+
+    // 차트 시간 범위 변경 시 이벤트
+    chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+      if (range) {
+        // 시간 범위를 스토어에 저장하여 다른 차트와 동기화
+        useUpbitStore.setState({ chartTimeRange: range });
+      }
+    });
 
     // 창 크기 조절 시 차트 크기 조정
     const handleResize = () => {

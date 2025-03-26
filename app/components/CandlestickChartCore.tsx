@@ -369,7 +369,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
             />
           </div>
           <div className="w-full md:w-1/2">
-            <BacktestResults backtestResult={csvBacktestResult} />
+            {/* 백테스트 결과 중복 표시 제거 */}
           </div>
         </div>
         
