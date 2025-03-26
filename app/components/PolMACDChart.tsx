@@ -190,12 +190,11 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         lastSignal = 'buy';
       }
       // 매도 신호 조건:
-      // 1. MACD가 +15% 이상이고
-      // 2. MACD가 시그널선을 하방통과할 때
-      // 3. 20EMA가 하락 중일 때만 매도
+      // 1. MACD가 신호선을 하향돌파할 때
+      // 2. 이전에 매수 신호가 있었을 때
       else if (currentMacd >= plusTwentyPercent && 
-              prevMacd > prevSignal && currentMacd <= currentSignal && 
-              ema20Values[i] < ema20Values[i - 1] && // 20EMA 하락 확인
+        prevMacd > prevSignal && currentMacd <= currentSignal && 
+        ema20Values[i] < ema20Values[i - 1] &&
               lastSignal === 'buy') {
         type.push('sell');
         lastSignal = 'sell';
@@ -512,20 +511,46 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const ema5Series = chart.addLineSeries({
       color: '#1E88E5',
       lineWidth: 2,
+      title: '5 EMA'
     });
 
     const ema20Series = chart.addLineSeries({
       color: '#D81B60',
       lineWidth: 2,
+      title: '20 EMA'
     });
 
+    const ema30Series = chart.addLineSeries({
+      color: '#FFB300',
+      lineWidth: 2,
+      title: '30 EMA'
+    });
+
+    const ema48Series = chart.addLineSeries({
+      color: '#00C853',
+      lineWidth: 2,
+      title: '48 EMA'
+    });
+
+    // EMA 데이터 설정
     if (ema5Data && ema20Data) {
       ema5Series.setData(ema5Data);
       ema20Series.setData(ema20Data);
+      
+      // 30, 48 EMA 데이터 계산 및 설정
+      const ema30Data = calculateEMA(data, 30);
+      const ema48Data = calculateEMA(data, 48);
+      
+      if (ema30Data && ema48Data) {
+        ema30Series.setData(ema30Data);
+        ema48Series.setData(ema48Data);
+      }
     }
 
     ema5Ref.current = ema5Series;
     ema20Ref.current = ema20Series;
+    ema30Ref.current = ema30Series;
+    ema48Ref.current = ema48Series;
 
     // 마커 표시
     if (markers && markers.length > 0) {
