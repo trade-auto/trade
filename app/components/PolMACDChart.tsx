@@ -161,6 +161,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
       const currentMacd = macdValues[i];
       const prevMacd = macdValues[i - 1];
+      const currentSignal = signalValues[i];
+      const prevSignal = signalValues[i - 1];
 
       // MACD가 +/-30% 범위 이내인지 확인
       const isWithinThirtyPercent = Math.abs(currentMacd) <= plusThirtyPercent;
@@ -182,11 +184,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         lastSignal = 'buy';
       }
       // 매도 신호 조건:
-      // 1. MACD가 +30% 이상에서 하락 중
-      // 2. 5EMA가 20EMA 하향돌파 (MACD가 +30% 이상일 때만)
+      // 1. MACD가 +30% 이상이고
+      // 2. MACD가 시그널선을 하방통과할 때
       else if (currentMacd >= plusThirtyPercent && 
-              ((currentMacd < prevMacd) || 
-               (ema5Values[i - 1] >= ema20Values[i - 1] && ema5Values[i] < ema20Values[i])) && 
+              prevMacd > prevSignal && currentMacd <= currentSignal && 
               lastSignal === 'buy') {
         type.push('sell');
         lastSignal = 'sell';
@@ -541,7 +542,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       }));
       candleSeries.setMarkers(validMarkers);
     }
-    
+
     // MACD 값의 최대값 및 최소값 찾기
     let maxMacd = Math.max(...macdData.map(d => d.value));
     let minMacd = Math.min(...macdData.map(d => d.value));
