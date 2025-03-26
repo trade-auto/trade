@@ -4,6 +4,7 @@ import { useChartData } from './CandlestickChartHooks';
 import { useCsvFunctions } from './CandlestickChartCSV';
 import { useBacktestChart } from './CandlestickChartBacktest';
 import useUpbitStore from '../store/useUpbitStore';
+import { useCoinStore } from '../store/useCoinStore';
 import { TradeStrategy } from '../strategies/types';
 import { DateRange, BacktestResult } from '../types/candlestick';
 import { CandlestickChart } from './CandlestickChart';
@@ -22,7 +23,7 @@ import { CoinSelector } from './CoinSelector';
 
 const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   const {
-    symbol,
+    symbol: propSymbol,
     chartType: propsChartType,
     initialAutoUpdate = true,
     initialDataCount = 200, // 기본값 200으로 설정
@@ -31,6 +32,47 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     onOrder,
     onChartTypeChange: propsOnChartTypeChange,
   } = props;
+  
+  // 코인 스토어에서 선택된 코인 가져오기
+  const { selectedCoin } = useCoinStore();
+  // 실제 사용할 symbol (props에서 받은 값 또는 선택된 코인)
+  const symbol = selectedCoin || propSymbol;
+  
+  // 코인 변경 시 강제 데이터 로드 및 차트 초기화
+  useEffect(() => {
+    console.log(`코인이 변경되었습니다: ${symbol}`);
+    
+    // 기존 로드된 데이터를 초기화하고 로딩 상태로 재설정
+    setLocalDateRange(prev => {
+      const now = new Date();
+      const startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      return {
+        ...prev,
+        startDate: startDate
+      };
+    });
+    
+    // 차트 가격을 업데이트하기 위해 현재 시세 API 직접 호출
+    const fetchCurrentPrice = async () => {
+      try {
+        const response = await fetch(`https://api.upbit.com/v1/ticker?markets=${symbol}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            const currentPrice = data[0].trade_price;
+            // useChartData 훅의 chartPrice 상태를 업데이트
+            if (typeof currentPrice === 'number') {
+              console.log(`${symbol} 현재 시세를 API에서 가져왔습니다: ${currentPrice.toLocaleString()} KRW`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('시세 API 호출 오류:', error);
+      }
+    };
+    
+    fetchCurrentPrice();
+  }, [symbol]);
   
   // 차트 타입의 기본값을 5분봉으로 설정
   const [chartType, setChartType] = React.useState<string>(propsChartType || 'minutes/5');
@@ -133,6 +175,23 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   const handleHeightChange = (height: number) => {
     handleHeightChangeEvent({ target: { value: height.toString() } } as React.ChangeEvent<HTMLInputElement>);
   };
+  
+  // 코인 변경 시 데이터 로드를 위한 useEffect
+  useEffect(() => {
+    if (loadData) {
+      console.log(`${symbol} 데이터 로드 중...`);
+      
+      // 초기 데이터 로드
+      loadData();
+      
+      // 데이터가 충분히 로드되지 않았을 때 한번 더 로드 (500ms 후)
+      const timer = setTimeout(() => {
+        loadData();
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [symbol, loadData]);
   
   // CSV 관련 기능 훅
   const {

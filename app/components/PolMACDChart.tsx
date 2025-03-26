@@ -179,24 +179,27 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       // 2. MACD가 신호선을 상향돌파하거나
       // 3. 5EMA가 20EMA 상향돌파할 때
       // 4. 20EMA가 상승 중일 때만 매수
+      // 5. 20EMA가 30EMA보다 위에 있을 때만 매수 (정배열 확인)
       if (currentMacd <= minusTenPercent && 
           (
             (prevMacd <= prevSignal && currentMacd > currentSignal) || // MACD가 신호선 상향돌파
             (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i]) // EMA 크로스
           ) && 
           ema20Values[i] > ema20Values[i - 1] && // 20EMA 상승 확인
+          ema20Values[i] > calculateEMA(data.slice(0, i+1), 30)[calculateEMA(data.slice(0, i+1), 30).length-1].value && // 20EMA > 30EMA (정배열 확인)
           (lastSignal === null || lastSignal === 'sell')) {
         type.push('buy');
         lastSignal = 'buy';
       }
       // 매도 신호 조건:
-       // 1. MACD가 -20% 이하에서:
-      // 2. MACD가 신호선을 하향돌파할 때
-      //3. 20EMA가 하락 중일 때만 매도
-      //4. 이전에 매수 신호가 있었을 때
+      // 1. MACD가 신호선을 하향돌파할 때
+      // 2. 이전에 매수 신호가 있었을 때
+      // 3. 20EMA가 30EMA보다 작을 때(역배열 상태)만 매도 - 정배열일 경우 매도하지 않음
       else if (currentMacd >= plusTwentyPercent && 
-        prevMacd > prevSignal && currentMacd <= currentSignal && 
-        ema20Values[i] < ema20Values[i - 1] &&
+        prevMacd > prevSignal && currentMacd <= currentSignal 
+        && ema20Values[i] < ema20Values[i - 1] && //20EMA 하락중
+              // 20EMA와 30EMA의 배열 확인 - 역배열 상태일 때만 매도
+              ema20Values[i] < calculateEMA(data.slice(0, i+1), 30)[calculateEMA(data.slice(0, i+1), 30).length-1].value &&
               lastSignal === 'buy') {
         type.push('sell');
         lastSignal = 'sell';
