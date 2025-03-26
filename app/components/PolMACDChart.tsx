@@ -139,6 +139,15 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       histogramValues.push(histogram);
     }
 
+    // MACD 값의 최대값 및 최소값 찾기
+    let maxMacd = Math.max(...macdValues);
+    let minMacd = Math.min(...macdValues);
+    let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
+    
+    // +/-30% 레벨 계산
+    const plusThirtyPercent = macdRange * 0.3;
+    const minusThirtyPercent = -macdRange * 0.3;
+
     // 매수/매도 신호 생성
     const type: ('buy' | 'sell' | null)[] = [];
     let lastSignal: 'buy' | 'sell' | null = null;
@@ -150,13 +159,35 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         continue;
       }
 
-      // 5EMA가 20EMA 상향돌파 (매수 신호)
-      if (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i] && (lastSignal === null || lastSignal === 'sell')) {
+      const currentMacd = macdValues[i];
+      const prevMacd = macdValues[i - 1];
+
+      // MACD가 +/-30% 범위 이내인지 확인
+      const isWithinThirtyPercent = Math.abs(currentMacd) <= plusThirtyPercent;
+
+      // MACD가 30% 범위 이내면 신호 생성하지 않음
+      if (isWithinThirtyPercent) {
+        type.push(null);
+        continue;
+      }
+
+      // 매수 신호 조건:
+      // 1. MACD가 -30% 이하에서 상승 중
+      // 2. 5EMA가 20EMA 상향돌파 (MACD가 -30% 이하일 때만)
+      if (currentMacd <= minusThirtyPercent && 
+          ((currentMacd > prevMacd) || 
+           (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i])) && 
+          (lastSignal === null || lastSignal === 'sell')) {
         type.push('buy');
         lastSignal = 'buy';
       }
-      // 5EMA가 20EMA 하향돌파 (매도 신호)
-      else if (ema5Values[i - 1] >= ema20Values[i - 1] && ema5Values[i] < ema20Values[i] && lastSignal === 'buy') {
+      // 매도 신호 조건:
+      // 1. MACD가 +30% 이상에서 하락 중
+      // 2. 5EMA가 20EMA 하향돌파 (MACD가 +30% 이상일 때만)
+      else if (currentMacd >= plusThirtyPercent && 
+              ((currentMacd < prevMacd) || 
+               (ema5Values[i - 1] >= ema20Values[i - 1] && ema5Values[i] < ema20Values[i])) && 
+              lastSignal === 'buy') {
         type.push('sell');
         lastSignal = 'sell';
       } else {
