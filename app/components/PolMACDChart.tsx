@@ -516,9 +516,11 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     let minMacd = Math.min(...macdData.map(d => d.value));
     let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
     
-    // +/-30% 라인 데이터 생성
+    // +/-10%, +/-30% 라인 데이터 생성
     const plusThirtyPercentValue = macdRange * 0.3;
     const minusThirtyPercentValue = -macdRange * 0.3;
+    const plusTenPercentValue = macdRange * 0.1;
+    const minusTenPercentValue = -macdRange * 0.1;
     
     // 시간 범위 설정
     const timeRange = {
@@ -529,27 +531,53 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     // +30% 라인 추가
     const thirtyPercentLineRef = chart.addLineSeries({
       color: '#008800',
-      lineWidth: 1,
+      lineWidth: 2,
       lineStyle: 2,
       title: '+30% 수준',
       lastValueVisible: true,
       priceLineVisible: true,
-      priceLineWidth: 1,
+      priceLineWidth: 2,
       priceLineColor: '#008800',
-      priceScaleId: 'macd',
+      priceScaleId: 'left',
     });
     
     // -30% 라인 추가
     const minusThirtyPercentLineRef = chart.addLineSeries({
       color: '#AA0000',
-      lineWidth: 1,
+      lineWidth: 2,
       lineStyle: 2,
       title: '-30% 수준',
       lastValueVisible: true,
       priceLineVisible: true,
-      priceLineWidth: 1,
+      priceLineWidth: 2,
       priceLineColor: '#AA0000',
-      priceScaleId: 'macd',
+      priceScaleId: 'left',
+    });
+
+    // +10% 라인 추가
+    const tenPercentRef = chart.addLineSeries({
+      color: '#00CC00',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: '+10% 수준',
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineColor: '#00CC00',
+      priceScaleId: 'left',
+    });
+    
+    // -10% 라인 추가
+    const minusTenPercentRef = chart.addLineSeries({
+      color: '#FF0000',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: '-10% 수준',
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineColor: '#FF0000',
+      priceScaleId: 'left',
     });
     
     // +/-30% 라인 데이터 설정
@@ -562,47 +590,25 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       { time: timeRange.from, value: minusThirtyPercentValue },
       { time: timeRange.to, value: minusThirtyPercentValue },
     ];
+
+    // +/-10% 라인 데이터 설정
+    const plusTenPercentData = [
+      { time: timeRange.from, value: plusTenPercentValue },
+      { time: timeRange.to, value: plusTenPercentValue },
+    ];
     
+    const minusTenPercentData = [
+      { time: timeRange.from, value: minusTenPercentValue },
+      { time: timeRange.to, value: minusTenPercentValue },
+    ];
+    
+    // 데이터 설정
     thirtyPercentLineRef.setData(plusThirtyPercentData);
     minusThirtyPercentLineRef.setData(minusThirtyPercentData);
+    tenPercentRef.setData(plusTenPercentData);
+    minusTenPercentRef.setData(minusTenPercentData);
 
-    // 가격 스케일 생성
-    chart.priceScale('macd').applyOptions({
-      autoScale: true,
-      scaleMargins: {
-        top: 0.1,  // 상단 여백 줄임
-        bottom: 0.2, // 하단 여백 추가
-      },
-      borderVisible: true,
-      borderColor: '#d1d4dc',
-      visible: true,
-      entireTextOnly: true,
-      ticksVisible: true,
-      textColor: '#333',
-      mode: 1 // 일반 가격 스케일 모드
-    });
-
-    // 그리드 라인 설정 강화
-    chart.applyOptions({
-      grid: {
-        vertLines: { 
-          color: '#f0f0f0',
-          style: 1, // 실선
-          visible: true
-        },
-        horzLines: { 
-          color: '#f0f0f0',
-          style: 1, // 실선
-          visible: true 
-        },
-      },
-      leftPriceScale: {
-        visible: true,
-        borderVisible: true
-      }
-    });
-
-    // +/-30% 라인 값 표시를 더 눈에 띄게 만들기
+    // 라인 설정 강화
     thirtyPercentLineRef.applyOptions({
       lastValueVisible: true,
       priceLineVisible: true,
@@ -621,6 +627,26 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
       title: '-30%'
+    });
+
+    tenPercentRef.applyOptions({
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      lineWidth: 1,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 3,
+      title: '+10%'
+    });
+    
+    minusTenPercentRef.applyOptions({
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      lineWidth: 1,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 3,
+      title: '-10%'
     });
 
     // MACD 선과 신호선 설정 강화
@@ -642,29 +668,6 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       title: 'Signal'
     });
     
-    // +/-30% 라인 레이블 추가
-    const midTime = timeRange.from;
-    
-    const labelOptionsPlus30 = {
-      shape: 'circle' as const,
-      color: '#008800',
-      text: '+30%',
-      size: 2
-    };
-    
-    const labelOptionsMinus30 = {
-      shape: 'circle' as const,
-      color: '#AA0000',
-      text: '-30%',
-      size: 2
-    };
-    
-    // MACD 라인에 레이블 마커 추가 (더 크게 표시)
-    macdSeries.setMarkers([
-      { time: midTime, position: 'aboveBar', ...labelOptionsPlus30 },
-      { time: midTime, position: 'belowBar', ...labelOptionsMinus30 }
-    ]);
-
     // 차트 시간 축 맞춤
     chart.timeScale().fitContent();
 
