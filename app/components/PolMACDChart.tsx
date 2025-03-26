@@ -293,7 +293,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         buyQuantity = Math.floor(totalValue / entryPrice);
         inPosition = true;
       } else if (signal === 'sell' && inPosition && entryTime !== null) {
-        // 매도 신호
+        // 매도 신호로만 청산
         exitPrice = candle.close;
         exitTime = candle.time;
         
@@ -324,26 +324,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       }
     }
     
-    // 마지막 포지션이 닫히지 않은 경우 처리
-    if (inPosition && entryTime !== null) {
-      const lastCandle = data[data.length - 1];
-      exitPrice = lastCandle.close;
-      exitTime = lastCandle.time;
-      
-      const returnValue = (exitPrice / entryPrice) - 1;
-      
-      trades.push({
-        entryTime,
-        entryPrice,
-        exitTime,
-        exitPrice,
-        return: returnValue,
-        isSuccess: returnValue > 0,
-        mode: 'test'
-      });
-      
-      totalValue = totalValue * (1 + returnValue);
-    }
+    // 마지막 포지션이 있다면 유지 (강제 청산하지 않음)
     
     // 시간 순으로 거래 정렬
     const sortedTrades = [...trades].sort((a, b) => {
