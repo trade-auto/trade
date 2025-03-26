@@ -13,7 +13,7 @@ export interface DateRange {
  */
 export const createTradeMarkers = (signals: TradeSignal[]): SeriesMarker<Time>[] => {
   return signals.map(signal => ({
-    time: signal.time,
+    time: signal.time as Time,
     position: signal.position === 'buy' ? 'belowBar' : 'aboveBar',
     color: signal.position === 'buy' ? '#26a69a' : '#ef5350',
     shape: signal.position === 'buy' ? 'arrowUp' : 'arrowDown',

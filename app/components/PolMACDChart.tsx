@@ -147,7 +147,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     
     // +20%/-10% 레벨 계산
     const plusTwentyPercent = macdRange * 0.15;
-    const minusTenPercent = -macdRange * 0.1;
+    const minusTenPercent = -macdRange * 0.08;
 
     // 매수/매도 신호 생성
     const type: ('buy' | 'sell' | null)[] = [];
@@ -190,8 +190,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         lastSignal = 'buy';
       }
       // 매도 신호 조건:
-      // 1. MACD가 신호선을 하향돌파할 때
-      // 2. 이전에 매수 신호가 있었을 때
+       // 1. MACD가 -20% 이하에서:
+      // 2. MACD가 신호선을 하향돌파할 때
+      //3. 20EMA가 하락 중일 때만 매도
+      //4. 이전에 매수 신호가 있었을 때
       else if (currentMacd >= plusTwentyPercent && 
         prevMacd > prevSignal && currentMacd <= currentSignal && 
         ema20Values[i] < ema20Values[i - 1] &&
