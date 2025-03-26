@@ -388,6 +388,21 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       },
       rightPriceScale: {
         borderColor: '#d1d4dc',
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.2,
+        },
+      },
+      leftPriceScale: {
+        visible: true,
+        borderColor: '#d1d4dc',
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.2,
+        },
+        borderVisible: true,
+        ticksVisible: true,
+        autoScale: true,
       },
       timeScale: {
         borderColor: '#d1d4dc',
@@ -400,6 +415,16 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
           const seconds = date.getSeconds().toString().padStart(2, '0');
           return `${hours}:${minutes}:${seconds}`;
         },
+      },
+      handleScroll: true,
+      handleScale: {
+        axisPressedMouseMove: {
+          time: true,
+          price: true,
+        },
+        axisDoubleClickReset: true,
+        mouseWheel: true,
+        pinch: true,
       },
     });
 
@@ -418,17 +443,32 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const macdSeries = chart.addLineSeries({
       color: '#2962FF',
       lineWidth: 2,
-      priceScaleId: 'macd',
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
     });
 
     const signalSeries = chart.addLineSeries({
       color: '#FF6D00',
       lineWidth: 2,
-      priceScaleId: 'macd',
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
     });
 
     const histogramSeries = chart.addHistogramSeries({
-      priceScaleId: 'macd',
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
     });
 
     macdSeries.setData(macdData);
@@ -470,20 +510,160 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       }));
       candleSeries.setMarkers(validMarkers);
     }
-
-    // 차트 설정
-    chart.applyOptions({
-      // 차트 전체 설정
+    
+    // MACD 값의 최대값 및 최소값 찾기
+    let maxMacd = Math.max(...macdData.map(d => d.value));
+    let minMacd = Math.min(...macdData.map(d => d.value));
+    let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
+    
+    // +/-30% 라인 데이터 생성
+    const plusThirtyPercentValue = macdRange * 0.3;
+    const minusThirtyPercentValue = -macdRange * 0.3;
+    
+    // 시간 범위 설정
+    const timeRange = {
+      from: data[0].time as Time,
+      to: data[data.length - 1].time as Time,
+    };
+    
+    // +30% 라인 추가
+    const thirtyPercentLineRef = chart.addLineSeries({
+      color: '#008800',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: '+30% 수준',
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineColor: '#008800',
+      priceScaleId: 'macd',
     });
+    
+    // -30% 라인 추가
+    const minusThirtyPercentLineRef = chart.addLineSeries({
+      color: '#AA0000',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: '-30% 수준',
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineColor: '#AA0000',
+      priceScaleId: 'macd',
+    });
+    
+    // +/-30% 라인 데이터 설정
+    const plusThirtyPercentData = [
+      { time: timeRange.from, value: plusThirtyPercentValue },
+      { time: timeRange.to, value: plusThirtyPercentValue },
+    ];
+    
+    const minusThirtyPercentData = [
+      { time: timeRange.from, value: minusThirtyPercentValue },
+      { time: timeRange.to, value: minusThirtyPercentValue },
+    ];
+    
+    thirtyPercentLineRef.setData(plusThirtyPercentData);
+    minusThirtyPercentLineRef.setData(minusThirtyPercentData);
 
     // 가격 스케일 생성
     chart.priceScale('macd').applyOptions({
       autoScale: true,
       scaleMargins: {
-        top: 0.8, 
-        bottom: 0,
+        top: 0.1,  // 상단 여백 줄임
+        bottom: 0.2, // 하단 여백 추가
       },
+      borderVisible: true,
+      borderColor: '#d1d4dc',
+      visible: true,
+      entireTextOnly: true,
+      ticksVisible: true,
+      textColor: '#333',
+      mode: 1 // 일반 가격 스케일 모드
     });
+
+    // 그리드 라인 설정 강화
+    chart.applyOptions({
+      grid: {
+        vertLines: { 
+          color: '#f0f0f0',
+          style: 1, // 실선
+          visible: true
+        },
+        horzLines: { 
+          color: '#f0f0f0',
+          style: 1, // 실선
+          visible: true 
+        },
+      },
+      leftPriceScale: {
+        visible: true,
+        borderVisible: true
+      }
+    });
+
+    // +/-30% 라인 값 표시를 더 눈에 띄게 만들기
+    thirtyPercentLineRef.applyOptions({
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 2,
+      lineWidth: 2,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+      title: '+30%'
+    });
+    
+    minusThirtyPercentLineRef.applyOptions({
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 2,
+      lineWidth: 2,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+      title: '-30%'
+    });
+
+    // MACD 선과 신호선 설정 강화
+    macdSeries.applyOptions({
+      lineWidth: 3,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 5,
+      title: 'MACD'
+    });
+    
+    signalSeries.applyOptions({
+      lineWidth: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+      title: 'Signal'
+    });
+    
+    // +/-30% 라인 레이블 추가
+    const midTime = timeRange.from;
+    
+    const labelOptionsPlus30 = {
+      shape: 'circle' as const,
+      color: '#008800',
+      text: '+30%',
+      size: 2
+    };
+    
+    const labelOptionsMinus30 = {
+      shape: 'circle' as const,
+      color: '#AA0000',
+      text: '-30%',
+      size: 2
+    };
+    
+    // MACD 라인에 레이블 마커 추가 (더 크게 표시)
+    macdSeries.setMarkers([
+      { time: midTime, position: 'aboveBar', ...labelOptionsPlus30 },
+      { time: midTime, position: 'belowBar', ...labelOptionsMinus30 }
+    ]);
 
     // 차트 시간 축 맞춤
     chart.timeScale().fitContent();
