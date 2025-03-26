@@ -75,21 +75,21 @@ const BacktestResults: React.FC<BacktestResultsProps> = ({ backtestResult }) => 
   const filteredBacktestResult = {
     ...backtestResult,
     totalTrades: sortedTrades.length,
-    successfulTrades: sortedTrades.filter(trade => trade.return > 0).length,
+    successfulTrades: sortedTrades.filter(trade => (trade.return ?? 0) > 0).length,
     successRate: sortedTrades.length > 0 
-      ? (sortedTrades.filter(trade => trade.return > 0).length / sortedTrades.length) * 100 
+      ? (sortedTrades.filter(trade => (trade.return ?? 0) > 0).length / sortedTrades.length) * 100 
       : 0,
     totalReturn: sortedTrades.length > 0
-      ? sortedTrades.reduce((sum, trade) => sum + trade.return, 0)
+      ? sortedTrades.reduce((sum, trade) => sum + (trade.return ?? 0), 0)
       : backtestResult.totalReturn,
     totalNetReturn: sortedTrades.length > 0
-      ? sortedTrades.reduce((sum, trade) => sum + (trade.return - 0.001), 0) // 0.1% 수수료 가정
+      ? sortedTrades.reduce((sum, trade) => sum + ((trade.return ?? 0) - 0.001), 0)
       : backtestResult.totalNetReturn,
     averageReturn: sortedTrades.length > 0
-      ? sortedTrades.reduce((sum, trade) => sum + trade.return, 0) / sortedTrades.length
+      ? sortedTrades.reduce((sum, trade) => sum + (trade.return ?? 0), 0) / sortedTrades.length
       : backtestResult.averageReturn,
     averageNetReturn: sortedTrades.length > 0
-      ? sortedTrades.reduce((sum, trade) => sum + (trade.return - 0.001), 0) / sortedTrades.length
+      ? sortedTrades.reduce((sum, trade) => sum + ((trade.return ?? 0) - 0.001), 0) / sortedTrades.length
       : backtestResult.averageNetReturn
   };
 
@@ -200,29 +200,33 @@ const BacktestResults: React.FC<BacktestResultsProps> = ({ backtestResult }) => 
                   const feeRate = 0.0005;
                   const buyFee = feeRate * 100;
                   const sellFee = feeRate * 100;
-                  const netReturn = trade.return - (feeRate * 2);
-                  const profitAmount = 1000000 * trade.return;
+                  const netReturn = (trade.return ?? 0) - (feeRate * 2);
+                  const profitAmount = 1000000 * (trade.return ?? 0);
                   const netProfitAmount = 1000000 * netReturn;
                   
                   return (
                     <tr key={startIndex + index} className="border-t border-gray-700">
-                      <td className="px-4 py-2">{formatTradeTime(trade.entryTime)}</td>
-                      <td className="px-4 py-2">{formatTradeTime(trade.exitTime)}</td>
-                      <td className="px-4 py-2">{trade.entryPrice.toLocaleString()}</td>
-                      <td className="px-4 py-2">{trade.exitPrice.toLocaleString()}</td>
-                      <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {(trade.return * 100).toFixed(2)}%
+                      <td className="px-4 py-2">{formatTradeTime(trade.entryTime ?? null)}</td>
+                      <td className="px-4 py-2">{formatTradeTime(trade.exitTime ?? null)}</td>
+                      <td className="px-4 py-2">{trade.entryPrice?.toLocaleString() ?? '-'}</td>
+                      <td className="px-4 py-2">{trade.exitPrice?.toLocaleString() ?? '-'}</td>
+                      <td className={`px-4 py-2 ${(trade.return ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {trade.status === 'closed' ? `${((trade.return ?? 0) * 100).toFixed(2)}%` : '-'}
                       </td>
-                      <td className="px-4 py-2 text-red-500">{buyFee.toFixed(2)}%</td>
-                      <td className="px-4 py-2 text-red-500">{sellFee.toFixed(2)}%</td>
-                      <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {(netReturn * 100).toFixed(2)}%
+                      <td className="px-4 py-2 text-red-500">
+                        {trade.status === 'closed' ? `${buyFee.toFixed(2)}%` : '-'}
                       </td>
-                      <td className={`px-4 py-2 ${trade.return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {profitAmount.toLocaleString()}원
+                      <td className="px-4 py-2 text-red-500">
+                        {trade.status === 'closed' ? `${sellFee.toFixed(2)}%` : '-'}
                       </td>
                       <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {netProfitAmount.toLocaleString()}원
+                        {trade.status === 'closed' ? `${(netReturn * 100).toFixed(2)}%` : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${(trade.return ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {trade.status === 'closed' ? `${profitAmount.toLocaleString()}원` : '-'}
+                      </td>
+                      <td className={`px-4 py-2 ${netReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {trade.status === 'closed' ? `${netProfitAmount.toLocaleString()}원` : '-'}
                       </td>
                     </tr>
                   );

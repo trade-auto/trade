@@ -212,7 +212,8 @@ export const calculateBacktestResult = (
         exitPrice,
         return: returnRate,
         isSuccess: returnRate > 0,
-        mode: mode === 'test' ? 'test-auto' : 'live-auto',
+        mode: mode === 'test' ? 'test' : 'real',
+        status: 'closed',
         metadata: {
           entryMa360: buyPoint.metadata?.ma360,
           exitMa360: signal.metadata?.ma360,
@@ -229,10 +230,10 @@ export const calculateBacktestResult = (
   const successfulTrades = trades.filter(trade => trade.isSuccess).length;
   
   // 수수료 제외 총 수익률 (매수+매도 수수료 고려)
-  const totalReturn = trades.reduce((sum, trade) => sum + trade.return, 0);
+  const totalReturn = trades.reduce((sum, trade) => sum + (trade.return ?? 0), 0);
   
   // 수수료 포함 순수익률 계산 (각 거래마다 매수+매도 수수료 차감)
-  const totalNetReturn = trades.reduce((sum, trade) => sum + (trade.return - (feeRate * 2)), 0);
+  const totalNetReturn = trades.reduce((sum, trade) => sum + ((trade.return ?? 0) - (feeRate * 2)), 0);
   
   return {
     totalTrades,

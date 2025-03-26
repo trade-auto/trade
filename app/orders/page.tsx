@@ -11,6 +11,7 @@ import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
 import { CandlestickChart, OrderParams } from '../components/CandlestickChart';
 import { getAccountBalance } from '../api/upbitAccount';
+import { useCoinStore, AVAILABLE_COINS } from '../store/useCoinStore';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -32,7 +33,7 @@ const CHART_INTERVALS = [
 export default function OrdersPage() {
   const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<'live' | 'test'>('test');
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('KRW-BTC');
+  const { selectedCoin, setSelectedCoin } = useCoinStore();
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
   const [isClient, setIsClient] = useState(false);
   const [selectedInterval, setSelectedInterval] = useState<string>(() => {
@@ -79,7 +80,7 @@ export default function OrdersPage() {
     try {
       const saved = localStorage.getItem('selectedSymbol');
       if (saved) {
-        setSelectedSymbol(saved);
+        setSelectedCoin(saved);
       }
       
       const savedInterval = localStorage.getItem('selectedChartInterval');
@@ -104,7 +105,7 @@ export default function OrdersPage() {
         if (ws && ws.readyState === WebSocket.OPEN) {
           const message = JSON.stringify([
             { ticket: "trade" },
-            { type: "trade", codes: [selectedSymbol] }
+            { type: "trade", codes: [selectedCoin] }
           ]);
           ws.send(message);
         }
@@ -160,14 +161,14 @@ export default function OrdersPage() {
         }
       }
     };
-  }, [selectedSymbol, mounted]);
+  }, [selectedCoin, mounted]);
 
   // 잔고 정보 로드
   const loadBalance = useCallback(async () => {
     try {
       const accounts = await getAccountBalance();
       const coinBalance = accounts.find(
-        account => `KRW-${account.currency}` === selectedSymbol
+        account => `KRW-${account.currency}` === selectedCoin
       );
       const krwBalance = accounts.find(
         account => account.currency === 'KRW'
@@ -180,12 +181,12 @@ export default function OrdersPage() {
     } catch (error) {
       console.error('잔고 조회 실패:', error);
     }
-  }, [selectedSymbol]);
+  }, [selectedCoin]);
 
   // 심볼이 변경될 때마다 잔고 정보 업데이트
   useEffect(() => {
     loadBalance();
-  }, [selectedSymbol, loadBalance]);
+  }, [selectedCoin, loadBalance]);
 
   const handleOrderCreated = () => {
     // OpenOrders 컴포넌트의 새로고침 함수 호출
@@ -193,17 +194,6 @@ export default function OrdersPage() {
       openOrdersRef.current.loadOpenOrders();
     }
   };
-
-  const handleSymbolChange = useCallback((symbol: string) => {
-    setSelectedSymbol(symbol);
-    if (mounted) {
-      try {
-        localStorage.setItem('selectedSymbol', symbol);
-      } catch (error) {
-        console.warn('Failed to save to localStorage:', error);
-      }
-    }
-  }, [mounted]);
 
   const handlePriceUpdate = (price: number) => {
     if (price) setCurrentPrice(price);
@@ -281,14 +271,14 @@ export default function OrdersPage() {
 
         {/* 심볼 선택 */}
         <div className="mb-8">
-          <h2 className="text-xl font-bold text-white mb-4">거래소 선택</h2>
+          <h2 className="text-xl font-bold text-white mb-4">코인 선택</h2>
           <div className="flex flex-wrap gap-2">
-            {SYMBOLS.map((item) => (
+            {AVAILABLE_COINS.map((item) => (
               <button
                 key={item.symbol}
-                onClick={() => setSelectedSymbol(item.symbol)}
+                onClick={() => setSelectedCoin(item.symbol)}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors duration-150 ${
-                  selectedSymbol === item.symbol
+                  selectedCoin === item.symbol
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
@@ -302,7 +292,7 @@ export default function OrdersPage() {
         {/* 주문하기 섹션 */}
         <CreateOrder
           ref={createOrderRef}
-          market={selectedSymbol}
+          market={selectedCoin}
           mode={mode}
           onOrderCreated={handleOrderCreated}
           onPriceUpdate={handlePriceUpdate}
@@ -403,7 +393,7 @@ export default function OrdersPage() {
           </div>
           
           <CandlestickChart 
-            symbol={selectedSymbol} 
+            symbol={selectedCoin} 
             chartType={selectedInterval}
             initialAutoUpdate={true}
             mode={mode}
@@ -441,19 +431,19 @@ export default function OrdersPage() {
         {/* 체결 대기 주문 섹션 */}
         <OpenOrders 
           ref={openOrdersRef}
-          market={selectedSymbol}
+          market={selectedCoin}
           onSelectOrder={setSelectedOrderUuid}
         />
 
         {/* 종료된 주문 섹션 */}
         <ClosedOrders 
-          market={selectedSymbol}
+          market={selectedCoin}
           onSelectOrder={setSelectedOrderUuid}
         />
 
         {/* 개별 주문 내역 섹션 */}
         <OrderHistory 
-          market={selectedSymbol}
+          market={selectedCoin}
           onSelectOrder={setSelectedOrderUuid}
         />
 

@@ -12,6 +12,8 @@ import { calculateMA, calculateRelativeSlope, calculateBollingerBands } from '..
 import { CreateOrderProps, OrderParams, TradeCycle } from '../types/trading';
 import strategies from '../strategies';
 import { Time } from 'lightweight-charts';
+import { CoinSelector } from './CoinSelector';
+import { useCoinStore } from '../store/useCoinStore';
 
 export const CreateOrder = forwardRef<
   { handleAutomaticTrade: (params: OrderParams) => Promise<void> },
@@ -27,6 +29,8 @@ export const CreateOrder = forwardRef<
     dateRange,
     maPeriods
   } = useUpbitStore();
+  
+  const selectedCoin = useCoinStore(state => state.selectedCoin);
   
   const [side, setSide] = useState<'bid' | 'ask'>('bid');
   const [volume, setVolume] = useState('');
@@ -80,7 +84,7 @@ export const CreateOrder = forwardRef<
       setError(null);
 
       await createOrder({
-        market,
+        market: selectedCoin,
         side,
         volume,
         price,
@@ -110,8 +114,8 @@ export const CreateOrder = forwardRef<
       try {
         setPriceUpdateError(null);
         const [current, ma3] = await Promise.all([
-          getCurrentPrice(market),
-          get3SecMA(market)
+          getCurrentPrice(selectedCoin),
+          get3SecMA(selectedCoin)
         ]);
         setCurrentPrice(current);
         setMa3Price(ma3);
@@ -133,7 +137,7 @@ export const CreateOrder = forwardRef<
     const interval = setInterval(updatePricesInEffect, 1000); // 1초마다 업데이트
     
     return () => clearInterval(interval);
-  }, [market, ordType]); // updatePrices 의존성 제거
+  }, [selectedCoin, ordType]); // updatePrices 의존성 제거
 
   // 주문 방식이 변경될 때 가격 자동 설정
   useEffect(() => {
@@ -184,7 +188,7 @@ export const CreateOrder = forwardRef<
         if (currentCycle === 'waiting_buy' && lastSignal.position === 'buy') {
           console.log('매수 신호 감지:', lastSignal);
           await createOrder({
-            market: market,
+            market: selectedCoin,
             side: 'bid',
             volume: calculateOrderVolume(currentPrice),
             price: currentPrice.toString(),
@@ -198,7 +202,7 @@ export const CreateOrder = forwardRef<
         else if (currentCycle === 'waiting_sell' && lastSignal.position === 'sell') {
           console.log('매도 신호 감지:', lastSignal);
           await createOrder({
-            market: market,
+            market: selectedCoin,
             side: 'ask',
             volume: calculateOrderVolume(currentPrice),
             price: currentPrice.toString(),
@@ -215,7 +219,7 @@ export const CreateOrder = forwardRef<
 
     // 거래 신호 처리 실행
     handleTradeSignal();
-  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, market, mode, createOrder]);
+  }, [autoTrading, isBacktesting, currentPrice, priceHistory, tradeStrategy, currentCycle, selectedCoin, mode, createOrder]);
 
   // 경과 시간 업데이트를 위한 useEffect 수정
   useEffect(() => {
@@ -429,23 +433,13 @@ export const CreateOrder = forwardRef<
   };
 
   return (
-    <div className="mb-8">
-      <div className="flex items-center gap-2">
-        <h2 className="text-xl font-bold text-white">주문하기</h2>
-        {mode === 'test' && (
-          <span className="px-2 py-1 bg-blue-500 text-white text-sm rounded-full">
-            테스트 모드
-          </span>
-        )}
-        {mode === 'live' && (
-          <span className="px-2 py-1 bg-red-500 text-white text-sm rounded-full">
-            실전 모드
-          </span>
-        )}
-      </div>
+    <div className="bg-gray-800 rounded-lg p-6 mb-8">
+      <h2 className="text-xl font-bold text-white mb-6">주문하기</h2>
+      
+      <CoinSelector />
       
       <OrderForm
-        market={market}
+        market={selectedCoin}
         side={side}
         setSide={setSide}
         volume={volume}

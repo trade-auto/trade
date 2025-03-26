@@ -72,7 +72,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const ema5Values: number[] = [];
     const ema20Values: number[] = [];
     const ema12Values: number[] = [];
-    const ema26Values: number[] = [];
+    const ema23Values: number[] = [];
+    const ema25Values: number[] = [];
     const macdValues: number[] = [];
     const signalValues: number[] = [];
     const histogramValues: number[] = [];
@@ -98,38 +99,38 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     }
 
     // EMA 12 계산
-    let multiplier12 = 2 / (12 + 1);
-    let ema12 = closePrices[0];
-    ema12Values.push(ema12);
+    let multiplier23 = 2 / (23 + 1);
+    let ema23 = closePrices[0];
+    ema23Values.push(ema23);
 
     for (let i = 1; i < closePrices.length; i++) {
-      ema12 = (closePrices[i] - ema12) * multiplier12 + ema12;
-      ema12Values.push(ema12);
+      ema23 = (closePrices[i] - ema23) * multiplier23 + ema23;
+      ema23Values.push(ema23);
     }
 
-    // EMA 26 계산
-    let multiplier26 = 2 / (26 + 1);
-    let ema26 = closePrices[0];
-    ema26Values.push(ema26);
+    // EMA 25 계산
+    let multiplier25 = 2 / (25 + 1);
+    let ema25 = closePrices[0];
+    ema25Values.push(ema25);
 
     for (let i = 1; i < closePrices.length; i++) {
-      ema26 = (closePrices[i] - ema26) * multiplier26 + ema26;
-      ema26Values.push(ema26);
+      ema25 = (closePrices[i] - ema25) * multiplier25 + ema25;
+      ema25Values.push(ema25);
     }
 
-    // MACD 라인 계산: EMA12 - EMA26
-    for (let i = 0; i < ema12Values.length; i++) {
-      const macd = ema12Values[i] - ema26Values[i];
+    // MACD 라인 계산: EMA23 - EMA25
+    for (let i = 0; i < ema23Values.length; i++) {
+      const macd = ema23Values[i] - ema25Values[i];
       macdValues.push(macd);
     }
 
-    // Signal 라인 계산: MACD의 9일 EMA
-    let multiplier9 = 2 / (9 + 1);
+    // Signal 라인 계산: MACD의 12일 EMA
+    let multiplier12 = 2 / (11 + 1);
     let signal = macdValues[0];
     signalValues.push(signal);
 
     for (let i = 1; i < macdValues.length; i++) {
-      signal = (macdValues[i] - signal) * multiplier9 + signal;
+      signal = (macdValues[i] - signal) * multiplier12 + signal;
       signalValues.push(signal);
     }
 
@@ -144,9 +145,9 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     let minMacd = Math.min(...macdValues);
     let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
     
-    // +/-30% 레벨 계산
-    const plusThirtyPercent = macdRange * 0.3;
-    const minusThirtyPercent = -macdRange * 0.3;
+    // +20%/-10% 레벨 계산
+    const plusTwentyPercent = macdRange * 0.15;
+    const minusTenPercent = -macdRange * 0.1;
 
     // 매수/매도 신호 생성
     const type: ('buy' | 'sell' | null)[] = [];
@@ -164,30 +165,37 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       const currentSignal = signalValues[i];
       const prevSignal = signalValues[i - 1];
 
-      // MACD가 +/-30% 범위 이내인지 확인
-      const isWithinThirtyPercent = Math.abs(currentMacd) <= plusThirtyPercent;
+      // MACD가 +/-10% 범위 이내인지 확인
+      const isWithinTenPercent = Math.abs(currentMacd) <= minusTenPercent;
 
-      // MACD가 30% 범위 이내면 신호 생성하지 않음
-      if (isWithinThirtyPercent) {
+      // MACD가 10% 범위 이내면 신호 생성하지 않음
+      if (isWithinTenPercent) {
         type.push(null);
         continue;
       }
 
       // 매수 신호 조건:
-      // 1. MACD가 -30% 이하에서 상승 중
-      // 2. 5EMA가 20EMA 상향돌파 (MACD가 -30% 이하일 때만)
-      if (currentMacd <= minusThirtyPercent && 
-          ((currentMacd > prevMacd) || 
-           (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i])) && 
+      // 1. MACD가 -10% 이하에서:
+      // 2. MACD가 신호선을 상향돌파하거나
+      // 3. 5EMA가 20EMA 상향돌파할 때
+      // 4. 20EMA가 상승 중일 때만 매수
+      if (currentMacd <= minusTenPercent && 
+          (
+            (prevMacd <= prevSignal && currentMacd > currentSignal) || // MACD가 신호선 상향돌파
+            (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i]) // EMA 크로스
+          ) && 
+          ema20Values[i] > ema20Values[i - 1] && // 20EMA 상승 확인
           (lastSignal === null || lastSignal === 'sell')) {
         type.push('buy');
         lastSignal = 'buy';
       }
       // 매도 신호 조건:
-      // 1. MACD가 +30% 이상이고
+      // 1. MACD가 +15% 이상이고
       // 2. MACD가 시그널선을 하방통과할 때
-      else if (currentMacd >= plusThirtyPercent && 
+      // 3. 20EMA가 하락 중일 때만 매도
+      else if (currentMacd >= plusTwentyPercent && 
               prevMacd > prevSignal && currentMacd <= currentSignal && 
+              ema20Values[i] < ema20Values[i - 1] && // 20EMA 하락 확인
               lastSignal === 'buy') {
         type.push('sell');
         lastSignal = 'sell';
@@ -280,6 +288,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     let exitPrice = 0;
     let exitTime: Time | null = null;
     let buyQuantity = 0;
+    let currentTrade: Partial<Trade> | null = null;
 
     // 각 캔들에 대해 거래 시뮬레이션 수행
     for (let i = 0; i < data.length; i++) {
@@ -292,23 +301,28 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         entryTime = candle.time;
         buyQuantity = Math.floor(totalValue / entryPrice);
         inPosition = true;
-      } else if (signal === 'sell' && inPosition && entryTime !== null) {
+        
+        // 새로운 거래 시작
+        currentTrade = {
+          entryTime,
+          entryPrice,
+          mode: 'test',
+          status: 'open'  // 거래 상태 추가
+        };
+        trades.push(currentTrade as Trade);
+      } else if (signal === 'sell' && inPosition && entryTime !== null && currentTrade) {
         // 매도 신호로만 청산
         exitPrice = candle.close;
         exitTime = candle.time;
         
-        // 거래 기록 저장
+        // 거래 기록 업데이트
         const returnValue = (exitPrice / entryPrice) - 1;
         
-        trades.push({
-          entryTime,
-          entryPrice,
-          exitTime,
-          exitPrice,
-          return: returnValue,
-          isSuccess: returnValue > 0,
-          mode: 'test'
-        });
+        currentTrade.exitTime = exitTime;
+        currentTrade.exitPrice = exitPrice;
+        currentTrade.return = returnValue;
+        currentTrade.isSuccess = returnValue > 0;
+        currentTrade.status = 'closed';  // 거래 상태 업데이트
         
         // 잔고 업데이트
         totalValue = totalValue * (1 + returnValue);
@@ -321,6 +335,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         entryTime = null;
         exitPrice = 0;
         exitTime = null;
+        currentTrade = null;
       }
     }
     
@@ -335,20 +350,21 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       return timeA - timeB;
     });
     
-    // 승률 계산
-    const winningTrades = sortedTrades.filter(trade => trade.return > 0);
+    // 승률 계산 (종료된 거래만 계산)
+    const closedTrades = sortedTrades.filter(trade => trade.status === 'closed');
+    const winningTrades = closedTrades.filter(trade => (trade.return ?? 0) > 0);
     const feeRate = 0.0005; // 0.05% 수수료
     const totalReturn = (totalValue / 10000000) - 1;
-    const totalNetReturn = totalReturn - (sortedTrades.length * feeRate * 2); // 매수, 매도 수수료 고려
+    const totalNetReturn = totalReturn - (closedTrades.length * feeRate * 2); // 매수, 매도 수수료 고려
     
     const result: BacktestResult = {
       totalTrades: sortedTrades.length,
       successfulTrades: winningTrades.length,
       totalReturn: totalReturn,
       totalNetReturn: totalNetReturn,
-      successRate: sortedTrades.length > 0 ? (winningTrades.length / sortedTrades.length) * 100 : 0,
-      averageReturn: sortedTrades.length > 0 ? totalReturn / sortedTrades.length : 0,
-      averageNetReturn: sortedTrades.length > 0 ? totalNetReturn / sortedTrades.length : 0,
+      successRate: closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0,
+      averageReturn: closedTrades.length > 0 ? totalReturn / closedTrades.length : 0,
+      averageNetReturn: closedTrades.length > 0 ? totalNetReturn / closedTrades.length : 0,
       trades: sortedTrades
     };
     
@@ -529,24 +545,22 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     let minMacd = Math.min(...macdData.map(d => d.value));
     let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
     
-    // +/-10%, +/-30% 라인 데이터 생성
-    const plusThirtyPercentValue = macdRange * 0.3;
-    const minusThirtyPercentValue = -macdRange * 0.3;
-    const plusTenPercentValue = macdRange * 0.1;
-    const minusTenPercentValue = -macdRange * 0.1;
-    
+    // +20%/-10% 레벨 계산
+    const plusTwentyPercent = macdRange * 0.1;
+    const minusTenPercent = -macdRange * 0.2;
+
     // 시간 범위 설정
     const timeRange = {
       from: data[0].time as Time,
       to: data[data.length - 1].time as Time,
     };
     
-    // +30% 라인 추가
-    const thirtyPercentLineRef = chart.addLineSeries({
+    // +20% 라인 추가
+    const twentyPercentLineRef = chart.addLineSeries({
       color: '#008800',
       lineWidth: 2,
       lineStyle: 2,
-      title: '+30% 수준',
+      title: '+20% 수준',
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineWidth: 2,
@@ -554,12 +568,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       priceScaleId: 'left',
     });
     
-    // -30% 라인 추가
-    const minusThirtyPercentLineRef = chart.addLineSeries({
+    // -10% 라인 추가
+    const minusTenPercentLineRef = chart.addLineSeries({
       color: '#AA0000',
       lineWidth: 2,
       lineStyle: 2,
-      title: '-30% 수준',
+      title: '-10% 수준',
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineWidth: 2,
@@ -567,98 +581,34 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       priceScaleId: 'left',
     });
 
-    // +10% 라인 추가
-    const tenPercentRef = chart.addLineSeries({
-      color: '#00CC00',
-      lineWidth: 1,
-      lineStyle: 2,
-      title: '+10% 수준',
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 1,
-      priceLineColor: '#00CC00',
-      priceScaleId: 'left',
-    });
-    
-    // -10% 라인 추가
-    const minusTenPercentRef = chart.addLineSeries({
-      color: '#FF0000',
-      lineWidth: 1,
-      lineStyle: 2,
-      title: '-10% 수준',
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 1,
-      priceLineColor: '#FF0000',
-      priceScaleId: 'left',
-    });
-    
-    // +/-30% 라인 데이터 설정
-    const plusThirtyPercentData = [
-      { time: timeRange.from, value: plusThirtyPercentValue },
-      { time: timeRange.to, value: plusThirtyPercentValue },
-    ];
-    
-    const minusThirtyPercentData = [
-      { time: timeRange.from, value: minusThirtyPercentValue },
-      { time: timeRange.to, value: minusThirtyPercentValue },
-    ];
-
-    // +/-10% 라인 데이터 설정
-    const plusTenPercentData = [
-      { time: timeRange.from, value: plusTenPercentValue },
-      { time: timeRange.to, value: plusTenPercentValue },
-    ];
-    
-    const minusTenPercentData = [
-      { time: timeRange.from, value: minusTenPercentValue },
-      { time: timeRange.to, value: minusTenPercentValue },
-    ];
-    
     // 데이터 설정
-    thirtyPercentLineRef.setData(plusThirtyPercentData);
-    minusThirtyPercentLineRef.setData(minusThirtyPercentData);
-    tenPercentRef.setData(plusTenPercentData);
-    minusTenPercentRef.setData(minusTenPercentData);
+    twentyPercentLineRef.setData([
+      { time: timeRange.from, value: plusTwentyPercent },
+      { time: timeRange.to, value: plusTwentyPercent },
+    ]);
+    minusTenPercentLineRef.setData([
+      { time: timeRange.from, value: minusTenPercent },
+      { time: timeRange.to, value: minusTenPercent },
+    ]);
 
     // 라인 설정 강화
-    thirtyPercentLineRef.applyOptions({
+    twentyPercentLineRef.applyOptions({
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineWidth: 2,
       lineWidth: 2,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
-      title: '+30%'
+      title: '+20%'
     });
     
-    minusThirtyPercentLineRef.applyOptions({
+    minusTenPercentLineRef.applyOptions({
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineWidth: 2,
       lineWidth: 2,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
-      title: '-30%'
-    });
-
-    tenPercentRef.applyOptions({
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 1,
-      lineWidth: 1,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 3,
-      title: '+10%'
-    });
-    
-    minusTenPercentRef.applyOptions({
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 1,
-      lineWidth: 1,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 3,
       title: '-10%'
     });
 

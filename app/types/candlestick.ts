@@ -14,13 +14,14 @@ export interface CandlestickData {
 // Define a Trade interface
 export interface Trade {
   entryTime: Time;
-  exitTime: Time;
+  exitTime?: Time;
   entryPrice: number;
-  exitPrice: number;
-  return: number;
-  isSuccess: boolean;
+  exitPrice?: number;
+  return?: number;
+  isSuccess?: boolean;
+  mode: 'test' | 'real';
+  status: 'open' | 'closed';  // 거래 상태 추가
   isAutomatic?: boolean;
-  mode: 'test' | 'test-auto' | 'live-auto';  // 'live'를 'live-auto'로 변경
   metadata?: {
     entryMa360?: number;
     exitMa360?: number;

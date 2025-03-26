@@ -5,6 +5,7 @@ import { CreateOrder } from '../components/CreateOrder';
 import { OrderLimitSettings } from '../components/OrderLimitSettings';
 import { NavigationHeader } from '../components/NavigationHeader';
 import { OrderList } from '../components/OrderList';
+import { useCoinStore, AVAILABLE_COINS } from '../store/useCoinStore';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -16,17 +17,9 @@ const SYMBOLS = [
 
 export default function OrderPage() {
   const [mode, setMode] = useState<'live' | 'test'>('test');
-  const [selectedSymbol, setSelectedSymbol] = useState(() => {
-    const saved = localStorage.getItem('selectedSymbol');
-    return saved || 'KRW-BTC';
-  });
+  const { selectedCoin, setSelectedCoin } = useCoinStore();
   const [currentPrice, setCurrentPrice] = useState(0);
   const [orderQuantity, setOrderQuantity] = useState(0);
-
-  const handleSymbolChange = (symbol: string) => {
-    setSelectedSymbol(symbol);
-    localStorage.setItem('selectedSymbol', symbol);
-  };
 
   const handleOrderCreated = () => {
     // 주문 생성 후 필요한 작업
@@ -41,8 +34,8 @@ export default function OrderPage() {
         <div className="mb-8">
           <label className="text-gray-400 block mb-2">코인 선택</label>
           <select 
-            value={selectedSymbol}
-            onChange={(e) => handleSymbolChange(e.target.value)}
+            value={selectedCoin}
+            onChange={(e) => setSelectedCoin(e.target.value)}
             className="bg-gray-800 text-white p-2 rounded-lg w-48"
           >
             {SYMBOLS.map(({ symbol, name }) => (
@@ -55,7 +48,7 @@ export default function OrderPage() {
 
         {/* 주문하기 */}
         <CreateOrder 
-          market={selectedSymbol} 
+          market={selectedCoin} 
           mode={mode} 
           onOrderCreated={handleOrderCreated}
           onPriceUpdate={setCurrentPrice}
