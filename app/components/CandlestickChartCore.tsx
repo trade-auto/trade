@@ -1,11 +1,11 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { CandlestickChartProps } from './CandlestickChartTypes';
 import { useChartData } from './CandlestickChartHooks';
 import { useCsvFunctions } from './CandlestickChartCSV';
 import { useBacktestChart } from './CandlestickChartBacktest';
 import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
-import { DateRange } from '../types/candlestick';
+import { DateRange, BacktestResult } from '../types/candlestick';
 import { CandlestickChart } from './CandlestickChart';
 import MACDChart from './MACDChart';
 import PolMACDChart from './PolMACDChart';
@@ -155,6 +155,9 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   
   // 업비트 스토어
   const { tradeStrategy, updateTradeStrategy } = useUpbitStore();
+  
+  // 백테스트 결과 상태 추가
+  const [polMacdBacktestResult, setPolMacdBacktestResult] = useState<BacktestResult | null>(null);
   
   // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
   useEffect(() => {
@@ -323,13 +326,29 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
               onChartReady={isDataImported ? handleBacktestChartInit : handleChartReady}
             />
           </div>
+          
+          {tradeStrategy === 'MACD' && (polMacdBacktestResult || csvBacktestResult) && (
+            <div className="backtest-results-container mb-4" style={{ 
+              padding: '20px',
+              borderTop: '1px solid #ddd',
+              backgroundColor: '#f8f9fa'
+            }}>
+              <h3 className="text-lg font-bold mb-4">백테스트 결과</h3>
+              <BacktestResults backtestResult={polMacdBacktestResult || csvBacktestResult} />
+            </div>
+          )}
         </div>
 
         {/* MACD 관련 차트들 - tradeStrategy가 'MACD'일 때만 표시 */}
         {tradeStrategy === 'MACD' && (
           <>
             <div className="w-full" style={{ height: '400px' }}>
-              <PolMACDChart data={isDataImported ? importedData : allData} height={400} showMA={showMA} />
+              <PolMACDChart 
+                data={isDataImported ? importedData : allData} 
+                height={400} 
+                showMA={showMA}
+                onBacktestResultChange={setPolMacdBacktestResult} 
+              />
             </div>
             <div className="w-full" style={{ height: '300px' }}>
               <MACDChart data={isDataImported ? importedData : allData} />

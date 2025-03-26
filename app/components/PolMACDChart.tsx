@@ -1,15 +1,18 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
-import { CandlestickData } from '../types/candlestick';
+import { CandlestickData, BacktestResult, Trade } from '../types/candlestick';
 import { MASettings } from '../components/CandlestickChartTypes';
+import useUpbitStore from '../store/useUpbitStore';
+import BacktestResults from './BacktestResults';
 
 interface PolMACDChartProps {
   data: CandlestickData[];
   height?: number;
   showMA?: MASettings;
+  onBacktestResultChange?: (result: BacktestResult | null) => void;
 }
 
-const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA }) => {
+const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA, onBacktestResultChange }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -31,6 +34,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
   const ema360Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema600Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema900Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  
+  // 백테스트 결과 상태
+  const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
+  const [showBacktestResults, setShowBacktestResults] = useState(false);
 
   // 스토캐스틱 계산 함수
   const calculateStochastic = (data: CandlestickData[], kPeriod = 20, dPeriod = 5, smoothPeriod = 3) => {
@@ -58,73 +65,287 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
   };
 
   // MACD 계산 함수
-  const calculateMACD = (data: CandlestickData[], shortPeriod = 12, longPeriod = 26, signalPeriod = 9) => {
-    const closes = data.map(d => d.close);
-    
-    const calculateEMA = (prices: number[], period: number) => {
-      const k = 2 / (period + 1);
-      let ema = prices[0];
-      const emaResults = [ema];
-      
-      for (let i = 1; i < prices.length; i++) {
-        ema = (prices[i] * k) + (ema * (1 - k));
-        emaResults.push(ema);
-      }
-      return emaResults;
-    };
+  const calculateMACD = (data: CandlestickData[]) => {
+    if (!data || data.length === 0) return { macdData: [], signalData: [], histogramData: [] };
 
-    const shortEMA = calculateEMA(closes, shortPeriod);
-    const longEMA = calculateEMA(closes, longPeriod);
+    const closePrices = data.map(item => item.close);
+    const ema5Values: number[] = [];
+    const ema20Values: number[] = [];
+    const ema12Values: number[] = [];
+    const ema26Values: number[] = [];
+    const macdValues: number[] = [];
+    const signalValues: number[] = [];
+    const histogramValues: number[] = [];
 
-    const macdLine = shortEMA.map((short, i) => short - longEMA[i]);
-    const signalLine = calculateEMA(macdLine, signalPeriod);
-    const histogram = macdLine.map((macd, i) => macd - signalLine[i]);
+    // EMA 5 계산
+    let multiplier5 = 2 / (5 + 1);
+    let ema5 = closePrices[0];
+    ema5Values.push(ema5);
 
-    // 5EMA와 20EMA 계산
-    const ema5 = calculateEMA(closes, 5);
-    const ema20 = calculateEMA(closes, 20);
-
-    // 매수/매도 신호를 위한 상태 변수
-    let lastSignal: 'buy' | 'sell' | null = null; // 마지막 신호 추적 (매수 후에만 매도 가능)
-
-    const signals: (string | null)[] = [];
-    for (let i = 1; i < data.length; i++) {
-      // 이전 및 현재 5EMA와 20EMA 값
-      const prev5EMA = ema5[i - 1];
-      const prev20EMA = ema20[i - 1];
-      const curr5EMA = ema5[i];
-      const curr20EMA = ema20[i];
-      
-      let signal = null;
-      
-      // 5EMA가 20EMA를 상향 돌파 (매수 신호)
-      if (prev5EMA < prev20EMA && curr5EMA > curr20EMA) {
-        signal = 'buy';
-        lastSignal = 'buy';
-      } 
-      // 5EMA가 20EMA를 하향 돌파 (매도 신호) - 이전에 매수 신호가 있었을 경우에만
-      else if (prev5EMA > prev20EMA && curr5EMA < curr20EMA && lastSignal === 'buy') {
-        signal = 'sell';
-        lastSignal = 'sell';
-      }
-      
-      signals.push(signal);
+    for (let i = 1; i < closePrices.length; i++) {
+      ema5 = (closePrices[i] - ema5) * multiplier5 + ema5;
+      ema5Values.push(ema5);
     }
 
-    // 신호가 있는 부분만 필터링하여 필요한 데이터 형식으로 변환
-    return data.map((candle, i) => ({
-      time: candle.time,
-      macd: i < macdLine.length ? macdLine[i] : 0,
-      signal: i < signalLine.length ? signalLine[i] : 0,
-      histogram: i < histogram.length ? histogram[i] : 0,
-      tradeSignal: i < signals.length ? signals[i] : null,
-      ema5: i < ema5.length ? ema5[i] : 0,
-      ema20: i < ema20.length ? ema20[i] : 0
+    // EMA 20 계산
+    let multiplier20 = 2 / (20 + 1);
+    let ema20 = closePrices[0];
+    ema20Values.push(ema20);
+
+    for (let i = 1; i < closePrices.length; i++) {
+      ema20 = (closePrices[i] - ema20) * multiplier20 + ema20;
+      ema20Values.push(ema20);
+    }
+
+    // EMA 12 계산
+    let multiplier12 = 2 / (12 + 1);
+    let ema12 = closePrices[0];
+    ema12Values.push(ema12);
+
+    for (let i = 1; i < closePrices.length; i++) {
+      ema12 = (closePrices[i] - ema12) * multiplier12 + ema12;
+      ema12Values.push(ema12);
+    }
+
+    // EMA 26 계산
+    let multiplier26 = 2 / (26 + 1);
+    let ema26 = closePrices[0];
+    ema26Values.push(ema26);
+
+    for (let i = 1; i < closePrices.length; i++) {
+      ema26 = (closePrices[i] - ema26) * multiplier26 + ema26;
+      ema26Values.push(ema26);
+    }
+
+    // MACD 라인 계산: EMA12 - EMA26
+    for (let i = 0; i < ema12Values.length; i++) {
+      const macd = ema12Values[i] - ema26Values[i];
+      macdValues.push(macd);
+    }
+
+    // Signal 라인 계산: MACD의 9일 EMA
+    let multiplier9 = 2 / (9 + 1);
+    let signal = macdValues[0];
+    signalValues.push(signal);
+
+    for (let i = 1; i < macdValues.length; i++) {
+      signal = (macdValues[i] - signal) * multiplier9 + signal;
+      signalValues.push(signal);
+    }
+
+    // Histogram 계산: MACD - Signal
+    for (let i = 0; i < macdValues.length; i++) {
+      const histogram = macdValues[i] - signalValues[i];
+      histogramValues.push(histogram);
+    }
+
+    // 매수/매도 신호 생성
+    const type: ('buy' | 'sell' | null)[] = [];
+    let lastSignal: 'buy' | 'sell' | null = null;
+
+    for (let i = 30; i < data.length; i++) {
+      // 초기 데이터는 건너뜀 (EMA가 안정화되도록)
+      if (i < 30) {
+        type.push(null);
+        continue;
+      }
+
+      // 5EMA가 20EMA 상향돌파 (매수 신호)
+      if (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i] && (lastSignal === null || lastSignal === 'sell')) {
+        type.push('buy');
+        lastSignal = 'buy';
+      }
+      // 5EMA가 20EMA 하향돌파 (매도 신호)
+      else if (ema5Values[i - 1] >= ema20Values[i - 1] && ema5Values[i] < ema20Values[i] && lastSignal === 'buy') {
+        type.push('sell');
+        lastSignal = 'sell';
+      } else {
+        type.push(null);
+      }
+    }
+
+    // 부족한 배열 길이 채우기
+    while (type.length < data.length) {
+      type.unshift(null);
+    }
+
+    // 매수/매도 신호에 대한 백테스트 계산
+    calculateBacktestResult(data, type);
+
+    const macdData = data.map((item, index) => ({
+      time: item.time,
+      value: macdValues[index] || 0,
     }));
+
+    const signalData = data.map((item, index) => ({
+      time: item.time,
+      value: signalValues[index] || 0,
+    }));
+
+    const histogramData = data.map((item, index) => ({
+      time: item.time,
+      value: histogramValues[index] || 0,
+      color: histogramValues[index] >= 0 ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)',
+    }));
+
+    const ema5Data = data.map((item, index) => ({
+      time: item.time,
+      value: ema5Values[index] || 0,
+    }));
+
+    const ema20Data = data.map((item, index) => ({
+      time: item.time,
+      value: ema20Values[index] || 0,
+    }));
+
+    // 마커 생성
+    const markers = data.map((candle, index) => {
+      if (type[index] === 'buy') {
+        return {
+          time: candle.time,
+          position: 'belowBar',
+          color: '#0000FF',
+          shape: 'arrowUp',
+          text: '매수 신호',
+          size: 3,
+        };
+      } else if (type[index] === 'sell') {
+        return {
+          time: candle.time,
+          position: 'aboveBar',
+          color: '#FF0000',
+          shape: 'arrowDown',
+          text: '매도 신호',
+          size: 3,
+        };
+      }
+      return null;
+    }).filter(marker => marker !== null);
+
+    console.log('Markers:', markers, markers ? markers.length : 0);
+
+    return {
+      macdData,
+      signalData,
+      histogramData,
+      markers,
+      ema5Data,
+      ema20Data
+    };
+  };
+
+  // 백테스트 결과 계산 함수
+  const calculateBacktestResult = (data: CandlestickData[], signals: (string | null)[]) => {
+    if (!data || data.length === 0) return;
+
+    const trades: Trade[] = [];
+    let totalValue = 10000000; // 초기 자금 1천만원
+    let maxValue = totalValue;
+    let minValue = totalValue;
+    let inPosition = false;
+    let entryPrice = 0;
+    let entryTime: Time | null = null;
+    let exitPrice = 0;
+    let exitTime: Time | null = null;
+    let buyQuantity = 0;
+
+    // 각 캔들에 대해 거래 시뮬레이션 수행
+    for (let i = 0; i < data.length; i++) {
+      const candle = data[i];
+      const signal = signals[i];
+
+      if (signal === 'buy' && !inPosition) {
+        // 매수 신호
+        entryPrice = candle.close;
+        entryTime = candle.time;
+        buyQuantity = Math.floor(totalValue / entryPrice);
+        inPosition = true;
+      } else if (signal === 'sell' && inPosition && entryTime !== null) {
+        // 매도 신호
+        exitPrice = candle.close;
+        exitTime = candle.time;
+        
+        // 거래 기록 저장
+        const returnValue = (exitPrice / entryPrice) - 1;
+        
+        trades.push({
+          entryTime,
+          entryPrice,
+          exitTime,
+          exitPrice,
+          return: returnValue,
+          isSuccess: returnValue > 0,
+          mode: 'test'
+        });
+        
+        // 잔고 업데이트
+        totalValue = totalValue * (1 + returnValue);
+        if (totalValue > maxValue) maxValue = totalValue;
+        if (totalValue < minValue) minValue = totalValue;
+        
+        // 포지션 리셋
+        inPosition = false;
+        entryPrice = 0;
+        entryTime = null;
+        exitPrice = 0;
+        exitTime = null;
+      }
+    }
+    
+    // 마지막 포지션이 닫히지 않은 경우 처리
+    if (inPosition && entryTime !== null) {
+      const lastCandle = data[data.length - 1];
+      exitPrice = lastCandle.close;
+      exitTime = lastCandle.time;
+      
+      const returnValue = (exitPrice / entryPrice) - 1;
+      
+      trades.push({
+        entryTime,
+        entryPrice,
+        exitTime,
+        exitPrice,
+        return: returnValue,
+        isSuccess: returnValue > 0,
+        mode: 'test'
+      });
+      
+      totalValue = totalValue * (1 + returnValue);
+    }
+    
+    // 승률 계산
+    const winningTrades = trades.filter(trade => trade.return > 0);
+    const feeRate = 0.0005; // 0.05% 수수료
+    const totalReturn = (totalValue / 10000000) - 1;
+    const totalNetReturn = totalReturn - (trades.length * feeRate * 2); // 매수, 매도 수수료 고려
+    
+    const result: BacktestResult = {
+      totalTrades: trades.length,
+      successfulTrades: winningTrades.length,
+      totalReturn: totalReturn,
+      totalNetReturn: totalNetReturn,
+      successRate: trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0,
+      averageReturn: trades.length > 0 ? totalReturn / trades.length : 0,
+      averageNetReturn: trades.length > 0 ? totalNetReturn / trades.length : 0,
+      trades: trades
+    };
+    
+    setBacktestResult(result);
+    
+    // 부모 컴포넌트에 백테스트 결과 전달
+    if (onBacktestResultChange) {
+      onBacktestResultChange(result);
+    }
   };
 
   // EMA 계산 함수
   const calculateEMA = (data: CandlestickData[], period: number) => {
+    // 데이터가 충분하지 않으면 빈 배열 반환
+    if (data.length < period) {
+      console.log(`${period}MA 업데이트 건너뜀: 데이터 부족 (필요: ${period}, 현재: ${data.length})`);
+      return [];
+    }
+    
     const closes = data.map(d => d.close);
     const k = 2 / (period + 1);
     let ema = closes[0];
@@ -138,8 +359,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
   };
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    if (data.length === 0 || !chartContainerRef.current) return;
 
+    const { macdData, signalData, histogramData, markers, ema5Data, ema20Data } = calculateMACD(data);
+    const stochasticData = calculateStochastic(data);
+
+    // 새로운 차트 생성
     const chart = createChart(chartContainerRef.current, {
       height: height,
       layout: {
@@ -150,402 +375,118 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
       },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: true,
-        tickMarkFormatter: (time: any) => {
-          const date = new Date(time * 1000);
-          const hours = date.getHours().toString().padStart(2, '0');
-          const minutes = date.getMinutes().toString().padStart(2, '0');
-          const seconds = date.getSeconds().toString().padStart(2, '0');
-          return `${hours}:${minutes}:${seconds}`;
-        },
-        fixLeftEdge: true,
-        fixRightEdge: true,
-      },
       rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
-        },
+        borderColor: '#d1d4dc',
+      },
+      timeScale: {
+        borderColor: '#d1d4dc',
+        timeVisible: true,
+        secondsVisible: false,
       },
     });
-    chartRef.current = chart;
 
-    // 캔들차트 추가
-    candleRef.current = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#4CAF50',
+      downColor: '#F44336',
       borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-      priceScaleId: 'candle',
+      wickUpColor: '#4CAF50',
+      wickDownColor: '#F44336',
     });
 
-    // 5EMA 추가
-    ema5Ref.current = chart.addLineSeries({
-      color: '#FF00FF', // 마젠타
-      lineWidth: 1,
-      title: '5 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.five || false,
-    });
+    candleSeries.setData(data);
+    candleRef.current = candleSeries;
 
-    // 10EMA 추가
-    ema10Ref.current = chart.addLineSeries({
-      color: '#00FFFF', // 시안
-      lineWidth: 1,
-      title: '10 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.ten || false,
-    });
-
-    // 20EMA 추가
-    ema20Ref.current = chart.addLineSeries({
-      color: '#00FF00', // 녹색
-      lineWidth: 1,
-      title: '20 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.twenty || false,
-    });
-
-    // 30EMA 추가
-    ema30Ref.current = chart.addLineSeries({
-      color: '#FF0000', // 빨간색
-      lineWidth: 2,     // 두껍게 표시
-      lineStyle: 0,     // 실선
-      title: '30 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.thirty !== undefined ? showMA.thirty : true, // 기본적으로 표시
-    });
-
-    // 48EMA 추가
-    ema48Ref.current = chart.addLineSeries({
-      color: '#9370DB',  // 중간 보라색 (ChartContainer와 동일)
-      lineWidth: 1,
-      title: '48 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.fortyEight || false,
-    });
-
-    // 60EMA 추가
-    ema60Ref.current = chart.addLineSeries({
-      color: '#0000FF', // 파란색
-      lineWidth: 1,
-      title: '60 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.sixty || false,
-    });
-
-    // 90EMA 추가
-    ema90Ref.current = chart.addLineSeries({
-      color: '#FFD700', // 금색
-      lineWidth: 1,
-      title: '90 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.ninety || false,
-    });
-
-    // 120EMA 추가
-    ema120Ref.current = chart.addLineSeries({
-      color: '#FF00FF', // 마젠타
-      lineWidth: 1,
-      title: '120 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.oneTwenty || false,
-    });
-
-    // 240EMA 추가
-    ema240Ref.current = chart.addLineSeries({
-      color: '#00FF00', // 녹색
-      lineWidth: 1,
-      title: '240 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.twoForty || false,
-    });
-
-    // 360EMA 추가
-    ema360Ref.current = chart.addLineSeries({
-      color: '#FF0000', // 빨간색
-      lineWidth: 1,
-      title: '360 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.threeHundredSixty || false,
-    });
-
-    // 600EMA 추가
-    ema600Ref.current = chart.addLineSeries({
-      color: '#0000FF', // 파란색
-      lineWidth: 1,
-      title: '600 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.sixHundred || false,
-    });
-
-    // 900EMA 추가
-    ema900Ref.current = chart.addLineSeries({
-      color: '#FFD700', // 금색
-      lineWidth: 1,
-      title: '900 EMA',
-      priceScaleId: 'candle',
-      visible: showMA?.nineHundred || false,
-    });
-
-    // MACD 라인 추가
-    macdRef.current = chart.addLineSeries({
-      color: '#4CAF50', // 녹색으로 변경
+    // MACD 표시
+    const macdSeries = chart.addLineSeries({
+      color: '#2962FF',
       lineWidth: 2,
-      title: 'MACD',
       priceScaleId: 'macd',
     });
 
-    // MACD 시그널 라인 추가
-    signalRef.current = chart.addLineSeries({
-      color: '#9C27B0', // 보라색으로 변경
+    const signalSeries = chart.addLineSeries({
+      color: '#FF6D00',
       lineWidth: 2,
-      title: 'Signal',
       priceScaleId: 'macd',
     });
 
-    // 히스토그램
-    histogramRef.current = chart.addHistogramSeries({
-      color: '#4CAF50',
-      priceFormat: {
-        type: 'price',
-        precision: 2,
-      },
-      priceScaleId: 'histogram',
+    const histogramSeries = chart.addHistogramSeries({
+      priceScaleId: 'macd',
     });
 
-    // MACD 스케일 마진 설정
-    chart.priceScale('left').applyOptions({
-      scaleMargins: {
-        top: 0.1,
-        bottom: 0.1,
-      },
+    macdSeries.setData(macdData);
+    signalSeries.setData(signalData);
+    histogramSeries.setData(histogramData);
+
+    macdRef.current = macdSeries;
+    signalRef.current = signalSeries;
+    histogramRef.current = histogramSeries;
+
+    // EMA 5, 20 표시
+    const ema5Series = chart.addLineSeries({
+      color: '#1E88E5',
+      lineWidth: 2,
     });
 
-    // 히스토그램의 스케일 마진 설정
-    chart.priceScale('histogram').applyOptions({
+    const ema20Series = chart.addLineSeries({
+      color: '#D81B60',
+      lineWidth: 2,
+    });
+
+    if (ema5Data && ema20Data) {
+      ema5Series.setData(ema5Data);
+      ema20Series.setData(ema20Data);
+    }
+
+    ema5Ref.current = ema5Series;
+    ema20Ref.current = ema20Series;
+
+    // 마커 표시
+    if (markers && markers.length > 0) {
+      const validMarkers = markers.map(marker => ({
+        time: marker.time,
+        position: marker.position as 'aboveBar' | 'belowBar',
+        color: marker.color,
+        shape: marker.shape as 'arrowUp' | 'arrowDown',
+        text: marker.text,
+        size: marker.size
+      }));
+      candleSeries.setMarkers(validMarkers);
+    }
+
+    // 차트 설정
+    chart.applyOptions({
+      // 차트 전체 설정
+    });
+
+    // 가격 스케일 생성
+    chart.priceScale('macd').applyOptions({
+      autoScale: true,
       scaleMargins: {
-        top: 0.8,
+        top: 0.8, 
         bottom: 0,
       },
     });
 
-    // 매수/매도 신호 마커 시리즈
-    markerSeriesRef.current = chart.addLineSeries({
-      color: '#000000',
-      lineWidth: 1,
-      lastValueVisible: false,
-      priceLineVisible: false,
-      crosshairMarkerVisible: false,
-      priceScaleId: 'candle',
-    });
+    chartRef.current = chart;
 
-    // 스토캐스틱 %K 라인 (파란색)
-    kLineRef.current = chart.addLineSeries({
-      color: '#2196F3',
-      lineWidth: 2,
-      title: '%K',
-      priceScaleId: 'stoch',
-    });
-
-    // 스토캐스틱 %D 라인 (주황색)
-    dLineRef.current = chart.addLineSeries({
-      color: '#FF9800',
-      lineWidth: 2,
-      title: '%D',
-      priceScaleId: 'stoch',
-    });
-
-    // 스토캐스틱 스케일 설정
-    chart.priceScale('stoch').applyOptions({
-      scaleMargins: {
-        top: 0.1,
-        bottom: 0.1,
+    // 창 크기 조절 시 차트 크기 조정
+    const handleResize = () => {
+      if (chartRef.current && chartContainerRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
       }
-    });
+    };
 
-    // 과매수 라인 (빨간색)
-    const overboughtLine = chart.addLineSeries({
-      color: '#FF5252',
-      lineWidth: 1,
-      lineStyle: 2,
-      title: '과매수 (80%)',
-      priceScaleId: 'stoch',
-    });
-
-    // 과매도 라인 (파란색)
-    const oversoldLine = chart.addLineSeries({
-      color: '#2196F3',
-      lineWidth: 1,
-      lineStyle: 2,
-      title: '과매도 (20%)',
-      priceScaleId: 'stoch',
-    });
-
-    // 데이터 업데이트
-    if (data.length > 0) {
-      // 캔들차트 데이터 설정
-      if (candleRef.current) {
-        candleRef.current.setData(data);
-      }
-
-      // EMA 데이터 계산 및 설정
-      const ema5Data = calculateEMA(data, 5);
-      const ema10Data = calculateEMA(data, 10);
-      const ema20Data = calculateEMA(data, 20);
-      const ema30Data = calculateEMA(data, 30);
-      const ema48Data = calculateEMA(data, 48);
-      const ema60Data = calculateEMA(data, 60);
-      const ema90Data = calculateEMA(data, 90);
-      const ema120Data = calculateEMA(data, 120);
-      const ema240Data = calculateEMA(data, 240);
-      const ema360Data = calculateEMA(data, 360);
-      const ema600Data = calculateEMA(data, 600);
-      const ema900Data = calculateEMA(data, 900);
-      
-      if (ema5Ref.current) {
-        ema5Ref.current.setData(ema5Data);
-      }
-      
-      if (ema10Ref.current) {
-        ema10Ref.current.setData(ema10Data);
-      }
-      
-      if (ema20Ref.current) {
-        ema20Ref.current.setData(ema20Data);
-      }
-      
-      if (ema30Ref.current) {
-        ema30Ref.current.setData(ema30Data);
-      }
-      
-      if (ema48Ref.current) {
-        ema48Ref.current.setData(ema48Data);
-      }
-      
-      if (ema60Ref.current) {
-        ema60Ref.current.setData(ema60Data);
-      }
-      
-      if (ema90Ref.current) {
-        ema90Ref.current.setData(ema90Data);
-      }
-      
-      if (ema120Ref.current) {
-        ema120Ref.current.setData(ema120Data);
-      }
-      
-      if (ema240Ref.current) {
-        ema240Ref.current.setData(ema240Data);
-      }
-      
-      if (ema360Ref.current) {
-        ema360Ref.current.setData(ema360Data);
-      }
-      
-      if (ema600Ref.current) {
-        ema600Ref.current.setData(ema600Data);
-      }
-      
-      if (ema900Ref.current) {
-        ema900Ref.current.setData(ema900Data);
-      }
-
-      const macdData = calculateMACD(data);
-      const stochData = calculateStochastic(data);
-
-      // 시작 시간 찾기 (가장 늦은 시작 시간)
-      const startTime = Math.max(
-        macdData[0].time as number,
-        stochData[0].time as number
-      );
-
-      // 데이터 필터링 (시작 시간 이후의 데이터만 사용)
-      const filteredMacdData = macdData.filter(d => (d.time as number) >= startTime);
-      const filteredStochData = stochData.filter(d => (d.time as number) >= startTime);
-
-      const macdLine = filteredMacdData.map(d => ({
-        time: d.time as Time,
-        value: d.macd,
-      }));
-
-      const signalLine = filteredMacdData.map(d => ({
-        time: d.time as Time,
-        value: d.signal,
-      }));
-
-      const histogram = filteredMacdData.map(d => ({
-        time: d.time as Time,
-        value: d.histogram,
-        color: d.histogram >= 0 ? '#4CAF50' : '#FF5252',
-      }));
-
-      // 매수/매도 신호 마커
-      const markers = filteredMacdData
-        .filter(d => d.tradeSignal)
-        .map(d => ({
-          time: d.time,
-          position: d.tradeSignal === 'buy' ? 'belowBar' as const : 'aboveBar' as const,
-          color: d.tradeSignal === 'buy' ? '#0000FF' : '#FF0000',
-          shape: d.tradeSignal === 'buy' ? 'arrowUp' as const : 'arrowDown' as const,
-          text: d.tradeSignal === 'buy' ? 
-            '5EMA가 20EMA 상향돌파 매수' : 
-            '5EMA가 20EMA 하향돌파 매도',
-          size: 3
-        }));
-
-      // 스토캐스틱 데이터
-      const kLine = filteredStochData.map(d => ({
-        time: d.time as Time,
-        value: Math.min(100, Math.max(0, d.k)),
-      }));
-
-      const dLine = filteredStochData.map(d => ({
-        time: d.time as Time,
-        value: Math.min(100, Math.max(0, d.d)),
-      }));
-
-      // 과매수/과매도 라인 데이터
-      const timeRange = {
-        from: filteredStochData[0].time as Time,
-        to: filteredStochData[filteredStochData.length - 1].time as Time,
-      };
-
-      const overboughtData = [
-        { time: timeRange.from, value: 80 },
-        { time: timeRange.to, value: 80 },
-      ];
-
-      const oversoldData = [
-        { time: timeRange.from, value: 20 },
-        { time: timeRange.to, value: 20 },
-      ];
-
-      if (macdRef.current) macdRef.current.setData(macdLine);
-      if (signalRef.current) signalRef.current.setData(signalLine);
-      if (histogramRef.current) histogramRef.current.setData(histogram);
-      if (candleRef.current) candleRef.current.setMarkers(markers);
-      if (kLineRef.current) kLineRef.current.setData(kLine);
-      if (dLineRef.current) dLineRef.current.setData(dLine);
-      overboughtLine.setData(overboughtData);
-      oversoldLine.setData(oversoldData);
-
-      // 시간축 설정 - 캔들차트와 동일한 시간 범위 사용
-      const timeScale = chart.timeScale();
-      timeScale.setVisibleRange({
-        from: data[0].time as Time,
-        to: data[data.length - 1].time as Time,
-      });
-      timeScale.fitContent();
-    }
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      chart.remove();
+      window.removeEventListener('resize', handleResize);
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
     };
-  }, [data, height, showMA]);
+  }, [data, height]);
 
   // 이동평균선 표시 설정이 변경되면 가시성 업데이트
   useEffect(() => {
@@ -577,19 +518,51 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       if (ema240Ref.current) 
         ema240Ref.current.applyOptions({ visible: showMA.twoForty });
       
-      if (ema360Ref.current) 
-        ema360Ref.current.applyOptions({ visible: showMA.threeHundredSixty });
+      // 360MA 이상은 데이터가 충분한 경우에만 표시
+      if (ema360Ref.current) {
+        ema360Ref.current.applyOptions({ 
+          visible: data.length >= 360 ? showMA.threeHundredSixty : false 
+        });
+      }
       
-      if (ema600Ref.current) 
-        ema600Ref.current.applyOptions({ visible: showMA.sixHundred });
+      if (ema600Ref.current) {
+        ema600Ref.current.applyOptions({ 
+          visible: data.length >= 600 ? showMA.sixHundred : false 
+        });
+      }
       
-      if (ema900Ref.current) 
-        ema900Ref.current.applyOptions({ visible: showMA.nineHundred });
+      if (ema900Ref.current) {
+        ema900Ref.current.applyOptions({ 
+          visible: data.length >= 900 ? showMA.nineHundred : false 
+        });
+      }
     }
-  }, [showMA]);
+  }, [showMA, data.length]);
 
   return (
-    <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
+    <div className="chart-wrapper">
+      <div ref={chartContainerRef} style={{ width: '100%' }} />
+      <div className="chart-controls" style={{ marginTop: '20px' }}>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            console.log('백테스트 결과 버튼 클릭, 이전 상태:', showBacktestResults);
+            setShowBacktestResults(!showBacktestResults);
+          }}
+        >
+          {showBacktestResults ? '백테스트 결과 숨기기' : '백테스트 결과 보기'}
+        </button>
+      </div>
+      
+      {/* 디버깅용 정보 */}
+      <div style={{ margin: '10px 0', fontSize: '12px', color: '#666' }}>
+        <p>백테스트 결과 표시: {showBacktestResults ? 'true' : 'false'}</p>
+        <p>백테스트 결과 존재: {backtestResult ? 'true' : 'false'}</p>
+        {backtestResult && (
+          <p>거래 수: {backtestResult.trades.length}</p>
+        )}
+      </div>
+    </div>
   );
 };
 

@@ -21,6 +21,11 @@ export interface CandlestickChartProps {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onOrder?: (price: number, isMarketOrder: boolean) => void;
   onChartTypeChange?: (type: string) => void;
+  initialData?: any;
+  onPriceChange?: (price: number) => void;
+  onChangeQuantity?: (quantity: number) => void;
+  onMouseLeave?: () => void;
+  showMA?: MASettings;
 }
 
 export interface RealtimeUpdateStatus {

@@ -9,14 +9,14 @@
 
 import PolMACDChart from './PolMACDChart';
 import { forwardRef, useState, useCallback } from 'react';
-import { useCandlestickChart } from './CandlestickChartHooks';
+import { CandlestickChartProps, ChartRefs } from './CandlestickChartTypes';
 
 // CandlestickChartCore를 CandlestickChart로 내보냅니다
 export { default as CandlestickChart } from './CandlestickChartCore';
 export type { OrderParams } from './CandlestickChartTypes';
 
 // 이 컴포넌트는 다른 이름으로 내보냅니다 (예: ChartWithControls)
-const ChartWithControls = forwardRef<ChartRef, CandlestickChartProps>(({
+const ChartWithControls = forwardRef<ChartRefs, CandlestickChartProps>(({
   symbol,
   chartType,
   initialData,
