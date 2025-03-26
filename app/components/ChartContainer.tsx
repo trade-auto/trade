@@ -71,6 +71,7 @@ interface ChartContainerProps {
     ten: boolean;
     twenty: boolean;
     thirty: boolean;
+    fortyEight: boolean;
     ninety: boolean;
   };
   onChartReady: (
@@ -81,7 +82,9 @@ interface ChartContainerProps {
     tenEMA: ISeriesApi<"Line">,
     twentyEMA: ISeriesApi<"Line">,
     thirtyEMA: ISeriesApi<"Line">,
+    fortyEightEMA: ISeriesApi<"Line">,
     sixtyEMA: ISeriesApi<"Line">,
+    ninetyEMA: ISeriesApi<"Line">,
     oneTwentyEMA: ISeriesApi<"Line">,
     twoFortyEMA: ISeriesApi<"Line">,
     threeHundredSixtyEMA: ISeriesApi<"Line">,
@@ -154,7 +157,7 @@ const getChartOptions = (width: number, height: number, chartType: string) => ({
   },
 });
 
-type EMAKey = 'fiveEMA' | 'tenEMA' | 'twentyEMA' | 'thirtyEMA' | 'sixtyEMA' | 'ninetyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'sixHundredEMA';
+type EMAKey = 'fiveEMA' | 'tenEMA' | 'twentyEMA' | 'thirtyEMA' | 'fortyEightEMA' | 'sixtyEMA' | 'ninetyEMA' | 'oneTwentyEMA' | 'twoFortyEMA' | 'threeHundredSixtyEMA' | 'sixHundredEMA';
 
 interface SeriesRefs {
   candle: ISeriesApi<"Candlestick"> | null;
@@ -163,6 +166,7 @@ interface SeriesRefs {
   tenEMA: ISeriesApi<"Line"> | null;
   twentyEMA: ISeriesApi<"Line"> | null;
   thirtyEMA: ISeriesApi<"Line"> | null;
+  fortyEightEMA: ISeriesApi<"Line"> | null;
   sixtyEMA: ISeriesApi<"Line"> | null;
   ninetyEMA: ISeriesApi<"Line"> | null;
   oneTwentyEMA: ISeriesApi<"Line"> | null;
@@ -206,6 +210,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     tenEMA: null,
     twentyEMA: null,
     thirtyEMA: null,
+    fortyEightEMA: null,
     sixtyEMA: null,
     ninetyEMA: null,
     oneTwentyEMA: null,
@@ -296,6 +301,14 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       title: '30 EMA'
     });
     
+    // 48EMA 추가
+    seriesRefs.current.fortyEightEMA = chart.addLineSeries({
+      color: '#9370DB',  // 중간 보라색
+      lineWidth: 1,
+      priceLineVisible: false,
+      title: '48 EMA'
+    });
+    
     // 기존 이평선
     seriesRefs.current.sixtyEMA = chart.addLineSeries({
       color: '#8A2BE2',  // Blue Violet
@@ -360,7 +373,9 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       seriesRefs.current.tenEMA!,
       seriesRefs.current.twentyEMA!,
       seriesRefs.current.thirtyEMA!,
+      seriesRefs.current.fortyEightEMA!,
       seriesRefs.current.sixtyEMA!,
+      seriesRefs.current.ninetyEMA!,
       seriesRefs.current.oneTwentyEMA!,
       seriesRefs.current.twoFortyEMA!,
       seriesRefs.current.threeHundredSixtyEMA!,
@@ -460,6 +475,13 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
             seriesRefs.current.thirtyEMA.setData(ema30Data);
             seriesRefs.current.thirtyEMA.applyOptions({ visible: showMA?.thirty || false });
             console.log(`30MA 설정 완료: ${ema30Data.length}개, 표시: ${showMA?.thirty ? '표시' : '숨김'}`);
+          }
+          
+          if (processedData.length >= 48 && seriesRefs.current.fortyEightEMA) {
+            const ema48Data = calculateEMA(processedData, 48);
+            seriesRefs.current.fortyEightEMA.setData(ema48Data);
+            seriesRefs.current.fortyEightEMA.applyOptions({ visible: showMA?.fortyEight || false });
+            console.log(`48MA 설정 완료: ${ema48Data.length}개, 표시: ${showMA?.fortyEight ? '표시' : '숨김'}`);
           }
           
           if (processedData.length >= 60 && seriesRefs.current.sixtyEMA) {
@@ -610,6 +632,13 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         console.log(`30MA 설정 완료: ${ema30Data.length}개, 표시: ${showMA?.thirty ? '표시' : '숨김'}`);
       }
       
+      if (processedData.length >= 48 && seriesRefs.current.fortyEightEMA) {
+        const ema48Data = calculateEMA(processedData, 48);
+        seriesRefs.current.fortyEightEMA.setData(ema48Data);
+        seriesRefs.current.fortyEightEMA.applyOptions({ visible: showMA?.fortyEight || false });
+        console.log(`48MA 설정 완료: ${ema48Data.length}개, 표시: ${showMA?.fortyEight ? '표시' : '숨김'}`);
+      }
+      
       if (processedData.length >= 60 && seriesRefs.current.sixtyEMA) {
         const ema60Data = calculateEMA(processedData, 60);
         seriesRefs.current.sixtyEMA.setData(ema60Data);
@@ -679,8 +708,14 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       if (seriesRefs.current.thirtyEMA) 
         seriesRefs.current.thirtyEMA.applyOptions({ visible: showMA.thirty });
       
+      if (seriesRefs.current.fortyEightEMA) 
+        seriesRefs.current.fortyEightEMA.applyOptions({ visible: showMA.fortyEight });
+      
       if (seriesRefs.current.sixtyEMA) 
         seriesRefs.current.sixtyEMA.applyOptions({ visible: showMA.sixty });
+      
+      if (seriesRefs.current.ninetyEMA) 
+        seriesRefs.current.ninetyEMA.applyOptions({ visible: showMA.ninety });
       
       if (seriesRefs.current.oneTwentyEMA) 
         seriesRefs.current.oneTwentyEMA.applyOptions({ visible: showMA.oneTwenty });

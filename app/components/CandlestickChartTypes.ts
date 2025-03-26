@@ -65,8 +65,9 @@ export interface MASettings {
   ten: boolean;        // 10 EMA
   twenty: boolean;     // 20 EMA
   thirty: boolean;     // 30 EMA
-  ninety: boolean;     // 90 EMA
+  fortyEight: boolean; // 48 EMA
   sixty: boolean;
+  ninety: boolean;     // 90 EMA
   oneTwenty: boolean;
   twoForty: boolean;
   threeHundredSixty: boolean;

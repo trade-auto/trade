@@ -39,8 +39,9 @@ const loadInitialMASettings = (): MASettings => {
     ten: false,
     twenty: false,
     thirty: false,
-    ninety: false,
+    fortyEight: false,
     sixty: false,
+    ninety: false,
     oneTwenty: false,
     twoForty: false,
     threeHundredSixty: false,
@@ -105,7 +106,9 @@ export const useChartData = (
   const tenEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const twentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const thirtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const fortyEightEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const sixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const ninetyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const oneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const twoFortyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const threeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -206,8 +209,14 @@ export const useChartData = (
     if (thirtyEMASeriesRef.current) {
       thirtyEMASeriesRef.current.setData([]);
     }
+    if (fortyEightEMASeriesRef.current) {
+      fortyEightEMASeriesRef.current.setData([]);
+    }
     if (sixtyEMASeriesRef.current) {
       sixtyEMASeriesRef.current.setData([]);
+    }
+    if (ninetyEMASeriesRef.current) {
+      ninetyEMASeriesRef.current.setData([]);
     }
     if (oneTwentyEMASeriesRef.current) {
       oneTwentyEMASeriesRef.current.setData([]);
@@ -456,7 +465,9 @@ export const useChartData = (
     tenEMASeries: ISeriesApi<"Line">,
     twentyEMASeries: ISeriesApi<"Line">,
     thirtyEMASeries: ISeriesApi<"Line">,
+    fortyEightEMASeries: ISeriesApi<"Line">,
     sixtyEMASeries: ISeriesApi<"Line">,
+    ninetyEMASeries: ISeriesApi<"Line">,
     oneTwentyEMASeries: ISeriesApi<"Line">,
     twoFortyEMASeries: ISeriesApi<"Line">,
     threeHundredSixtyEMASeries: ISeriesApi<"Line">,
@@ -470,7 +481,9 @@ export const useChartData = (
     tenEMASeriesRef.current = tenEMASeries;
     twentyEMASeriesRef.current = twentyEMASeries;
     thirtyEMASeriesRef.current = thirtyEMASeries;
+    fortyEightEMASeriesRef.current = fortyEightEMASeries;
     sixtyEMASeriesRef.current = sixtyEMASeries;
+    ninetyEMASeriesRef.current = ninetyEMASeries;
     oneTwentyEMASeriesRef.current = oneTwentyEMASeries;
     twoFortyEMASeriesRef.current = twoFortyEMASeries;
     threeHundredSixtyEMASeriesRef.current = threeHundredSixtyEMASeries;
@@ -533,7 +546,9 @@ export const useChartData = (
       tenEMASeriesRef.current && 
       twentyEMASeriesRef.current && 
       thirtyEMASeriesRef.current &&
+      fortyEightEMASeriesRef.current &&
       sixtyEMASeriesRef.current && 
+      ninetyEMASeriesRef.current && 
       oneTwentyEMASeriesRef.current && 
       twoFortyEMASeriesRef.current && 
       threeHundredSixtyEMASeriesRef.current &&
@@ -544,7 +559,9 @@ export const useChartData = (
       tenEMASeriesRef.current.applyOptions({ visible: newShowMA.ten });
       twentyEMASeriesRef.current.applyOptions({ visible: newShowMA.twenty });
       thirtyEMASeriesRef.current.applyOptions({ visible: newShowMA.thirty });
+      fortyEightEMASeriesRef.current.applyOptions({ visible: newShowMA.fortyEight });
       sixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.sixty });
+      ninetyEMASeriesRef.current.applyOptions({ visible: newShowMA.ninety });
       oneTwentyEMASeriesRef.current.applyOptions({ visible: newShowMA.oneTwenty });
       twoFortyEMASeriesRef.current.applyOptions({ visible: newShowMA.twoForty });
       threeHundredSixtyEMASeriesRef.current.applyOptions({ visible: newShowMA.threeHundredSixty });
@@ -656,7 +673,13 @@ export const useChartData = (
       };
       
       // 모든 이동평균선 계산 시도 (단기 이평선)
+      const ma5 = calculateSmoothMA(5, fiveEMASeriesRef);
+      const ma10 = calculateSmoothMA(10, tenEMASeriesRef);
+      const ma20 = calculateSmoothMA(20, twentyEMASeriesRef);
+      const ma30 = calculateSmoothMA(30, thirtyEMASeriesRef);
+      const ma48 = calculateSmoothMA(48, fortyEightEMASeriesRef);
       const ma60 = calculateSmoothMA(60, sixtyEMASeriesRef);
+      const ma90 = calculateSmoothMA(90, ninetyEMASeriesRef);
       const ma120 = calculateSmoothMA(120, oneTwentyEMASeriesRef);
       const ma240 = calculateSmoothMA(240, twoFortyEMASeriesRef);
       
@@ -668,12 +691,74 @@ export const useChartData = (
       // 이동평균선 차트 업데이트 - 모든 MA 상태 로깅
       console.log('이동평균선 업데이트 상태:');
       
+      if (ma5 && fiveEMASeriesRef.current) {
+        fiveEMASeriesRef.current.update(ma5);
+        fiveEMASeriesRef.current.applyOptions({ visible: showMA.five });
+        console.log('- 5MA 업데이트:', ma5.value.toFixed(2), showMA.five ? '(표시)' : '(숨김)');
+      } else {
+        console.log('- 5MA 업데이트 실패:', ma5 ? '시리즈 참조 없음' : '계산 결과 없음');
+      }
+      
+      if (ma10 && tenEMASeriesRef.current) {
+        tenEMASeriesRef.current.update(ma10);
+        tenEMASeriesRef.current.applyOptions({ visible: showMA.ten });
+        console.log('- 10MA 업데이트:', ma10.value.toFixed(2), showMA.ten ? '(표시)' : '(숨김)');
+      } else {
+        console.log('- 10MA 업데이트 실패:', ma10 ? '시리즈 참조 없음' : '계산 결과 없음');
+      }
+      
+      if (ma20 && twentyEMASeriesRef.current) {
+        twentyEMASeriesRef.current.update(ma20);
+        twentyEMASeriesRef.current.applyOptions({ visible: showMA.twenty });
+        console.log('- 20MA 업데이트:', ma20.value.toFixed(2), showMA.twenty ? '(표시)' : '(숨김)');
+        
+        // 20MA 현재 데이터 확인
+        const currentData = twentyEMASeriesRef.current.data() as { time: Time; value: number }[];
+        console.log(`- 20MA 현재 데이터 개수: ${currentData.length}개, 시리즈 표시 상태: ${showMA.twenty ? '표시' : '숨김'}`);
+      } else {
+        console.log('- 20MA 업데이트 실패:', ma20 ? '시리즈 참조 없음' : '계산 결과 없음');
+      }
+      
+      if (ma30 && thirtyEMASeriesRef.current) {
+        thirtyEMASeriesRef.current.update(ma30);
+        thirtyEMASeriesRef.current.applyOptions({ visible: showMA.thirty });
+        console.log('- 30MA 업데이트:', ma30.value.toFixed(2), showMA.thirty ? '(표시)' : '(숨김)');
+        
+        // 30MA 현재 데이터 확인
+        const currentData = thirtyEMASeriesRef.current.data() as { time: Time; value: number }[];
+        console.log(`- 30MA 현재 데이터 개수: ${currentData.length}개, 시리즈 표시 상태: ${showMA.thirty ? '표시' : '숨김'}`);
+      } else {
+        console.log('- 30MA 업데이트 실패:', ma30 ? '시리즈 참조 없음' : '계산 결과 없음');
+      }
+      
+      if (ma48 && fortyEightEMASeriesRef.current) {
+        fortyEightEMASeriesRef.current.update(ma48);
+        fortyEightEMASeriesRef.current.applyOptions({ visible: showMA.fortyEight });
+        console.log('- 48MA 업데이트:', ma48.value.toFixed(2), showMA.fortyEight ? '(표시)' : '(숨김)');
+        
+        // 48MA 현재 데이터 확인
+        const currentData = fortyEightEMASeriesRef.current.data() as { time: Time; value: number }[];
+        console.log(`- 48MA 현재 데이터 개수: ${currentData.length}개, 시리즈 표시 상태: ${showMA.fortyEight ? '표시' : '숨김'}`);
+      } else {
+        console.log('- 48MA 업데이트 실패:', ma48 ? '시리즈 참조 없음' : '계산 결과 없음');
+      }
+      
       if (ma60 && sixtyEMASeriesRef.current) {
         sixtyEMASeriesRef.current.update(ma60);
         sixtyEMASeriesRef.current.applyOptions({ visible: showMA.sixty });
         console.log('- 60MA 업데이트:', ma60.value.toFixed(2), showMA.sixty ? '(표시)' : '(숨김)');
       } else {
         console.log('- 60MA 업데이트 실패:', ma60 ? '시리즈 참조 없음' : '계산 결과 없음');
+      }
+      
+      if (ma90 && ninetyEMASeriesRef.current) {
+        ninetyEMASeriesRef.current.update(ma90);
+        ninetyEMASeriesRef.current.applyOptions({ visible: showMA.ninety });
+        console.log('- 90MA 업데이트:', ma90.value.toFixed(2), showMA.ninety ? '(표시)' : '(숨김)');
+      } else if (data.length >= 90) {
+        console.log('- 90MA 업데이트 실패:', ma90 ? '시리즈 참조 없음' : '계산 결과 없음');
+          } else {
+        console.log('- 90MA 업데이트 건너뜀: 데이터 부족 (필요: 90, 현재:', data.length, ')');
       }
       
       if (ma120 && oneTwentyEMASeriesRef.current) {
@@ -997,7 +1082,9 @@ export const useChartData = (
     tenEMASeriesRef,
     twentyEMASeriesRef,
     thirtyEMASeriesRef,
+    fortyEightEMASeriesRef,
     sixtyEMASeriesRef,
+    ninetyEMASeriesRef,
     oneTwentyEMASeriesRef,
     twoFortyEMASeriesRef,
     threeHundredSixtyEMASeriesRef,

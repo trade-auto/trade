@@ -23,6 +23,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
   const ema10Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema20Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema30Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema48Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema60Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema90Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema120Ref = useRef<ISeriesApi<'Line'> | null>(null);
@@ -79,33 +80,46 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
     const signalLine = calculateEMA(macdLine, signalPeriod);
     const histogram = macdLine.map((macd, i) => macd - signalLine[i]);
 
-    const signals = histogram.map((hist, i) => {
-      if (i === 0) return null;
-      
-      const prevHist = histogram[i - 1];
-      const currMacd = macdLine[i];
-      const currSignal = signalLine[i];
-      
-      if (hist > 0 && currMacd > currSignal) {
-        if (!(prevHist > 0 && macdLine[i - 1] > signalLine[i - 1])) {
-          return 'buy';
-        }
-      }
-      else if (hist < 0 && currMacd < currSignal) {
-        if (!(prevHist < 0 && macdLine[i - 1] < signalLine[i - 1])) {
-          return 'sell';
-        }
-      }
-      
-      return null;
-    });
+    // 5EMA와 20EMA 계산
+    const ema5 = calculateEMA(closes, 5);
+    const ema20 = calculateEMA(closes, 20);
 
+    // 매수/매도 신호를 위한 상태 변수
+    let lastSignal: 'buy' | 'sell' | null = null; // 마지막 신호 추적 (매수 후에만 매도 가능)
+
+    const signals: (string | null)[] = [];
+    for (let i = 1; i < data.length; i++) {
+      // 이전 및 현재 5EMA와 20EMA 값
+      const prev5EMA = ema5[i - 1];
+      const prev20EMA = ema20[i - 1];
+      const curr5EMA = ema5[i];
+      const curr20EMA = ema20[i];
+      
+      let signal = null;
+      
+      // 5EMA가 20EMA를 상향 돌파 (매수 신호)
+      if (prev5EMA < prev20EMA && curr5EMA > curr20EMA) {
+        signal = 'buy';
+        lastSignal = 'buy';
+      } 
+      // 5EMA가 20EMA를 하향 돌파 (매도 신호) - 이전에 매수 신호가 있었을 경우에만
+      else if (prev5EMA > prev20EMA && curr5EMA < curr20EMA && lastSignal === 'buy') {
+        signal = 'sell';
+        lastSignal = 'sell';
+      }
+      
+      signals.push(signal);
+    }
+
+    // 신호가 있는 부분만 필터링하여 필요한 데이터 형식으로 변환
     return data.map((candle, i) => ({
       time: candle.time,
-      macd: macdLine[i],
-      signal: signalLine[i],
-      histogram: histogram[i],
-      tradeSignal: signals[i]
+      macd: i < macdLine.length ? macdLine[i] : 0,
+      signal: i < signalLine.length ? signalLine[i] : 0,
+      histogram: i < histogram.length ? histogram[i] : 0,
+      tradeSignal: i < signals.length ? signals[i] : null,
+      ema5: i < ema5.length ? ema5[i] : 0,
+      ema20: i < ema20.length ? ema20[i] : 0
     }));
   };
 
@@ -198,10 +212,20 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
     // 30EMA 추가
     ema30Ref.current = chart.addLineSeries({
       color: '#FF0000', // 빨간색
-      lineWidth: 1,
+      lineWidth: 2,     // 두껍게 표시
+      lineStyle: 0,     // 실선
       title: '30 EMA',
       priceScaleId: 'candle',
-      visible: showMA?.thirty || false,
+      visible: showMA?.thirty !== undefined ? showMA.thirty : true, // 기본적으로 표시
+    });
+
+    // 48EMA 추가
+    ema48Ref.current = chart.addLineSeries({
+      color: '#9370DB',  // 중간 보라색 (ChartContainer와 동일)
+      lineWidth: 1,
+      title: '48 EMA',
+      priceScaleId: 'candle',
+      visible: showMA?.fortyEight || false,
     });
 
     // 60EMA 추가
@@ -267,28 +291,20 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       visible: showMA?.nineHundred || false,
     });
 
-    // MACD 라인 (녹색)
+    // MACD 라인 추가
     macdRef.current = chart.addLineSeries({
-      color: '#4CAF50',
+      color: '#4CAF50', // 녹색으로 변경
       lineWidth: 2,
       title: 'MACD',
-      priceScaleId: 'left',
-      priceFormat: {
-        type: 'price',
-        precision: 2,
-      },
+      priceScaleId: 'macd',
     });
 
-    // 시그널 라인 (보라색)
+    // MACD 시그널 라인 추가
     signalRef.current = chart.addLineSeries({
-      color: '#9C27B0',
+      color: '#9C27B0', // 보라색으로 변경
       lineWidth: 2,
       title: 'Signal',
-      priceScaleId: 'left',
-      lastValueVisible: false,
-      priceLineVisible: false,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
+      priceScaleId: 'macd',
     });
 
     // 히스토그램
@@ -324,6 +340,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       lastValueVisible: false,
       priceLineVisible: false,
       crosshairMarkerVisible: false,
+      priceScaleId: 'candle',
     });
 
     // 스토캐스틱 %K 라인 (파란색)
@@ -380,6 +397,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       const ema10Data = calculateEMA(data, 10);
       const ema20Data = calculateEMA(data, 20);
       const ema30Data = calculateEMA(data, 30);
+      const ema48Data = calculateEMA(data, 48);
       const ema60Data = calculateEMA(data, 60);
       const ema90Data = calculateEMA(data, 90);
       const ema120Data = calculateEMA(data, 120);
@@ -402,6 +420,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       
       if (ema30Ref.current) {
         ema30Ref.current.setData(ema30Data);
+      }
+      
+      if (ema48Ref.current) {
+        ema48Ref.current.setData(ema48Data);
       }
       
       if (ema60Ref.current) {
@@ -465,11 +487,14 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       const markers = filteredMacdData
         .filter(d => d.tradeSignal)
         .map(d => ({
-          time: d.time as Time,
+          time: d.time,
           position: d.tradeSignal === 'buy' ? 'belowBar' as const : 'aboveBar' as const,
-          color: d.tradeSignal === 'buy' ? '#4CAF50' : '#FF5252',
+          color: d.tradeSignal === 'buy' ? '#0000FF' : '#FF0000',
           shape: d.tradeSignal === 'buy' ? 'arrowUp' as const : 'arrowDown' as const,
-          text: d.tradeSignal === 'buy' ? '매수' : '매도',
+          text: d.tradeSignal === 'buy' ? 
+            '5EMA가 20EMA 상향돌파 매수' : 
+            '5EMA가 20EMA 하향돌파 매도',
+          size: 3
         }));
 
       // 스토캐스틱 데이터
@@ -502,7 +527,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       if (macdRef.current) macdRef.current.setData(macdLine);
       if (signalRef.current) signalRef.current.setData(signalLine);
       if (histogramRef.current) histogramRef.current.setData(histogram);
-      if (markerSeriesRef.current) markerSeriesRef.current.setMarkers(markers);
+      if (candleRef.current) candleRef.current.setMarkers(markers);
       if (kLineRef.current) kLineRef.current.setData(kLine);
       if (dLineRef.current) dLineRef.current.setData(dLine);
       overboughtLine.setData(overboughtData);
@@ -536,6 +561,9 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA 
       
       if (ema30Ref.current) 
         ema30Ref.current.applyOptions({ visible: showMA.thirty });
+      
+      if (ema48Ref.current) 
+        ema48Ref.current.applyOptions({ visible: showMA.fortyEight });
       
       if (ema60Ref.current) 
         ema60Ref.current.applyOptions({ visible: showMA.sixty });

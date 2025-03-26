@@ -17,7 +17,13 @@ export const useBacktestChart = () => {
   const backtestChartApiRef = useRef<IChartApi | null>(null);
   const backtestCandleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const backtestVolumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const backtestFiveEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const backtestTenEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const backtestTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const backtestThirtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const backtestFortyEightEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const backtestSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const backtestNinetyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const backtestOneTwentyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const backtestTwoFortyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const backtestThreeHundredSixtyEMASeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -34,7 +40,13 @@ export const useBacktestChart = () => {
     chartApi: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
     volumeSeries: ISeriesApi<"Histogram">,
+    fiveEMASeries: ISeriesApi<"Line">,
+    tenEMASeries: ISeriesApi<"Line">,
+    twentyEMASeries: ISeriesApi<"Line">,
+    thirtyEMASeries: ISeriesApi<"Line">,
+    fortyEightEMASeries: ISeriesApi<"Line">,
     sixtyEMASeries: ISeriesApi<"Line">,
+    ninetyEMASeries: ISeriesApi<"Line">,
     oneTwentyEMASeries: ISeriesApi<"Line">,
     twoFortyEMASeries: ISeriesApi<"Line">,
     threeHundredSixtyEMASeries: ISeriesApi<"Line">,
@@ -51,7 +63,13 @@ export const useBacktestChart = () => {
     backtestChartApiRef.current = chartApi;
     backtestCandleSeriesRef.current = candleSeries;
     backtestVolumeSeriesRef.current = volumeSeries;
+    backtestFiveEMASeriesRef.current = fiveEMASeries;
+    backtestTenEMASeriesRef.current = tenEMASeries;
+    backtestTwentyEMASeriesRef.current = twentyEMASeries;
+    backtestThirtyEMASeriesRef.current = thirtyEMASeries;
+    backtestFortyEightEMASeriesRef.current = fortyEightEMASeries;
     backtestSixtyEMASeriesRef.current = sixtyEMASeries;
+    backtestNinetyEMASeriesRef.current = ninetyEMASeries;
     backtestOneTwentyEMASeriesRef.current = oneTwentyEMASeries;
     backtestTwoFortyEMASeriesRef.current = twoFortyEMASeries;
     backtestThreeHundredSixtyEMASeriesRef.current = threeHundredSixtyEMASeries;
@@ -77,14 +95,26 @@ export const useBacktestChart = () => {
       backtestVolumeSeriesRef.current.setData(volumeData);
       
       // EMA 데이터 설정
+      const ema5Data = calculateEMA(importedData, 5);
+      const ema10Data = calculateEMA(importedData, 10);
+      const ema20Data = calculateEMA(importedData, 20);
+      const ema30Data = calculateEMA(importedData, 30);
+      const ema48Data = calculateEMA(importedData, 48);
       const ema60Data = calculateEMA(importedData, 60);
+      const ema90Data = calculateEMA(importedData, 90);
       const ema120Data = calculateEMA(importedData, 120);
       const ema240Data = calculateEMA(importedData, 240);
       const ema360Data = calculateEMA(importedData, 360);
       const ema300Data = calculateEMA(importedData, 300);
       const ema900Data = calculateEMA(importedData, 900);
 
+      backtestFiveEMASeriesRef.current.setData(ema5Data);
+      backtestTenEMASeriesRef.current.setData(ema10Data);
+      backtestTwentyEMASeriesRef.current.setData(ema20Data);
+      backtestThirtyEMASeriesRef.current.setData(ema30Data);
+      backtestFortyEightEMASeriesRef.current.setData(ema48Data);
       backtestSixtyEMASeriesRef.current.setData(ema60Data);
+      backtestNinetyEMASeriesRef.current.setData(ema90Data);
       backtestOneTwentyEMASeriesRef.current.setData(ema120Data);
       backtestTwoFortyEMASeriesRef.current.setData(ema240Data);
       backtestThreeHundredSixtyEMASeriesRef.current.setData(ema360Data);
@@ -118,7 +148,13 @@ export const useBacktestChart = () => {
     backtestChartApiRef,
     backtestCandleSeriesRef,
     backtestVolumeSeriesRef,
+    backtestFiveEMASeriesRef,
+    backtestTenEMASeriesRef,
+    backtestTwentyEMASeriesRef,
+    backtestThirtyEMASeriesRef,
+    backtestFortyEightEMASeriesRef,
     backtestSixtyEMASeriesRef,
+    backtestNinetyEMASeriesRef,
     backtestOneTwentyEMASeriesRef,
     backtestTwoFortyEMASeriesRef,
     backtestThreeHundredSixtyEMASeriesRef,
