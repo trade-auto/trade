@@ -18,6 +18,7 @@ import BacktestResults from './BacktestResults';
 import CsvDownloader from './CsvDownloader';
 import ChartContainer from './ChartContainer';
 import TradingStrategyHover from './TradingStrategyHover';
+import { CoinSelector } from './CoinSelector';
 
 const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   const {
@@ -326,6 +327,9 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
               onChartReady={isDataImported ? handleBacktestChartInit : handleChartReady}
             />
           </div>
+          
+          {/* 코인 선택기 추가 */}
+          <CoinSelector />
           
           {tradeStrategy === 'MACD' && (polMacdBacktestResult || csvBacktestResult) && (
             <div className="backtest-results-container mb-4" style={{ 
