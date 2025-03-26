@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { DateRange } from '../types/candlestick';
@@ -43,7 +43,26 @@ const ChartControls: React.FC<ChartControlsProps> = ({
   const canChangeEndDate = handleEndDateChange && typeof handleEndDateChange === 'function';
   const canIncreaseDataCount = increaseDataCount && typeof increaseDataCount === 'function';
   const canDecreaseDataCount = decreaseDataCount && typeof decreaseDataCount === 'function';
-  
+
+  // 컴포넌트 마운트 시 자동 업데이트 시작
+  useEffect(() => {
+    if (handleAutoUpdateToggle && !isAutoUpdate) {
+      handleAutoUpdateToggle();
+    }
+  }, []);
+
+  // 데이터 로드가 100%일 때 실시간 업데이트로 전환
+  useEffect(() => {
+    if (progress === 100 && handleRealtimeAPIToggle && !isRealtimeAPIEnabled && handleAutoUpdateToggle) {
+      // 자동 업데이트 끄기
+      if (isAutoUpdate) {
+        handleAutoUpdateToggle();
+      }
+      // 실시간 업데이트 켜기
+      handleRealtimeAPIToggle();
+    }
+  }, [progress, isRealtimeAPIEnabled, handleRealtimeAPIToggle, isAutoUpdate, handleAutoUpdateToggle]);
+
   return (
     <div className="mb-4 space-y-4">
       {/* 날짜 범위 설정 */}
@@ -101,7 +120,7 @@ const ChartControls: React.FC<ChartControlsProps> = ({
           </button>
           <button
             onClick={() => decreaseDataCount && decreaseDataCount()}
-            disabled={!canDecreaseDataCount || dataCount <= 200} // 최소 200개 유지
+            disabled={!canDecreaseDataCount || dataCount <= 200}
             className={`flex-1 px-4 py-2 rounded-lg transition-colors bg-orange-600 hover:bg-orange-700 text-white font-bold text-lg ${(!canDecreaseDataCount || dataCount <= 200) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             캔들 -100개 감소 ⬇️
@@ -115,10 +134,10 @@ const ChartControls: React.FC<ChartControlsProps> = ({
         <div className="flex flex-wrap gap-2 mb-2">
           <button
             onClick={handleAutoUpdateToggle}
-            disabled={!handleAutoUpdateToggle}
+            disabled={!handleAutoUpdateToggle || isRealtimeAPIEnabled}
             className={`px-3 py-1 rounded transition-colors ${
               isAutoUpdate ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
-            } text-white ${!handleAutoUpdateToggle ? 'opacity-50 cursor-not-allowed' : ''}`}
+            } text-white ${(!handleAutoUpdateToggle || isRealtimeAPIEnabled) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             자동 업데이트 {isAutoUpdate ? '켜짐' : '꺼짐'}
           </button>
@@ -149,17 +168,22 @@ const ChartControls: React.FC<ChartControlsProps> = ({
       </div>
       
       {/* 로딩 프로그레스 바 */}
-      { (
-        <div className="bg-gray-800 p-4 rounded-lg">
-          <div className="text-white text-sm mb-2">데이터 로드 중: {progress}%</div>
-          <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
-            <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-in-out"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-white text-sm mb-2">
+          데이터 로드 중: {progress}%
+          {progress === 100 && isRealtimeAPIEnabled && (
+            <span className="ml-2 text-green-400">(실시간 업데이트로 전환됨)</span>
+          )}
         </div>
-      )}
+        <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
+          <div 
+            className={`h-2 rounded-full transition-all duration-300 ease-in-out ${
+              progress === 100 ? 'bg-green-600' : 'bg-blue-600'
+            }`}
+            style={{ width: `${progress}%` }}
+          ></div>
+        </div>
+      </div>
     </div>
   );
 };
