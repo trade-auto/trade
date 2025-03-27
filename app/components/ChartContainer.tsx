@@ -45,6 +45,56 @@ const calculateEMA = (data: ExtendedCandlestickData[], period: number) => {
   return result;
 };
 
+// 일목균형표 계산 함수
+const calculateIchimoku = (data: ExtendedCandlestickData[]) => {
+  const tenkanSen: { time: Time; value: number }[] = [];
+  const kijunSen: { time: Time; value: number }[] = [];
+  const chikouSpan: { time: Time; value: number }[] = [];
+  const senkouSpanA: { time: Time; value: number }[] = [];
+  const senkouSpanB: { time: Time; value: number }[] = [];
+
+  for (let i = 8; i < data.length; i++) {
+    const periodData = data.slice(i - 8, i + 1);
+    const highest = Math.max(...periodData.map(d => d.high));
+    const lowest = Math.min(...periodData.map(d => d.low));
+    tenkanSen.push({ time: data[i].time, value: (highest + lowest) / 2 });
+  }
+
+  for (let i = 25; i < data.length; i++) {
+    const periodData = data.slice(i - 25, i + 1);
+    const highest = Math.max(...periodData.map(d => d.high));
+    const lowest = Math.min(...periodData.map(d => d.low));
+    kijunSen.push({ time: data[i].time, value: (highest + lowest) / 2 });
+  }
+
+  for (let i = 0; i < data.length - 26; i++) {
+    chikouSpan.push({ time: data[i].time, value: data[i + 26].close });
+  }
+
+  const offset = Math.max(25, 8);
+  for (let i = 0; i < data.length - offset - 26; i++) {
+    const currentIndex = i + offset;
+    const period1 = data.slice(currentIndex - 8, currentIndex + 1);
+    const tenkanValue = (Math.max(...period1.map(d => d.high)) + Math.min(...period1.map(d => d.low))) / 2;
+    const period2 = data.slice(currentIndex - 25, currentIndex + 1);
+    const kijunValue = (Math.max(...period2.map(d => d.high)) + Math.min(...period2.map(d => d.low))) / 2;
+    if (i + offset + 26 < data.length) {
+      senkouSpanA.push({ time: data[i + offset + 26].time, value: (tenkanValue + kijunValue) / 2 });
+    }
+  }
+
+  for (let i = 51; i < data.length - 26; i++) {
+    const periodData = data.slice(i - 51, i + 1);
+    const highest = Math.max(...periodData.map(d => d.high));
+    const lowest = Math.min(...periodData.map(d => d.low));
+    if (i + 26 < data.length) {
+      senkouSpanB.push({ time: data[i + 26].time, value: (highest + lowest) / 2 });
+    }
+  }
+
+  return { tenkanSen, kijunSen, chikouSpan, senkouSpanA, senkouSpanB };
+};
+
 // 확장된 캔들스틱 데이터 타입 정의
 interface ExtendedCandlestickData extends CandlestickData<Time> {
   volume?: number;
@@ -74,6 +124,7 @@ interface ChartContainerProps {
     fortyEight: boolean;
     ninety: boolean;
   };
+  showIchimoku?: boolean;
   onChartReady: (
     chart: IChartApi,
     candleSeries: ISeriesApi<"Candlestick">,
@@ -198,6 +249,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isRealtimeAPIEnabled,
   data,
   showMA,
+  showIchimoku,
   onChartReady,
 }) => {
   const container = useRef<HTMLDivElement>(null);
@@ -220,6 +272,11 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     nineHundredEMA: null,
   });
   const { tradeStrategy } = useUpbitStore();
+  const tenkanRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const kijunRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const chikouRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const senkouSpanARef = useRef<ISeriesApi<'Line'> | null>(null);
+  const senkouSpanBRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   const handleResize = useCallback(() => {
     if (container.current && chartRef.current) {
@@ -735,6 +792,73 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       console.log('이동평균선 표시 설정 업데이트:', showMA);
     }
   }, [showMA]);
+
+  // 일목균형표 시리즈 추가 및 업데이트 useEffect
+  useEffect(() => {
+    if (!chartRef.current || !data || data.length === 0) return;
+
+    const ichimokuData = calculateIchimoku(data);
+
+    if (ichimokuData.tenkanSen.length > 0) {
+      const chart = chartRef.current;
+
+      if (!tenkanRef.current) {
+        const tenkanSeries = chart.addLineSeries({
+          color: '#FF0000',
+          lineWidth: 2,
+          title: '전환선',
+          visible: showIchimoku,
+        });
+
+        const kijunSeries = chart.addLineSeries({
+          color: '#0000FF',
+          lineWidth: 2,
+          title: '기준선',
+          visible: showIchimoku,
+        });
+
+        const chikouSeries = chart.addLineSeries({
+          color: '#00FF00',
+          lineWidth: 2,
+          title: '후행스팬',
+          lineStyle: 3,
+          visible: showIchimoku,
+        });
+
+        const senkouSpanASeries = chart.addLineSeries({
+          color: '#FF6666',
+          lineWidth: 2,
+          title: '선행스팬A',
+          visible: showIchimoku,
+        });
+
+        const senkouSpanBSeries = chart.addLineSeries({
+          color: '#6666FF',
+          lineWidth: 2,
+          title: '선행스팬B',
+          visible: showIchimoku,
+        });
+
+        tenkanSeries.setData(ichimokuData.tenkanSen);
+        kijunSeries.setData(ichimokuData.kijunSen);
+        chikouSeries.setData(ichimokuData.chikouSpan);
+        senkouSpanASeries.setData(ichimokuData.senkouSpanA);
+        senkouSpanBSeries.setData(ichimokuData.senkouSpanB);
+
+        tenkanRef.current = tenkanSeries;
+        kijunRef.current = kijunSeries;
+        chikouRef.current = chikouSeries;
+        senkouSpanARef.current = senkouSpanASeries;
+        senkouSpanBRef.current = senkouSpanBSeries;
+      } else {
+        tenkanRef.current.setData(ichimokuData.tenkanSen);
+        kijunRef.current && kijunRef.current.setData(ichimokuData.kijunSen);
+        chikouRef.current && chikouRef.current.setData(ichimokuData.chikouSpan);
+        senkouSpanARef.current && senkouSpanARef.current.setData(ichimokuData.senkouSpanA);
+        senkouSpanBRef.current && senkouSpanBRef.current.setData(ichimokuData.senkouSpanB);
+      }
+    }
+  }, [data, showIchimoku]);
 
   return (
     <div
