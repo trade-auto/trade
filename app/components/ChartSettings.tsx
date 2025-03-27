@@ -9,6 +9,8 @@ interface ChartSettingsProps {
   handleHeightChange: (height: number) => void;
   chartType: string;
   onChartTypeChange: (type: string) => void;
+  showIchimoku: boolean;
+  setShowIchimoku: (show: boolean) => void;
 }
 
 const ChartSettings: React.FC<ChartSettingsProps> = ({
@@ -17,7 +19,9 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
   chartHeight,
   handleHeightChange,
   chartType,
-  onChartTypeChange
+  onChartTypeChange,
+  showIchimoku,
+  setShowIchimoku
 }) => {
   // 스토어에서 5번째 조건 상태와 토글 함수 가져오기
   const { useFifthCondition, toggleFifthCondition } = useUpbitStore();
@@ -236,6 +240,34 @@ const ChartSettings: React.FC<ChartSettingsProps> = ({
             1분봉
           </button>
         </div>
+      </div>
+      
+      {/* 일목균형표 설정 */}
+      <div className="mb-8">
+        <h4 className="text-sm font-medium text-gray-300 mb-3">일목균형표</h4>
+        <div className="flex items-center">
+          <input
+            type="checkbox"
+            id="ichimoku-toggle"
+            className="mr-2 h-4 w-4"
+            checked={showIchimoku}
+            onChange={() => setShowIchimoku(!showIchimoku)}
+          />
+          <label htmlFor="ichimoku-toggle" className="text-sm text-white">일목균형표 표시</label>
+        </div>
+        {showIchimoku && (
+          <div className="mt-2 text-xs text-gray-400">
+            <p>일목균형표는 다음 구성요소로 이루어져 있습니다:</p>
+            <ul className="list-disc ml-4 mt-1">
+              <li>전환선 (9일): 단기 추세</li>
+              <li>기준선 (26일): 중기 추세</li>
+              <li>후행스팬: 현재 종가를 26일 전에 표시</li>
+              <li>선행스팬A: (전환선+기준선)/2를 26일 후에 표시</li>
+              <li>선행스팬B: 52일 고저 평균을 26일 후에 표시</li>
+              <li>구름대(쿠모): 선행스팬A와 B 사이의 영역</li>
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

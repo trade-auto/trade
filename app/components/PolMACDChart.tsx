@@ -10,9 +10,10 @@ interface PolMACDChartProps {
   height?: number;
   showMA?: MASettings;
   onBacktestResultChange?: (result: BacktestResult | null) => void;
+  showIchimoku?: boolean; // 일목균형표 표시 여부
 }
 
-const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA, onBacktestResultChange }) => {
+const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA, onBacktestResultChange, showIchimoku = false }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -34,10 +35,107 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
   const ema360Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema600Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema900Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  // 일목균형표 라인 레퍼런스 추가
+  const tenkanRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const kijunRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const chikouRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const senkouSpanARef = useRef<ISeriesApi<'Line'> | null>(null);
+  const senkouSpanBRef = useRef<ISeriesApi<'Line'> | null>(null);
   
   // 백테스트 결과 상태
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [showBacktestResults, setShowBacktestResults] = useState(false);
+
+  // 일목균형표 계산 함수
+  const calculateIchimoku = (data: CandlestickData[]) => {
+    if (data.length < 52) {
+      console.log('Data insufficient for Ichimoku calculation (required: 52, current:', data.length, ')');
+      return {
+        tenkanSen: [],
+        kijunSen: [],
+        chikouSpan: [],
+        senkouSpanA: [],
+        senkouSpanB: []
+      };
+    }
+
+    const tenkanSen: { time: Time, value: number }[] = [];
+    const kijunSen: { time: Time, value: number }[] = [];
+    const chikouSpan: { time: Time, value: number }[] = [];
+    const senkouSpanA: { time: Time, value: number }[] = [];
+    const senkouSpanB: { time: Time, value: number }[] = [];
+
+    // Tenkan-sen: (highest high + lowest low) / 2 for 9 periods
+    for (let i = 8; i < data.length; i++) {
+      const period = data.slice(i - 8, i + 1);
+      const highest = Math.max(...period.map(d => d.high));
+      const lowest = Math.min(...period.map(d => d.low));
+      tenkanSen.push({
+        time: data[i].time,
+        value: (highest + lowest) / 2
+      });
+    }
+
+    // Kijun-sen: (highest high + lowest low) / 2 for 26 periods
+    for (let i = 25; i < data.length; i++) {
+      const period = data.slice(i - 25, i + 1);
+      const highest = Math.max(...period.map(d => d.high));
+      const lowest = Math.min(...period.map(d => d.low));
+      kijunSen.push({
+        time: data[i].time,
+        value: (highest + lowest) / 2
+      });
+    }
+
+    // Chikou Span: Current closing price plotted 26 periods behind
+    for (let i = 0; i < data.length - 26; i++) {
+      chikouSpan.push({
+        time: data[i].time,
+        value: data[i + 26].close
+      });
+    }
+
+    // Senkou Span A: (Tenkan-sen + Kijun-sen) / 2 plotted 26 periods ahead
+    const offset = Math.max(25, 8); // Starting from the index where both lines are available
+    
+    for (let i = 0; i < data.length - offset - 26; i++) {
+      const currentIndex = i + offset;
+      const tenkanValue = (data.slice(currentIndex - 8, currentIndex + 1).reduce((max, candle) => Math.max(max, candle.high), -Infinity) + 
+                           data.slice(currentIndex - 8, currentIndex + 1).reduce((min, candle) => Math.min(min, candle.low), Infinity)) / 2;
+      
+      const kijunValue = (data.slice(currentIndex - 25, currentIndex + 1).reduce((max, candle) => Math.max(max, candle.high), -Infinity) + 
+                          data.slice(currentIndex - 25, currentIndex + 1).reduce((min, candle) => Math.min(min, candle.low), Infinity)) / 2;
+      
+      if (i + offset + 26 < data.length) {
+        senkouSpanA.push({
+          time: data[i + offset + 26].time,
+          value: (tenkanValue + kijunValue) / 2
+        });
+      }
+    }
+
+    // Senkou Span B: (highest high + lowest low) / 2 for 52 periods plotted 26 periods ahead
+    for (let i = 51; i < data.length - 26; i++) {
+      const period = data.slice(i - 51, i + 1);
+      const highest = Math.max(...period.map(d => d.high));
+      const lowest = Math.min(...period.map(d => d.low));
+      
+      if (i + 26 < data.length) {
+        senkouSpanB.push({
+          time: data[i + 26].time,
+          value: (highest + lowest) / 2
+        });
+      }
+    }
+
+    return {
+      tenkanSen,
+      kijunSen,
+      chikouSpan,
+      senkouSpanA,
+      senkouSpanB
+    };
+  };
 
   // 스토캐스틱 계산 함수
   const calculateStochastic = (data: CandlestickData[], kPeriod = 20, dPeriod = 5, smoothPeriod = 3) => {
@@ -407,6 +505,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
     const { macdData, signalData, histogramData, markers, ema5Data, ema20Data } = calculateMACD(data);
     const stochasticData = calculateStochastic(data);
+    const ichimokuData = calculateIchimoku(data);
 
     // 새로운 차트 생성
     const chart = createChart(chartContainerRef.current, {
@@ -570,6 +669,155 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       candleSeries.setMarkers(validMarkers);
     }
 
+    // 일목균형표 표시
+    if (ichimokuData.tenkanSen.length > 0) {
+      const tenkanSeries = chart.addLineSeries({
+        color: '#FF0000', // 빨간색
+        lineWidth: 2,
+        title: '전환선',
+        visible: showIchimoku, // 초기 가시성 설정
+      });
+      
+      const kijunSeries = chart.addLineSeries({
+        color: '#0000FF', // 파란색
+        lineWidth: 2,
+        title: '기준선',
+        visible: showIchimoku, // 초기 가시성 설정
+      });
+      
+      const chikouSeries = chart.addLineSeries({
+        color: '#00FF00', // 초록색
+        lineWidth: 2,
+        title: '후행스팬',
+        lineStyle: 3, // 점선으로 표시
+        visible: showIchimoku, // 초기 가시성 설정
+      });
+      
+      const senkouSpanASeries = chart.addLineSeries({
+        color: '#FF6666', // 연한 빨강
+        lineWidth: 2,
+        title: '선행스팬A',
+        visible: showIchimoku, // 초기 가시성 설정
+      });
+      
+      const senkouSpanBSeries = chart.addLineSeries({
+        color: '#6666FF', // 연한 파랑
+        lineWidth: 2,
+        title: '선행스팬B',
+        visible: showIchimoku, // 초기 가시성 설정
+      });
+      
+      // 구름대 영역 (클라우드) 추가
+      // 주문구름(쿠모): 선행스팬A와 선행스팬B 사이의 영역
+      // lightweight-charts는 영역 채우기를 직접 지원하지 않기 때문에 구름대 효과를 위해 면적 차트 사용
+      
+      // 양의 구름 (선행스팬A > 선행스팬B, 강세구간)
+      const bullishCloudSeries = chart.addAreaSeries({
+        topColor: 'rgba(76, 175, 80, 0.3)',    // 연한 초록색
+        bottomColor: 'rgba(76, 175, 80, 0.05)',
+        lineColor: 'rgba(76, 175, 80, 0.3)',
+        lineWidth: 1,
+        title: '강세구름',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        visible: showIchimoku, // 초기 가시성 설정
+      });
+      
+      // 음의 구름 (선행스팬A < 선행스팬B, 약세구간)
+      const bearishCloudSeries = chart.addAreaSeries({
+        topColor: 'rgba(255, 82, 82, 0.3)',    // 연한 빨강색
+        bottomColor: 'rgba(255, 82, 82, 0.05)',
+        lineColor: 'rgba(255, 82, 82, 0.3)',
+        lineWidth: 1,
+        title: '약세구름',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        visible: showIchimoku, // 초기 가시성 설정
+      });
+      
+      // Cloud area data creation
+      const bullishCloud: { time: Time, value: number }[] = [];
+      const bearishCloud: { time: Time, value: number }[] = [];
+      
+      // Check if Senkou Span A and Senkou Span B exist at the same time points
+      const commonTimes = new Set();
+      ichimokuData.senkouSpanA.forEach(item => commonTimes.add(item.time));
+      
+      const filteredSpanB = ichimokuData.senkouSpanB.filter(item => 
+        commonTimes.has(item.time)
+      );
+      
+      // Sort by time
+      const sortedSpanA = [...ichimokuData.senkouSpanA].sort((a, b) => {
+        const timeA = typeof a.time === 'number' ? a.time : 
+                     typeof a.time === 'string' ? new Date(a.time).getTime() : 0;
+        const timeB = typeof b.time === 'number' ? b.time : 
+                     typeof b.time === 'string' ? new Date(b.time).getTime() : 0;
+        return timeA - timeB;
+      });
+      
+      const sortedSpanB = [...filteredSpanB].sort((a, b) => {
+        const timeA = typeof a.time === 'number' ? a.time : 
+                     typeof a.time === 'string' ? new Date(a.time).getTime() : 0;
+        const timeB = typeof b.time === 'number' ? b.time : 
+                     typeof b.time === 'string' ? new Date(b.time).getTime() : 0;
+        return timeA - timeB;
+      });
+      
+      // Iterate based on the length of the shorter array
+      const minLength = Math.min(sortedSpanA.length, sortedSpanB.length);
+      
+      for (let i = 0; i < minLength; i++) {
+        const spanA = sortedSpanA[i];
+        const spanB = sortedSpanB[i];
+        
+        // Check if times match
+        if (spanA.time !== spanB.time) {
+          console.log('Times do not match:', spanA.time, spanB.time);
+          continue;
+        }
+        
+        if (spanA.value >= spanB.value) {
+          // Bullish zone (Senkou Span A >= Senkou Span B)
+          bullishCloud.push({
+            time: spanA.time,
+            value: spanA.value
+          });
+          
+          bearishCloud.push({
+            time: spanB.time,
+            value: spanB.value
+          });
+        } else {
+          // Bearish zone (Senkou Span A < Senkou Span B)
+          bullishCloud.push({
+            time: spanB.time,
+            value: spanB.value
+          });
+          
+          bearishCloud.push({
+            time: spanA.time,
+            value: spanA.value
+          });
+        }
+      }
+      
+      bullishCloudSeries.setData(bullishCloud);
+      bearishCloudSeries.setData(bearishCloud);
+      
+      tenkanSeries.setData(ichimokuData.tenkanSen);
+      kijunSeries.setData(ichimokuData.kijunSen);
+      chikouSeries.setData(ichimokuData.chikouSpan);
+      senkouSpanASeries.setData(ichimokuData.senkouSpanA);
+      senkouSpanBSeries.setData(ichimokuData.senkouSpanB);
+      
+      tenkanRef.current = tenkanSeries;
+      kijunRef.current = kijunSeries;
+      chikouRef.current = chikouSeries;
+      senkouSpanARef.current = senkouSpanASeries;
+      senkouSpanBRef.current = senkouSpanBSeries;
+    }
+
     // MACD 값의 최대값 및 최소값 찾기
     let maxMacd = Math.max(...macdData.map(d => d.value));
     let minMacd = Math.min(...macdData.map(d => d.value));
@@ -590,7 +838,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       color: '#008800',
       lineWidth: 2,
       lineStyle: 2,
-      title: '+20% 수준',
+      title: '+20% level',
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineWidth: 2,
@@ -603,7 +851,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       color: '#AA0000',
       lineWidth: 2,
       lineStyle: 2,
-      title: '-10% 수준',
+      title: '-10% level',
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineWidth: 2,
@@ -748,12 +996,29 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         });
       }
     }
-  }, [showMA, data.length]);
+    
+    // 일목균형표 라인 가시성 설정
+    if (tenkanRef.current) 
+      tenkanRef.current.applyOptions({ visible: showIchimoku });
+    
+    if (kijunRef.current) 
+      kijunRef.current.applyOptions({ visible: showIchimoku });
+    
+    if (chikouRef.current) 
+      chikouRef.current.applyOptions({ visible: showIchimoku });
+    
+    if (senkouSpanARef.current) 
+      senkouSpanARef.current.applyOptions({ visible: showIchimoku });
+    
+    if (senkouSpanBRef.current) 
+      senkouSpanBRef.current.applyOptions({ visible: showIchimoku });
+    
+  }, [showMA, showIchimoku, data.length]);
 
   return (
     <div className="chart-wrapper">
       <div ref={chartContainerRef} style={{ width: '100%' }} />
-      <div className="chart-controls" style={{ marginTop: '20px' }}>
+      <div className="chart-controls" style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
         <button
           className="btn btn-primary"
           onClick={() => {
@@ -763,6 +1028,22 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         >
           {showBacktestResults ? '백테스트 결과 숨기기' : '백테스트 결과 보기'}
         </button>
+        
+        {/* 일목균형표 상태에 대한 표시 */}
+        {showIchimoku && (
+          <div className="ichimoku-status" style={{
+            padding: '6px 12px',
+            background: '#f0f0f0',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            fontSize: '14px'
+          }}>
+            <span style={{ marginRight: '10px', fontWeight: 'bold', color: '#333' }}>
+              일목균형표 활성화됨
+            </span>
+          </div>
+        )}
       </div>
       
       {/* 디버깅용 정보 */}
@@ -773,6 +1054,49 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
           <p>거래 수: {backtestResult.trades.length}</p>
         )}
       </div>
+      
+      {/* 일목균형표 정보 표시 */}
+      {showIchimoku && (
+        <div className="ichimoku-legend" style={{ margin: '10px 0', fontSize: '12px' }}>
+          <h4 style={{ fontSize: '14px', marginBottom: '5px' }}>일목균형표 정보</h4>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '12px', height: '2px', backgroundColor: '#FF0000', marginRight: '5px' }}></div>
+              <span>전환선 (9)</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '12px', height: '2px', backgroundColor: '#0000FF', marginRight: '5px' }}></div>
+              <span>기준선 (26)</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '12px', height: '2px', backgroundColor: '#00FF00', marginRight: '5px', borderTop: '1px dotted #00FF00' }}></div>
+              <span>후행스팬</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '12px', height: '2px', backgroundColor: '#FF6666', marginRight: '5px' }}></div>
+              <span>선행스팬A</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '12px', height: '2px', backgroundColor: '#6666FF', marginRight: '5px' }}></div>
+              <span>선행스팬B</span>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 백테스트 결과 표시 */}
+      {showBacktestResults && backtestResult && (
+        <div className="backtest-result-summary" style={{ margin: '15px 0', padding: '10px', backgroundColor: '#f9f9f9', borderRadius: '5px' }}>
+          <h4 style={{ marginBottom: '10px', fontSize: '16px' }}>백테스트 요약</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+            <div>총 거래: {backtestResult.totalTrades}회</div>
+            <div>성공 거래: {backtestResult.successfulTrades}회</div>
+            <div>승률: {backtestResult.successRate.toFixed(2)}%</div>
+            <div>총 수익률: {(backtestResult.totalReturn * 100).toFixed(2)}%</div>
+            <div>평균 수익률: {(backtestResult.averageReturn * 100).toFixed(2)}%</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

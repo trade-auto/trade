@@ -219,6 +219,9 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   // 백테스트 결과 상태 추가
   const [polMacdBacktestResult, setPolMacdBacktestResult] = useState<BacktestResult | null>(null);
   
+  // 일목균형표 표시 상태 추가
+  const [showIchimoku, setShowIchimoku] = useState<boolean>(false);
+  
   // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
   useEffect(() => {
     const now = new Date();
@@ -410,6 +413,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
                 data={isDataImported ? importedData : allData} 
                 height={400} 
                 showMA={showMA}
+                showIchimoku={showIchimoku} 
                 onBacktestResultChange={setPolMacdBacktestResult} 
               />
             </div>
@@ -429,6 +433,8 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
               handleHeightChange={handleHeightChange}
               chartType={chartType}
               onChartTypeChange={(type) => setChartType(type)}
+              showIchimoku={showIchimoku}
+              setShowIchimoku={setShowIchimoku}
             />
           </div>
           <div className="w-full md:w-1/2">
