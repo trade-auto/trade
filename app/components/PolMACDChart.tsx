@@ -162,6 +162,59 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     return results;
   };
 
+  // RSI 계산 함수
+  const calculateRSI = (data: CandlestickData[], period = 14) => {
+    if (!data || data.length === 0 || data.length <= period) {
+      return [];
+    }
+
+    const closePrices = data.map(item => item.close);
+    const gains: number[] = [];
+    const losses: number[] = [];
+    
+    // 첫 번째 변화량은 계산할 수 없으므로 0으로 설정
+    gains.push(0);
+    losses.push(0);
+    
+    // 각 기간의 가격 변화에 따른 상승/하락 값 계산
+    for (let i = 1; i < closePrices.length; i++) {
+      const change = closePrices[i] - closePrices[i - 1];
+      gains.push(change > 0 ? change : 0);
+      losses.push(change < 0 ? Math.abs(change) : 0);
+    }
+    
+    // 첫 번째 평균 계산
+    let avgGain = gains.slice(1, period + 1).reduce((sum, gain) => sum + gain, 0) / period;
+    let avgLoss = losses.slice(1, period + 1).reduce((sum, loss) => sum + loss, 0) / period;
+    
+    const rsiValues: { time: Time, value: number }[] = [];
+    
+    // 첫 번째 RSI 값 계산
+    let rs = avgGain / (avgLoss === 0 ? 0.001 : avgLoss); // 0으로 나누기 방지
+    let rsi = 100 - (100 / (1 + rs));
+    
+    rsiValues.push({ 
+      time: data[period].time, 
+      value: rsi 
+    });
+    
+    // 나머지 RSI 값 계산 (평활화된 방식)
+    for (let i = period + 1; i < data.length; i++) {
+      avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
+      avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
+      
+      rs = avgGain / (avgLoss === 0 ? 0.001 : avgLoss);
+      rsi = 100 - (100 / (1 + rs));
+      
+      rsiValues.push({ 
+        time: data[i].time, 
+        value: rsi 
+      });
+    }
+    
+    return rsiValues;
+  };
+
   // MACD 계산 함수
   const calculateMACD = (data: CandlestickData[]) => {
     if (!data || data.length === 0) return { macdData: [], signalData: [], histogramData: [] };
@@ -272,20 +325,31 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         continue;
       }
 
-      // 매수 신호 조건:
-      // 1. MACD가 -10% 이하에서:
-      // 2. MACD가 신호선을 상향돌파하거나
-      // 3. 5EMA가 20EMA 상향돌파할 때
-      // 4. 20EMA가 상승 중일 때만 매수
-      // 5. 20EMA가 30EMA보다 위에 있을 때만 매수 (정배열 확인)
-      if (currentMacd <= minusTenPercent && 
-          (
-            (prevMacd <= prevSignal && currentMacd > currentSignal) || // MACD가 신호선 상향돌파
-            (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i]) // EMA 크로스
-          ) && 
-          ema20Values[i] > ema20Values[i - 1] && // 20EMA 상승 확인
-          ema20Values[i] > calculateEMA(data.slice(0, i+1), 30)[calculateEMA(data.slice(0, i+1), 30).length-1].value && // 20EMA > 30EMA (정배열 확인)
-          (lastSignal === null || lastSignal === 'sell')) {
+      // RSI 계산 - 14 기간으로 계산
+      const rsiValues = calculateRSI(data.slice(0, i+1));
+      const currentRSI = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1].value : 0;
+      
+      // 20EMA와 30EMA 상승 여부 확인
+      const ema20Rising = ema20Values[i] > ema20Values[i - 1];
+      const ema30Data = calculateEMA(data.slice(0, i+1), 30);
+      const ema30Rising = ema30Data.length >= 2 && 
+                          ema30Data[ema30Data.length - 1].value > ema30Data[ema30Data.length - 2].value;
+
+      // RSI 과매수 조건 (80% 이상)과 EMA 상승 조건
+      const isRsiOverboughtWithRisingEMAs = currentRSI >= 80 ;//&& ema20Rising && ema30Rising;
+
+      // 기존 MACD 기반 매수 신호 조건
+      const isMacdBuySignal = currentMacd <= minusTenPercent && 
+                            (
+                              (prevMacd <= prevSignal && currentMacd > currentSignal) || // MACD가 신호선 상향돌파
+                              (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i]) // EMA 크로스
+                            ) && 
+                            ema20Values[i] > ema20Values[i - 1] && // 20EMA 상승 확인
+                           ema20Values[i] > calculateEMA(data.slice(0, i+1), 30)[calculateEMA(data.slice(0, i+1), 30).length-1].value && // 20EMA > 30EMA (정배열 확인)
+                            (lastSignal === null || lastSignal === 'sell')  ;
+
+      // 기존 조건 또는 RSI 조건으로 매수 신호 생성
+      if (isMacdBuySignal || isRsiOverboughtWithRisingEMAs) {
         type.push('buy');
         lastSignal = 'buy';
       }
@@ -506,6 +570,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const { macdData, signalData, histogramData, markers, ema5Data, ema20Data } = calculateMACD(data);
     const stochasticData = calculateStochastic(data);
     const ichimokuData = calculateIchimoku(data);
+    const rsiData = calculateRSI(data);
 
     // 새로운 차트 생성
     const chart = createChart(chartContainerRef.current, {
@@ -747,21 +812,56 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         commonTimes.has(item.time)
       );
       
-      // Sort by time
+      // 시간 값을 숫자로 변환하는 함수
+      const getTimeAsNumber = (time: Time): number => {
+        if (typeof time === 'number') return time;
+        if (typeof time === 'string') return new Date(time).getTime();
+        return 0;
+      };
+      
+      // 타임스탬프를 'yyyy-mm-dd' 형식으로 변환하는 함수
+      const formatTimeToYYYYMMDD = (time: Time): string | null => {
+        let date: Date;
+        
+        try {
+          if (typeof time === 'number') {
+            // 초 단위인지 밀리초 단위인지 확인
+            if (time < 10000000000) {
+              date = new Date(time * 1000);
+            } else {
+              date = new Date(time);
+            }
+          } else if (typeof time === 'string') {
+            date = new Date(time);
+          } else {
+            console.warn('유효하지 않은 시간 형식:', time);
+            return null;
+          }
+          
+          // 유효한 날짜인지 확인
+          if (isNaN(date.getTime())) {
+            console.warn('유효하지 않은 날짜가 생성됨:', time);
+            return null;
+          }
+          
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          
+          return `${year}-${month}-${day}`;
+        } catch (error) {
+          console.error('날짜 변환 오류:', error);
+          return null;
+        }
+      };
+      
+      // 스팬 데이터 정렬
       const sortedSpanA = [...ichimokuData.senkouSpanA].sort((a, b) => {
-        const timeA = typeof a.time === 'number' ? a.time : 
-                     typeof a.time === 'string' ? new Date(a.time).getTime() : 0;
-        const timeB = typeof b.time === 'number' ? b.time : 
-                     typeof b.time === 'string' ? new Date(b.time).getTime() : 0;
-        return timeA - timeB;
+        return getTimeAsNumber(a.time) - getTimeAsNumber(b.time);
       });
       
       const sortedSpanB = [...filteredSpanB].sort((a, b) => {
-        const timeA = typeof a.time === 'number' ? a.time : 
-                     typeof a.time === 'string' ? new Date(a.time).getTime() : 0;
-        const timeB = typeof b.time === 'number' ? b.time : 
-                     typeof b.time === 'string' ? new Date(b.time).getTime() : 0;
-        return timeA - timeB;
+        return getTimeAsNumber(a.time) - getTimeAsNumber(b.time);
       });
       
       // Iterate based on the length of the shorter array
@@ -772,33 +872,43 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         const spanB = sortedSpanB[i];
         
         // Check if times match
-        if (spanA.time !== spanB.time) {
-          console.log('Times do not match:', spanA.time, spanB.time);
+        if (getTimeAsNumber(spanA.time) !== getTimeAsNumber(spanB.time)) {
+          console.log('Times do not match:', getTimeAsNumber(spanA.time), getTimeAsNumber(spanB.time));
           continue;
         }
         
         if (spanA.value >= spanB.value) {
           // Bullish zone (Senkou Span A >= Senkou Span B)
-          bullishCloud.push({
-            time: spanA.time,
-            value: spanA.value
-          });
+          const timeA = formatTimeToYYYYMMDD(spanA.time);
+          const timeB = formatTimeToYYYYMMDD(spanB.time);
           
-          bearishCloud.push({
-            time: spanB.time,
-            value: spanB.value
-          });
+          if (timeA && timeB) { // 유효한 날짜 문자열인 경우에만 추가
+            bullishCloud.push({
+              time: timeA,
+              value: spanA.value
+            });
+            
+            bearishCloud.push({
+              time: timeB,
+              value: spanB.value
+            });
+          }
         } else {
           // Bearish zone (Senkou Span A < Senkou Span B)
-          bullishCloud.push({
-            time: spanB.time,
-            value: spanB.value
-          });
+          const timeA = formatTimeToYYYYMMDD(spanA.time);
+          const timeB = formatTimeToYYYYMMDD(spanB.time);
           
-          bearishCloud.push({
-            time: spanA.time,
-            value: spanA.value
-          });
+          if (timeA && timeB) { // 유효한 날짜 문자열인 경우에만 추가
+            bullishCloud.push({
+              time: timeB,
+              value: spanB.value
+            });
+            
+            bearishCloud.push({
+              time: timeA,
+              value: spanA.value
+            });
+          }
         }
       }
       

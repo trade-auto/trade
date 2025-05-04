@@ -249,7 +249,7 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   isRealtimeAPIEnabled,
   data,
   showMA,
-  showIchimoku,
+  showIchimoku = true,
   onChartReady,
 }) => {
   const container = useRef<HTMLDivElement>(null);
@@ -277,6 +277,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   const chikouRef = useRef<ISeriesApi<'Line'> | null>(null);
   const senkouSpanARef = useRef<ISeriesApi<'Line'> | null>(null);
   const senkouSpanBRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bullishCloudRef = useRef<ISeriesApi<'Area'> | null>(null);
+  const bearishCloudRef = useRef<ISeriesApi<'Area'> | null>(null);
 
   const handleResize = useCallback(() => {
     if (container.current && chartRef.current) {
@@ -797,12 +799,43 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   useEffect(() => {
     if (!chartRef.current || !data || data.length === 0) return;
 
-    const ichimokuData = calculateIchimoku(data);
+    console.log('일목균형표 계산 시작. 데이터:', data.length, '개, showIchimoku:', showIchimoku);
 
+    const processedData = [...data]
+      .map(item => {
+        const timeValue = typeof item.time === 'number' 
+          ? item.time 
+          : typeof item.time === 'string' 
+            ? new Date(item.time).getTime() / 1000 
+            : (item.time as any).timestamp || 0;
+        
+        return { 
+          ...item, 
+          _timeValue: timeValue 
+        };
+      })
+      .sort((a, b) => a._timeValue - b._timeValue)
+      .filter((item, index, self) => 
+        index === self.findIndex(t => t._timeValue === item._timeValue)
+      )
+      .map(({ _timeValue, ...rest }) => rest);
+
+    const ichimokuData = calculateIchimoku(processedData);
+    console.log('일목균형표 계산 결과:', 
+      '전환선:', ichimokuData.tenkanSen.length, 
+      '기준선:', ichimokuData.kijunSen.length, 
+      '후행스팬:', ichimokuData.chikouSpan.length,
+      '선행스팬A:', ichimokuData.senkouSpanA.length,
+      '선행스팬B:', ichimokuData.senkouSpanB.length
+    );
+
+    // 시리즈가 없을 경우만 생성
     if (ichimokuData.tenkanSen.length > 0) {
       const chart = chartRef.current;
 
+      // 기존 시리즈 참조가 없으면 새로 생성
       if (!tenkanRef.current) {
+        console.log('일목균형표 시리즈 생성 중...');
         const tenkanSeries = chart.addLineSeries({
           color: '#FF0000',
           lineWidth: 2,
@@ -839,6 +872,131 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
           visible: showIchimoku,
         });
 
+        // 구름대 추가 (선행스팬A와 선행스팬B 사이 영역)
+        const bullishCloudSeries = chart.addAreaSeries({
+          lastValueVisible: false,
+          title: '양운(Bullish Cloud)',
+          topColor: 'rgba(76, 175, 80, 0.2)',
+          bottomColor: 'rgba(76, 175, 80, 0.05)',
+          lineColor: 'rgba(76, 175, 80, 0.5)',
+          lineWidth: 1,
+          visible: showIchimoku,
+        });
+        
+        const bearishCloudSeries = chart.addAreaSeries({
+          lastValueVisible: false,
+          title: '음운(Bearish Cloud)',
+          topColor: 'rgba(255, 82, 82, 0.2)',
+          bottomColor: 'rgba(255, 82, 82, 0.05)',
+          lineColor: 'rgba(255, 82, 82, 0.5)',
+          lineWidth: 1,
+          visible: showIchimoku,
+        });
+        
+        // 구름대 데이터 생성
+        const bullishCloudData: { time: string, value: number }[] = [];
+        const bearishCloudData: { time: string, value: number }[] = [];
+        
+        // 시간 값을 변환하는 함수
+        const getTimeAsNumber = (time: Time): number => {
+          if (typeof time === 'number') return time;
+          if (typeof time === 'string') return new Date(time).getTime();
+          return 0;
+        };
+
+        // 타임스탬프를 'yyyy-mm-dd' 형식으로 변환하는 함수 추가
+        const formatTimestamp = (timestamp: Time): string | null => {
+          let date: Date;
+          
+          try {
+            if (typeof timestamp === 'number') {
+              // 숫자가 초 단위인지 밀리초 단위인지 확인
+              if (timestamp < 10000000000) { // 초 단위 타임스탬프
+                date = new Date(timestamp * 1000);
+              } else { // 밀리초 단위 타임스탬프
+                date = new Date(timestamp);
+              }
+            } else if (typeof timestamp === 'string') {
+              date = new Date(timestamp);
+            } else {
+              return null;
+            }
+            
+            // 유효한 날짜인지 확인
+            if (isNaN(date.getTime())) {
+              console.warn('유효하지 않은 타임스탬프:', timestamp);
+              return null;
+            }
+            
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            
+            return `${yyyy}-${mm}-${dd}`;
+          } catch (error) {
+            console.error('날짜 변환 오류:', error, timestamp);
+            return null;
+          }
+        };
+
+        // 공통 시간대 찾기
+        const timeMap = new Map<string, { spanA?: number, spanB?: number }>();
+        
+        // spanA 데이터 맵에 추가
+        ichimokuData.senkouSpanA.forEach(item => {
+          const timeStr = String(item.time);
+          if (!timeMap.has(timeStr)) {
+            timeMap.set(timeStr, { spanA: item.value });
+          } else {
+            const entry = timeMap.get(timeStr);
+            if (entry) entry.spanA = item.value;
+          }
+        });
+        
+        // spanB 데이터 맵에 추가
+        ichimokuData.senkouSpanB.forEach(item => {
+          const timeStr = String(item.time);
+          if (!timeMap.has(timeStr)) {
+            timeMap.set(timeStr, { spanB: item.value });
+          } else {
+            const entry = timeMap.get(timeStr);
+            if (entry) entry.spanB = item.value;
+          }
+        });
+        
+        // 맵을 배열로 변환하고 시간으로 정렬
+        const sortedEntries = [...timeMap.entries()]
+          .filter(([_, data]) => data.spanA !== undefined && data.spanB !== undefined)
+          .sort((a, b) => {
+            const timeA = getTimeAsNumber(a[0] as unknown as Time);
+            const timeB = getTimeAsNumber(b[0] as unknown as Time);
+            return timeA - timeB;
+          });
+        
+        // 구름대 데이터 생성
+        sortedEntries.forEach(([timeStr, data]) => {
+          if (data.spanA !== undefined && data.spanB !== undefined) {
+            const formattedTime = formatTimestamp(timeStr as unknown as Time);
+            if (formattedTime === null) {
+              // 유효하지 않은 시간은 건너뜀
+              return;
+            }
+            
+            if (data.spanA >= data.spanB) {
+              // 양운(불리시 구름대): 스팬A가 위에 있을 때
+              bullishCloudData.push({ time: formattedTime, value: data.spanA });
+              bearishCloudData.push({ time: formattedTime, value: data.spanB });
+            } else {
+              // 음운(베리시 구름대): 스팬B가 위에 있을 때
+              bullishCloudData.push({ time: formattedTime, value: data.spanB });
+              bearishCloudData.push({ time: formattedTime, value: data.spanA });
+            }
+          }
+        });
+        
+        bullishCloudSeries.setData(bullishCloudData);
+        bearishCloudSeries.setData(bearishCloudData);
+
         tenkanSeries.setData(ichimokuData.tenkanSen);
         kijunSeries.setData(ichimokuData.kijunSen);
         chikouSeries.setData(ichimokuData.chikouSpan);
@@ -850,7 +1008,12 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         chikouRef.current = chikouSeries;
         senkouSpanARef.current = senkouSpanASeries;
         senkouSpanBRef.current = senkouSpanBSeries;
-      } else {
+        bullishCloudRef.current = bullishCloudSeries;
+        bearishCloudRef.current = bearishCloudSeries;
+      }
+      // 기존 시리즈 참조가 있으면 데이터 업데이트
+      else {
+        console.log('일목균형표 데이터 업데이트 중...');
         tenkanRef.current.setData(ichimokuData.tenkanSen);
         kijunRef.current && kijunRef.current.setData(ichimokuData.kijunSen);
         chikouRef.current && chikouRef.current.setData(ichimokuData.chikouSpan);
@@ -859,6 +1022,33 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       }
     }
   }, [data, showIchimoku]);
+
+  // 일목균형표 가시성 제어를 위한 별도 useEffect
+  useEffect(() => {
+    console.log('일목균형표 가시성 업데이트:', showIchimoku);
+    
+    if (tenkanRef.current) {
+      tenkanRef.current.applyOptions({ visible: !!showIchimoku });
+    }
+    if (kijunRef.current) {
+      kijunRef.current.applyOptions({ visible: !!showIchimoku });
+    }
+    if (chikouRef.current) {
+      chikouRef.current.applyOptions({ visible: !!showIchimoku });
+    }
+    if (senkouSpanARef.current) {
+      senkouSpanARef.current.applyOptions({ visible: !!showIchimoku });
+    }
+    if (senkouSpanBRef.current) {
+      senkouSpanBRef.current.applyOptions({ visible: !!showIchimoku });
+    }
+    if (bullishCloudRef.current) {
+      bullishCloudRef.current.applyOptions({ visible: !!showIchimoku });
+    }
+    if (bearishCloudRef.current) {
+      bearishCloudRef.current.applyOptions({ visible: !!showIchimoku });
+    }
+  }, [showIchimoku]);
 
   return (
     <div
