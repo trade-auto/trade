@@ -22,6 +22,10 @@ export interface Trade {
   mode: 'test' | 'real';
   status: 'open' | 'closed';  // 거래 상태 추가
   isAutomatic?: boolean;
+  positionSize?: number;      // 포지션 크기 추가
+  stopLoss?: number;          // 손절가 추가
+  takeProfit?: number;        // 익절가 추가
+  exitReason?: string;        // 청산 이유 추가
   metadata?: {
     entryMa360?: number;
     exitMa360?: number;
