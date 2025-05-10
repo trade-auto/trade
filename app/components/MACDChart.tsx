@@ -188,9 +188,7 @@ const calculateMACD = (data: CandlestickData[], shortPeriod = 12, longPeriod = 2
 
 const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const stochContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const stochChartRef = useRef<IChartApi | null>(null);
   const macdRef = useRef<ISeriesApi<'Line'> | null>(null);
   const signalRef = useRef<ISeriesApi<'Line'> | null>(null);
   const histogramRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -199,15 +197,13 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
   const dLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const rsiLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const candlestickRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const overboughtLineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const oversoldLineRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   useEffect(() => {
-    if (!chartContainerRef.current || !stochContainerRef.current) return;
+    if (!chartContainerRef.current) return;
 
-    // MACD 차트 생성 (상단 차트)
+    // 통합 차트 생성
     const chart = createChart(chartContainerRef.current, {
-      height: 300,
+      height: height,
       layout: {
         background: { color: '#ffffff' },
         textColor: '#333',
@@ -234,10 +230,10 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
         },
         borderVisible: true,
       },
-      leftPriceScale: { // 왼쪽 스케일 (MACD와 RSI용)
+      leftPriceScale: { // 왼쪽 스케일 (지표용)
         visible: true,
         scaleMargins: {
-          top: 0.6, // 상단에 MACD를 위한 공간
+          top: 0.6, // 상단에 지표를 위한 공간
           bottom: 0.1,
         },
         borderVisible: true,
@@ -304,7 +300,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       priceScaleId: 'left',
     });
 
-    // RSI 라인 추가 (상단 차트에 추가)
+    // RSI 라인 추가
     rsiLineRef.current = chart.addLineSeries({
       color: '#9C27B0', // 보라색
       lineWidth: 2,
@@ -312,7 +308,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       priceScaleId: 'left',
     });
 
-    // RSI 과매수/과매도 라인 (상단 차트에 추가)
+    // RSI 과매수/과매도 라인
     const rsiOverboughtLine = chart.addLineSeries({
       color: '#FF5252',
       lineWidth: 1,
@@ -338,6 +334,38 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       priceScaleId: 'left',
     });
 
+    // 스토캐스틱 라인 추가
+    kLineRef.current = chart.addLineSeries({
+      color: '#1E88E5', // 파란색
+      lineWidth: 2,
+      title: 'Stoch %K',
+      priceScaleId: 'left',
+    });
+
+    dLineRef.current = chart.addLineSeries({
+      color: '#FF9800', // 주황색
+      lineWidth: 2,
+      title: 'Stoch %D',
+      priceScaleId: 'left',
+    });
+
+    // 스토캐스틱 과매수/과매도 라인
+    const stochOverboughtLine = chart.addLineSeries({
+      color: '#FF5252',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: 'Stoch 80',
+      priceScaleId: 'left',
+    });
+
+    const stochOversoldLine = chart.addLineSeries({
+      color: '#4CAF50',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: 'Stoch 20',
+      priceScaleId: 'left',
+    });
+
     // MACD 0선
     const macdZeroLine = chart.addLineSeries({
       color: '#888888',
@@ -347,68 +375,15 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       priceScaleId: 'left',
     });
 
-    // 스토캐스틱 차트 생성 (하단 차트)
-    const stochChart = createChart(stochContainerRef.current, {
-      height: 200,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333',
-      },
-      grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
-      },
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
-        },
-      },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: true,
-        tickMarkFormatter: (time: any) => {
-          const date = new Date(time * 1000);
-          const hours = date.getHours().toString().padStart(2, '0');
-          const minutes = date.getMinutes().toString().padStart(2, '0');
-          const seconds = date.getSeconds().toString().padStart(2, '0');
-          return `${hours}:${minutes}:${seconds}`;
-        },
-      },
-    });
-    stochChartRef.current = stochChart;
-
-    // 스토캐스틱 %K 라인
-    kLineRef.current = stochChart.addLineSeries({
-      color: '#2196F3',
-      lineWidth: 2,
-      title: '%K',
-    });
-
-    // 스토캐스틱 %D 라인
-    dLineRef.current = stochChart.addLineSeries({
-      color: '#FF9800',
-      lineWidth: 2,
-      title: '%D',
-    });
-
-    // 과매수 라인 (80%)
-    const overboughtLine = stochChart.addLineSeries({
-      color: '#FF5252',
+    // 매수/매도 신호 마커 시리즈
+    markerSeriesRef.current = chart.addLineSeries({
+      color: '#000000',
       lineWidth: 1,
-      lineStyle: 2,
-      title: '과매수 (80%)',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+      priceScaleId: 'right',
     });
-    overboughtLineRef.current = overboughtLine;
-
-    // 과매도 라인 (20%)
-    const oversoldLine = stochChart.addLineSeries({
-      color: '#4CAF50',
-      lineWidth: 1,
-      lineStyle: 2,
-      title: '과매도 (20%)',
-    });
-    oversoldLineRef.current = oversoldLine;
 
     // 데이터 업데이트
     if (data.length > 0) {
@@ -456,15 +431,6 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
         value: d.histogram,
         color: d.histogram >= 0 ? '#26a69a' : '#ef5350',
       }));
-
-      // 매수/매도 신호 마커
-      markerSeriesRef.current = chart.addLineSeries({
-        color: '#000000',
-        lineWidth: 1,
-        lastValueVisible: false,
-        priceLineVisible: false,
-        crosshairMarkerVisible: false,
-      });
 
       // 스토캐스틱 데이터
       const kLine = stochData.map(d => ({
@@ -542,80 +508,92 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
         { time: timeRange.to, value: (20 - 50) * (macdRange / 50) },
       ];
 
+      // RSI 값의 범위 조정 (MACD와 동일 공간에 표시)
+      const scaledRsiData = rsiData.map(d => ({
+        time: d.time,
+        value: (d.value - 50) * (macdRange / 50)  // RSI를 MACD 스케일로 조정
+      }));
+      
+      // RSI 과매수/과매도 라인도 같은 스케일로 조정
+      const scaledRsiOverboughtData = [
+        { time: timeRange.from, value: (70 - 50) * (macdRange / 50) },
+        { time: timeRange.to, value: (70 - 50) * (macdRange / 50) },
+      ];
+      
+      const scaledRsiOversoldData = [
+        { time: timeRange.from, value: (30 - 50) * (macdRange / 50) },
+        { time: timeRange.to, value: (30 - 50) * (macdRange / 50) },
+      ];
+      
+      const scaledRsiMidData = [
+        { time: timeRange.from, value: 0 }, // 50에서 50을 빼면 0
+        { time: timeRange.to, value: 0 },
+      ];
+
+      // 매수/매도 신호 마커
+      const markers = macdData.macdData
+        .filter(d => d.tradeSignal)
+        .map(d => ({
+          time: d.time as Time,
+          position: d.tradeSignal === 'buy' ? 'belowBar' as const : 'aboveBar' as const,
+          color: d.tradeSignal === 'buy' ? '#4CAF50' : '#FF5252',
+          shape: d.tradeSignal === 'buy' ? 'arrowUp' as const : 'arrowDown' as const,
+          text: d.tradeSignal === 'buy' ? '매수' : '매도',
+        }));
+
+      // 교차 신호 마커 추가
+      const crossMarkers = macdData.crossSignals.map(signal => ({
+        time: signal.time as Time,
+        position: signal.type === 'cross_buy' ? 'belowBar' as const : 'aboveBar' as const,
+        color: signal.type === 'cross_buy' ? '#00FFAA' : '#FF00AA',
+        shape: signal.type === 'cross_buy' ? 'arrowUp' as const : 'arrowDown' as const,
+        text: signal.type === 'cross_buy' ? `MACD 매수(${signal.level})` : `MACD 매도(${signal.level})`,
+        size: 2
+      }));
+
+      // 모든 마커 합치기
+      const allMarkers = [...markers, ...crossMarkers];
+      
+      // 시간 순서로 마커 정렬
+      allMarkers.sort((a, b) => {
+        const timeA = typeof a.time === 'number' ? a.time : Number(a.time);
+        const timeB = typeof b.time === 'number' ? b.time : Number(b.time);
+        return timeA - timeB;
+      });
+
       // 데이터 설정
       if (macdRef.current) macdRef.current.setData(macdLine);
       if (signalRef.current) signalRef.current.setData(signalLine);
       if (histogramRef.current) histogramRef.current.setData(histogram);
-      if (rsiLineRef.current) rsiLineRef.current.setData(rsiData);
-      rsiOverboughtLine.setData(rsiOverboughtData);
-      rsiOversoldLine.setData(rsiOversoldData);
-      rsiMidLine.setData(rsiMidData);
+      if (rsiLineRef.current) rsiLineRef.current.setData(scaledRsiData);
+      if (kLineRef.current) kLineRef.current.setData(scaledKLine);
+      if (dLineRef.current) dLineRef.current.setData(scaledDLine);
+      if (markerSeriesRef.current) markerSeriesRef.current.setMarkers(allMarkers);
+      
+      rsiOverboughtLine.setData(scaledRsiOverboughtData);
+      rsiOversoldLine.setData(scaledRsiOversoldData);
+      rsiMidLine.setData(scaledRsiMidData);
       macdZeroLine.setData(macdZeroData);
-
-      // 스토캐스틱 데이터 설정 (상단 차트)
-      if (kLineRef.current) kLineRef.current.setData(kLine);
-      if (dLineRef.current) dLineRef.current.setData(dLine);
-      if (overboughtLineRef.current) overboughtLineRef.current.setData(stochOverboughtData);
-      if (oversoldLineRef.current) oversoldLineRef.current.setData(stochOversoldData);
+      stochOverboughtLine.setData(scaledStochOverboughtData);
+      stochOversoldLine.setData(scaledStochOversoldData);
 
       chart.timeScale().fitContent();
-      stochChartRef.current?.timeScale().fitContent();
 
-      // 차트 동기화
-      chart.timeScale().subscribeVisibleTimeRangeChange(() => {
-        const range = chart.timeScale().getVisibleRange();
-        if (range) {
-          stochChart.timeScale().setVisibleRange(range);
-          
-          // 범위를 스토어에 저장하여 다른 차트와 동기화
-          useUpbitStore.setState({ chartTimeRange: range });
-        }
-      });
-
-      stochChart.timeScale().subscribeVisibleTimeRangeChange(() => {
-        const range = stochChart.timeScale().getVisibleRange();
-        if (range) {
-          chart.timeScale().setVisibleRange(range);
-          
-          // 범위를 스토어에 저장하여 다른 차트와 동기화
-          useUpbitStore.setState({ chartTimeRange: range });
-        }
-      });
-      
       // 업비트 스토어에서 시간 범위 불러오기
       const upbitStore = useUpbitStore.getState();
       if (upbitStore.chartTimeRange) {
         chart.timeScale().setVisibleRange(upbitStore.chartTimeRange);
-        stochChart.timeScale().setVisibleRange(upbitStore.chartTimeRange);
       }
 
-      // RSI 차트의 시각적 범위 설정
-      chart.applyOptions({
-        rightPriceScale: {
-          visible: true,
-          autoScale: true,
-          scaleMargins: {
-            top: 0.1,  // RSI 값이 최대 100이므로 여유 공간 확보
-            bottom: 0.1, // RSI 값이 최소 0이므로 여유 공간 확보
-          },
+      // 차트 시간 범위 변경 시 이벤트
+      chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+        if (range) {
+          // 시간 범위를 스토어에 저장하여 다른 차트와 동기화
+          useUpbitStore.setState({ chartTimeRange: range });
         }
       });
-      
-      // RSI 값의 범위를 0-100으로 고정
-      rsiLineRef.current?.applyOptions({
-        autoscaleInfoProvider: () => ({
-          priceRange: {
-            minValue: 0,
-            maxValue: 100
-          },
-          margins: {
-            above: 10,
-            below: 10
-          }
-        })
-      });
 
-      // 왼쪽 스케일(MACD와 RSI)의 가시 범위 설정
+      // 왼쪽 스케일(MACD, RSI, 스토캐스틱)의 가시 범위 설정
       chart.priceScale('left').applyOptions({
         autoScale: false,
         scaleMargins: {
@@ -623,48 +601,30 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
           bottom: 0.4,
         }
       });
-
-      // RSI 값의 범위 조정 (MACD와 동일 공간에 표시)
-      const scaledRsiData = rsiData.map(d => ({
-        time: d.time,
-        value: (d.value - 50) * (macdRange / 50)  // RSI를 MACD 스케일로 조정
-      }));
-      
-      if (rsiLineRef.current) {
-        rsiLineRef.current.setData(scaledRsiData);
-      
-        // RSI 과매수/과매도 라인도 같은 스케일로 조정
-        const scaledRsiOverboughtData = [
-          { time: timeRange.from, value: (70 - 50) * (macdRange / 50) },
-          { time: timeRange.to, value: (70 - 50) * (macdRange / 50) },
-        ];
-      
-        const scaledRsiOversoldData = [
-          { time: timeRange.from, value: (30 - 50) * (macdRange / 50) },
-          { time: timeRange.to, value: (30 - 50) * (macdRange / 50) },
-        ];
-      
-        const scaledRsiMidData = [
-          { time: timeRange.from, value: 0 }, // 50에서 50을 빼면 0
-          { time: timeRange.to, value: 0 },
-        ];
-      
-        rsiOverboughtLine.setData(scaledRsiOverboughtData);
-        rsiOversoldLine.setData(scaledRsiOversoldData);
-        rsiMidLine.setData(scaledRsiMidData);
-      }
     }
 
+    // 창 크기 조절 시 차트 크기 조정
+    const handleResize = () => {
+      if (chartRef.current && chartContainerRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
     return () => {
-      chart.remove();
-      stochChartRef.current?.remove();
+      window.removeEventListener('resize', handleResize);
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
     };
   }, [data, height]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', height: '100%' }}>
-      <div ref={chartContainerRef} style={{ width: '100%', height: '300px' }} />
-      <div ref={stochContainerRef} style={{ width: '100%', height: '200px' }} />
+      <div ref={chartContainerRef} style={{ width: '100%', height: `${height}px` }} />
     </div>
   );
 };
