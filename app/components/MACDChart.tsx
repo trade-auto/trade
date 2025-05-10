@@ -186,7 +186,7 @@ const calculateMACD = (data: CandlestickData[], shortPeriod = 12, longPeriod = 2
   };
 };
 
-const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
+const MACDChart: React.FC<MACDChartProps> = ({ data, height = 600 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const macdRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -233,7 +233,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       leftPriceScale: { // 왼쪽 스케일 (지표용)
         visible: true,
         scaleMargins: {
-          top: 0.6, // 상단에 지표를 위한 공간
+          top: 0.7, // 상단에 지표를 위한 공간 - 겹침 문제 해결을 위해 값 증가 (기존값 0.6에서 0.7로 수정)
           bottom: 0.1,
         },
         borderVisible: true,
@@ -553,7 +553,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
 
       // 모든 마커 합치기
       const allMarkers = [...markers, ...crossMarkers];
-      
+
       // 시간 순서로 마커 정렬
       allMarkers.sort((a, b) => {
         const timeA = typeof a.time === 'number' ? a.time : Number(a.time);
@@ -578,7 +578,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       stochOversoldLine.setData(scaledStochOversoldData);
 
       chart.timeScale().fitContent();
-
+      
       // 업비트 스토어에서 시간 범위 불러오기
       const upbitStore = useUpbitStore.getState();
       if (upbitStore.chartTimeRange) {
