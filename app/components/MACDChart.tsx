@@ -36,6 +36,57 @@ const calculateStochastic = (data: CandlestickData[], kPeriod = 20, dPeriod = 5,
   return results;
 };
 
+// RSI 계산 함수
+const calculateRSI = (data: CandlestickData[], period = 14) => {
+  const results: { time: Time; value: number }[] = [];
+  
+  // RSI 계산을 위해서는 최소 period+1개의 데이터가 필요합니다
+  if (data.length <= period) {
+    return results;
+  }
+  
+  // 종가 배열 생성
+  const closes = data.map(d => d.close);
+  
+  for (let i = period; i < closes.length; i++) {
+    const currentPrices = closes.slice(i - period, i + 1);
+    let gains = 0;
+    let losses = 0;
+    
+    // 가격 변화 계산
+    for (let j = 1; j <= period; j++) {
+      const change = currentPrices[currentPrices.length - j] - currentPrices[currentPrices.length - j - 1];
+      if (change >= 0) {
+        gains += change;
+      } else {
+        losses -= change; // 손실은 양수로 변환
+      }
+    }
+    
+    // 평균 이득과 손실 계산
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    
+    // 상대강도(RS) 계산
+    let rs = 0;
+    let rsi = 50; // 기본값
+    
+    if (avgLoss === 0) {
+      rsi = 100; // 손실이 없으면 RSI는 100
+    } else {
+      rs = avgGain / avgLoss;
+      rsi = 100 - (100 / (1 + rs));
+    }
+    
+    results.push({
+      time: data[i].time as Time,
+      value: rsi
+    });
+  }
+  
+  return results;
+};
+
 const calculateMACD = (data: CandlestickData[], shortPeriod = 12, longPeriod = 26, signalPeriod = 9) => {
   const closes = data.map(d => d.close);
   
@@ -146,6 +197,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
   const markerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const kLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const dLineRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const rsiLineRef = useRef<ISeriesApi<'Line'> | null>(null); // RSI 라인 참조 추가
 
   useEffect(() => {
     if (!chartContainerRef.current || !stochContainerRef.current) return;
@@ -234,6 +286,32 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       priceScaleId: 'right',
     });
 
+    // RSI 라인 추가
+    rsiLineRef.current = chart.addLineSeries({
+      color: '#7E57C2', // 보라색
+      lineWidth: 2,
+      title: 'RSI(14)',
+      priceScaleId: 'right',
+      lastValueVisible: true,
+    });
+
+    // RSI 30, 70 라인 추가 (과매도/과매수 레벨)
+    const rsiOverboughtLine = chart.addLineSeries({
+      color: '#FF5252',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: '과매수 (70)',
+      priceScaleId: 'right',
+    });
+
+    const rsiOversoldLine = chart.addLineSeries({
+      color: '#4CAF50',
+      lineWidth: 1,
+      lineStyle: 2,
+      title: '과매도 (30)',
+      priceScaleId: 'right',
+    });
+
     // 히스토그램의 스케일 마진 설정 - 중앙 정렬 및 적정 스케일 조정
     chart.priceScale('right').applyOptions({
       scaleMargins: {
@@ -289,6 +367,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
     if (data.length > 0) {
       const macdData = calculateMACD(data);
       const stochData = calculateStochastic(data);
+      const rsiData = calculateRSI(data); // RSI 데이터 계산
 
       const macdLine = macdData.macdData.map(d => ({
         time: d.time as Time,
@@ -369,8 +448,8 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
 
       // 과매수/과매도 라인 데이터
       const timeRange = {
-        from: stochData[0].time as Time,
-        to: stochData[stochData.length - 1].time as Time,
+        from: data[0].time as Time,
+        to: data[data.length - 1].time as Time,
       };
 
       const overboughtData = [
@@ -381,6 +460,17 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       const oversoldData = [
         { time: timeRange.from, value: 20 },
         { time: timeRange.to, value: 20 },
+      ];
+
+      // RSI 과매수/과매도 라인 설정
+      const rsiOverboughtData = [
+        { time: timeRange.from, value: 70 },
+        { time: timeRange.to, value: 70 },
+      ];
+
+      const rsiOversoldData = [
+        { time: timeRange.from, value: 30 },
+        { time: timeRange.to, value: 30 },
       ];
 
       // MACD 값의 최대값 및 최소값 찾기
@@ -688,8 +778,11 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
       if (markerSeriesRef.current) markerSeriesRef.current.setMarkers(allMarkers);
       if (kLineRef.current) kLineRef.current.setData(kLine);
       if (dLineRef.current) dLineRef.current.setData(dLine);
+      if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); // RSI 데이터 설정
       overboughtLine.setData(overboughtData);
       oversoldLine.setData(oversoldData);
+      rsiOverboughtLine.setData(rsiOverboughtData); // RSI 과매수 라인 설정
+      rsiOversoldLine.setData(rsiOversoldData); // RSI 과매도 라인 설정
 
       chart.timeScale().fitContent();
       stochChart.timeScale().fitContent();
@@ -784,4 +877,4 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 400 }) => {
   );
 };
 
-export default MACDChart; 
+export default MACDChart;
