@@ -186,8 +186,8 @@ const calculateMACD = (data: CandlestickData[], shortPeriod = 12, longPeriod = 2
   };
 };
 
-const MACDChart: React.FC<MACDChartProps> = ({ data, height = 600 }) => {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
+const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
+  const chartContainerRef = useRef<HTMLDivElement>(null);4
   const chartRef = useRef<IChartApi | null>(null);
   const macdRef = useRef<ISeriesApi<'Line'> | null>(null);
   const signalRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -273,7 +273,38 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 600 }) => {
       priceScaleId: 'right',
       title: '30 EMA',
     });
+    const ema48Series = chart.addLineSeries({
+      color: '#00FFFF', // 밝은 청록색
+      lineWidth: 1,
+      priceScaleId: 'right',
+      title: '48 EMA',
+    });
+    const ema60Series = chart.addLineSeries({
+      color: '#FB0BFF',   //
+      lineWidth: 1,
+      priceScaleId: 'right',
+      title: '60 EMA',
+    });
+    const ema90Series = chart.addLineSeries({
+      color: '#FB0BFF',   //
+      lineWidth: 1,
+      priceScaleId: 'right',
+      title: '90 EMA',
+    });
 
+
+    const ema120Series = chart.addLineSeries({
+      color: '#FF00FF', // 밝은 핑크색
+      lineWidth: 1,
+      priceScaleId: 'right',
+      title: '120 EMA',
+    });
+    const ema240Series = chart.addLineSeries({
+      color: '#FB0BFF',   //
+      lineWidth: 1,
+      priceScaleId: 'right',
+      title: '240 EMA',
+    });
     // MACD 라인
     macdRef.current = chart.addLineSeries({
       color: '#2196F3', // 파란색
@@ -407,11 +438,19 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 600 }) => {
       const ema5 = calculateEMA(closes, 5);
       const ema20 = calculateEMA(closes, 20);
       const ema30 = calculateEMA(closes, 30);
-      
+      const ema48 = calculateEMA(closes, 48);   
+      const ema60 = calculateEMA(closes, 60);
+      const ema90 = calculateEMA(closes, 90);
+      const ema120 = calculateEMA(closes, 120);
+      const ema240 = calculateEMA(closes, 240);
       ema5Series.setData(ema5);
       ema20Series.setData(ema20);
       ema30Series.setData(ema30);
-
+      ema48Series.setData(ema48);
+      ema60Series.setData(ema60);
+      ema90Series.setData(ema90);
+      ema120Series.setData(ema120);
+      ema240Series.setData(ema240);
       const macdData = calculateMACD(data);
       const stochData = calculateStochastic(data);
       const rsiData = calculateRSI(data);
