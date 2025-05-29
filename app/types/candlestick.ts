@@ -119,7 +119,9 @@ export interface MASettings {
   ten: boolean;
   twenty: boolean;
   thirty: boolean;
+  fortyEight: boolean;
   sixty: boolean;
+  ninety: boolean;
   oneTwenty: boolean;
   twoForty: boolean;
   threeHundredSixty: boolean;

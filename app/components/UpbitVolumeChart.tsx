@@ -99,6 +99,16 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
   const [error, setError] = useState<string | null>(null);
   const [candleData, setCandleData] = useState<CandleData[]>([]);
   const [retryCount, setRetryCount] = useState(0);
+  // 이동평균선 표시 여부 상태 추가
+  const [showMA, setShowMA] = useState({
+    ma5: true,
+    ma10: true, 
+    ma20: true,
+    ma30: true,
+    ma60: true,
+    ema48: true,
+    ema120: true
+  });
   const [settings, setSettings] = useState<ChartSettings>(() => {
     // localStorage에서 설정값 불러오기
     if (typeof window !== 'undefined') {
@@ -111,6 +121,34 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
   
   // 차트 객체 레퍼런스
   const chartRef = useRef<any>(null);
+  
+  // 이동평균선 시리즈 레퍼런스 추가
+  const seriesRefs = useRef<{
+    ma5: any;
+    ma10: any;
+    ma20: any;
+    ma30: any;
+    ma60: any;
+    ema48: any;
+    ema120: any;
+    // MACD 차트와 볼륨 차트를 위한 레퍼런스 추가
+    macdEma48: any;
+    macdEma120: any;
+    volumeEma48: any;
+    volumeEma120: any;
+  }>({
+    ma5: null,
+    ma10: null, 
+    ma20: null,
+    ma30: null,
+    ma60: null,
+    ema48: null,
+    ema120: null,
+    macdEma48: null,
+    macdEma120: null,
+    volumeEma48: null,
+    volumeEma120: null
+  });
 
   // 설정값 저장 함수
   const saveSettings = (newSettings: ChartSettings) => {
@@ -125,6 +163,14 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
       [key]: value
     };
     saveSettings(newSettings);
+  };
+
+  // 이동평균선 표시 설정 변경 핸들러
+  const handleMAChange = (key: string) => {
+    setShowMA(prev => ({
+      ...prev,
+      [key]: !prev[key as keyof typeof prev]
+    }));
   };
 
   // 캔들 데이터 가져오기
@@ -296,21 +342,23 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
     try {
       // 차트 컨테이너 스타일 설정
       chartContainerRef.current.style.position = 'relative';
-      chartContainerRef.current.style.height = `${height}px`;
-      chartContainerRef.current.style.overflow = 'auto';
+      chartContainerRef.current.style.height = `${Math.floor(height * 0.6) + Math.floor(height * 0.2) + Math.floor(height * 0.2) + 60}px`;
+      chartContainerRef.current.style.overflow = 'visible';
 
       // 차트 3개 생성을 위한 컨테이너 추가
       chartContainerRef.current.innerHTML = `
-        <div id="candle-chart" style="width:100%; height:${height * 0.6}px; margin-bottom:12px;"></div>
-        <div id="macd-chart" style="width:100%; height:${height * 0.2}px; margin-bottom:12px;"></div>
-        <div id="volume-chart" style="width:100%; height:${height * 0.2 - 24}px;"></div>
+        <div id="chart-wrapper" style="width:100%; position:relative; overflow:visible; display:flex; flex-direction:column; gap:30px;">
+          <div id="candle-chart" style="width:100%; height:${Math.floor(height * 0.6)}px;"></div>
+          <div id="macd-chart" style="width:100%; height:${Math.floor(height * 0.2)}px;"></div>
+          <div id="volume-chart" style="width:100%; height:${Math.floor(height * 0.2)}px;"></div>
+        </div>
       `;
 
-      // 1. 캔들 차트 생성
+      // 캔들 차트 생성
       const candleChartElement = document.getElementById('candle-chart');
       const candleChart = createChart(candleChartElement!, {
         width: chartContainerRef.current.clientWidth,
-        height: height * 0.6,
+        height: Math.floor(height * 0.6),
         layout: {
           background: { color: '#2B2B43' },
           textColor: '#D9D9D9',
@@ -342,11 +390,11 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         },
       });
 
-      // 2. MACD 차트 생성
+      // MACD 차트 생성
       const macdChartElement = document.getElementById('macd-chart');
       const macdChart = createChart(macdChartElement!, {
         width: chartContainerRef.current.clientWidth,
-        height: height * 0.2,
+        height: Math.floor(height * 0.2),
         layout: {
           background: { color: '#2B2B43' },
           textColor: '#D9D9D9',
@@ -378,11 +426,11 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         },
       });
 
-      // 3. 볼륨 차트 생성
+      // 볼륨 차트 생성
       const volumeChartElement = document.getElementById('volume-chart');
       const volumeChart = createChart(volumeChartElement!, {
         width: chartContainerRef.current.clientWidth,
-        height: height * 0.2 - 24,
+        height: Math.floor(height * 0.2),
         layout: {
           background: { color: '#2B2B43' },
           textColor: '#D9D9D9',
@@ -475,6 +523,8 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         ma20: '#800080',    // 보라색
         ma30: '#FFA500',    // 주황색
         ma60: '#008000',    // 녹색
+        ema48: '#00FFFF',   // 밝은 청록색
+        ema120: '#FF00FF',  // 밝은 핑크색
       };
 
       // 이동평균선 시리즈 생성
@@ -486,7 +536,9 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         color: maColors.ma5,
         lineWidth: 2,
         title: '5 이평선',
+        visible: showMA.ma5
       });
+      seriesRefs.current.ma5 = ma5Series;
 
       // 10일 이동평균선
       const ma10Data = calculateSMA(closePrices, 10);
@@ -494,7 +546,9 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         color: maColors.ma10,
         lineWidth: 2,
         title: '10 이평선',
+        visible: showMA.ma10
       });
+      seriesRefs.current.ma10 = ma10Series;
 
       // 20일 이동평균선
       const ma20Data = calculateSMA(closePrices, 20);
@@ -502,7 +556,9 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         color: maColors.ma20,
         lineWidth: 2,
         title: '20 이평선',
+        visible: showMA.ma20
       });
+      seriesRefs.current.ma20 = ma20Series;
 
       // 30일 이동평균선
       const ma30Data = calculateSMA(closePrices, 30);
@@ -510,7 +566,9 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         color: maColors.ma30,
         lineWidth: 2,
         title: '30 이평선',
+        visible: showMA.ma30
       });
+      seriesRefs.current.ma30 = ma30Series;
 
       // 60일 이동평균선
       const ma60Data = calculateSMA(closePrices, 60);
@@ -518,7 +576,31 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         color: maColors.ma60,
         lineWidth: 2,
         title: '60 이평선',
+        visible: showMA.ma60
       });
+      seriesRefs.current.ma60 = ma60Series;
+
+      // 48일 지수 이동평균선 (EMA) 추가
+      const ema48Data = calculateEMA(closePrices, 48);
+      const ema48Series = candleChart.addLineSeries({
+        color: maColors.ema48,
+        lineWidth: 4,        // 더 두꺼운 선
+        lineType: 0,         // 실선 타입
+        title: '48 EMA',
+        visible: showMA.ema48
+      });
+      seriesRefs.current.ema48 = ema48Series;
+
+      // 120일 지수 이동평균선 (EMA) 추가
+      const ema120Data = calculateEMA(closePrices, 120);
+      const ema120Series = candleChart.addLineSeries({
+        color: maColors.ema120,
+        lineWidth: 4,        // 더 두꺼운 선
+        lineType: 0,         // 실선 타입
+        title: '120 EMA',
+        visible: showMA.ema120
+      });
+      seriesRefs.current.ema120 = ema120Series;
 
       // 캔들 데이터 설정
       candleSeries.setData(candleData.map(d => ({
@@ -565,6 +647,22 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         })).filter(item => !isNaN(item.value))
       );
 
+      // 48일 지수 이동평균선 (EMA) 데이터 설정
+      ema48Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: ema48Data[i]
+        })).filter(item => !isNaN(item.value))
+      );
+
+      // 120일 지수 이동평균선 (EMA) 데이터 설정
+      ema120Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: ema120Data[i]
+        })).filter(item => !isNaN(item.value))
+      );
+
       // 볼륨 데이터 설정
       volumeSeries.setData(candleData.map(d => ({
         time: d.time,
@@ -590,6 +688,79 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
         value: histogram[i] || 0,
         color: (histogram[i] || 0) >= 0 ? '#26a69a' : '#ef5350'
       })));
+
+      // MACD 차트에 48EMA와 120EMA 추가
+      const macdEma48Series = macdChart.addLineSeries({
+        color: maColors.ema48,
+        lineWidth: 3,
+        lineType: 0,
+        title: '48 EMA (MACD)',
+        visible: showMA.ema48
+      });
+      seriesRefs.current.macdEma48 = macdEma48Series;
+      
+      const macdEma120Series = macdChart.addLineSeries({
+        color: maColors.ema120,
+        lineWidth: 3,
+        lineType: 0,
+        title: '120 EMA (MACD)',
+        visible: showMA.ema120
+      });
+      seriesRefs.current.macdEma120 = macdEma120Series;
+      
+      // MACD 차트에 48 EMA 데이터 설정
+      macdEma48Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: macdLine[i] || 0
+        }))
+      );
+      
+      // MACD 차트에 120 EMA 데이터 설정
+      macdEma120Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: macdLine[i] || 0
+        }))
+      );
+      
+      // 볼륨 차트에 48EMA와 120EMA 추가
+      const volumeEma48Series = volumeChart.addLineSeries({
+        color: maColors.ema48,
+        lineWidth: 3,
+        lineType: 0,
+        title: '48 EMA (볼륨)',
+        visible: showMA.ema48
+      });
+      seriesRefs.current.volumeEma48 = volumeEma48Series;
+      
+      const volumeEma120Series = volumeChart.addLineSeries({
+        color: maColors.ema120,
+        lineWidth: 3,
+        lineType: 0,
+        title: '120 EMA (볼륨)',
+        visible: showMA.ema120
+      });
+      seriesRefs.current.volumeEma120 = volumeEma120Series;
+      
+      // 볼륨 차트에 48 EMA 데이터 설정 - 볼륨 데이터 기반으로 이동평균선 계산
+      const volumeValues = candleData.map(d => d.volume);
+      const volumeEma48Data = calculateEMA(volumeValues, 48);
+      volumeEma48Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: volumeEma48Data[i] || 0
+        }))
+      );
+      
+      // 볼륨 차트에 120 EMA 데이터 설정
+      const volumeEma120Data = calculateEMA(volumeValues, 120);
+      volumeEma120Series.setData(
+        candleData.map((d, i) => ({
+          time: d.time,
+          value: volumeEma120Data[i] || 0
+        }))
+      );
 
       // 차트들을 동기화하기 위한 시간 범위 설정
       const syncTimeRange = () => {
@@ -650,7 +821,56 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
       console.error('차트 생성 오류:', err);
       setError(err instanceof Error ? err.message : '차트를 생성하는 중 오류가 발생했습니다.');
     }
-  }, [candleData, height]);
+  }, [candleData, height, showMA]);
+
+  // 이동평균선 표시 설정이 변경되면 가시성 업데이트
+  useEffect(() => {
+    if (chartRef.current && seriesRefs.current) {
+      if (seriesRefs.current.ma5) {
+        seriesRefs.current.ma5.applyOptions({ visible: showMA.ma5 });
+      }
+      if (seriesRefs.current.ma10) {
+        seriesRefs.current.ma10.applyOptions({ visible: showMA.ma10 });
+      }
+      if (seriesRefs.current.ma20) {
+        seriesRefs.current.ma20.applyOptions({ visible: showMA.ma20 });
+      }
+      if (seriesRefs.current.ma30) {
+        seriesRefs.current.ma30.applyOptions({ visible: showMA.ma30 });
+      }
+      if (seriesRefs.current.ma60) {
+        seriesRefs.current.ma60.applyOptions({ visible: showMA.ma60 });
+      }
+      if (seriesRefs.current.ema48) {
+        seriesRefs.current.ema48.applyOptions({ visible: showMA.ema48 });
+        console.log('48 EMA 가시성 업데이트:', showMA.ema48);
+      }
+      if (seriesRefs.current.ema120) {
+        seriesRefs.current.ema120.applyOptions({ visible: showMA.ema120 });
+        console.log('120 EMA 가시성 업데이트:', showMA.ema120);
+      }
+      
+      // MACD 차트 이동평균선 가시성 업데이트
+      if (seriesRefs.current.macdEma48) {
+        seriesRefs.current.macdEma48.applyOptions({ visible: showMA.ema48 });
+        console.log('MACD 48 EMA 가시성 업데이트:', showMA.ema48);
+      }
+      if (seriesRefs.current.macdEma120) {
+        seriesRefs.current.macdEma120.applyOptions({ visible: showMA.ema120 });
+        console.log('MACD 120 EMA 가시성 업데이트:', showMA.ema120);
+      }
+      
+      // 볼륨 차트 이동평균선 가시성 업데이트
+      if (seriesRefs.current.volumeEma48) {
+        seriesRefs.current.volumeEma48.applyOptions({ visible: showMA.ema48 });
+        console.log('볼륨 48 EMA 가시성 업데이트:', showMA.ema48);
+      }
+      if (seriesRefs.current.volumeEma120) {
+        seriesRefs.current.volumeEma120.applyOptions({ visible: showMA.ema120 });
+        console.log('볼륨 120 EMA 가시성 업데이트:', showMA.ema120);
+      }
+    }
+  }, [showMA]);
 
   // 마운트 시 데이터 가져오기
   useEffect(() => {
@@ -710,6 +930,83 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
             />
           </div>
         </div>
+        
+        {/* 이동평균선 설정 UI 추가 */}
+        <div className="mt-4">
+          <h4 className="text-sm font-medium text-gray-300 mb-2">이동평균선</h4>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-3">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="ma5-check"
+                className="mr-2 h-4 w-4"
+                checked={showMA.ma5}
+                onChange={() => handleMAChange('ma5')}
+              />
+              <label htmlFor="ma5-check" className="text-sm text-white">5 EMA</label>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="ma10-check"
+                className="mr-2 h-4 w-4"
+                checked={showMA.ma10}
+                onChange={() => handleMAChange('ma10')}
+              />
+              <label htmlFor="ma10-check" className="text-sm text-white">10 EMA</label>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="ma20-check"
+                className="mr-2 h-4 w-4"
+                checked={showMA.ma20}
+                onChange={() => handleMAChange('ma20')}
+              />
+              <label htmlFor="ma20-check" className="text-sm text-white">20 EMA</label>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="ma30-check"
+                className="mr-2 h-4 w-4"
+                checked={showMA.ma30}
+                onChange={() => handleMAChange('ma30')}
+              />
+              <label htmlFor="ma30-check" className="text-sm text-white">30 EMA</label>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="ema48-check"
+                className="mr-2 h-4 w-4"
+                checked={showMA.ema48}
+                onChange={() => handleMAChange('ema48')}
+              />
+              <label htmlFor="ema48-check" className="text-sm text-white">48 EMA</label>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="ma60-check"
+                className="mr-2 h-4 w-4"
+                checked={showMA.ma60}
+                onChange={() => handleMAChange('ma60')}
+              />
+              <label htmlFor="ma60-check" className="text-sm text-white">60 EMA</label>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="ema120-check"
+                className="mr-2 h-4 w-4"
+                checked={showMA.ema120}
+                onChange={() => handleMAChange('ema120')}
+              />
+              <label htmlFor="ema120-check" className="text-sm text-white">120 EMA</label>
+            </div>
+          </div>
+        </div>
       </div>
 
       {isLoading && (
@@ -744,8 +1041,8 @@ const UpbitVolumeChart: React.FC<ChartProps> = ({ market, interval, count, heigh
       
       <div 
         ref={chartContainerRef} 
-        className="w-full bg-gray-800 p-4 rounded relative z-10 overflow-auto"
-        style={{ height: `${height}px`, maxHeight: '80vh' }}
+        className="w-full bg-gray-800 p-4 rounded relative"
+        style={{ minHeight: `${height + 100}px` }}
       />
     </div>
   );

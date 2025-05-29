@@ -71,7 +71,13 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const closePrices = data.map(item => item.close);
     const ema5Values: number[] = [];
     const ema20Values: number[] = [];
-    const ema12Values: number[] = [];
+    const ema30Values: number[] = [];
+    const ema48Values: number[] = [];
+    const ema60Values: number[] = []; 
+    const ema90Values: number[] = [];
+    const ema120Values: number[] = [];
+    const ema240Values: number[] = [];
+    const ema360Values: number[] = [];
     const ema23Values: number[] = [];
     const ema25Values: number[] = [];
     const macdValues: number[] = [];
@@ -236,6 +242,31 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       time: item.time,
       value: ema20Values[index] || 0,
     }));
+    const ema30Data = data.map((item, index) => ({
+      time: item.time,
+      value: ema30Values[index] || 0,
+    }));
+    const ema48Data = data.map((item, index) => ({
+      time: item.time,  
+      value: ema48Values[index] || 0,
+    }));
+    const ema60Data = data.map((item, index) => ({
+      time: item.time,
+      value: ema60Values[index] || 0,
+    }));
+    const ema90Data = data.map((item, index) => ({
+      time: item.time,
+      value: ema90Values[index] || 0,
+    }));
+    
+    const ema120Data = data.map((item, index) => ({
+      time: item.time,
+      value: ema120Values[index] || 0,
+    }));
+    const ema240Data = data.map((item, index) => ({
+      time: item.time,
+      value: ema240Values[index] || 0,
+    }));
 
     // 마커 생성
     const markers = data.map((candle, index) => {
@@ -269,7 +300,13 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       histogramData,
       markers,
       ema5Data,
-      ema20Data
+      ema20Data,
+      ema30Data,
+      ema48Data,
+      ema60Data,
+      ema90Data,
+      ema120Data,
+      ema240Data
     };
   };
 
@@ -400,7 +437,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
   useEffect(() => {
     if (data.length === 0 || !chartContainerRef.current) return;
 
-    const { macdData, signalData, histogramData, markers, ema5Data, ema20Data } = calculateMACD(data);
+    const { macdData, signalData, histogramData, markers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
     const stochasticData = calculateStochastic(data);
 
     // 새로운 차트 생성
@@ -532,6 +569,31 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       title: '48 EMA'
     });
 
+    const ema60Series = chart.addLineSeries({
+      color: '#FF00FF',
+      lineWidth: 2,
+      title: '60 EMA'
+    });
+    
+    
+    const ema90Series = chart.addLineSeries({
+      color: '#FF00FF',
+      lineWidth: 2,
+      title: '90 EMA'
+    });
+
+    const ema120Series = chart.addLineSeries({
+      color: '#FF00FF',
+      lineWidth: 2,
+      title: '120 EMA'
+    });
+    const ema240Series = chart.addLineSeries({
+      color: '#FF00FF',   
+      lineWidth: 2,
+      title: '240 EMA'
+    });
+
+
     // EMA 데이터 설정
     if (ema5Data && ema20Data) {
       ema5Series.setData(ema5Data);
@@ -546,12 +608,16 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         ema48Series.setData(ema48Data);
       }
     }
+    
 
     ema5Ref.current = ema5Series;
     ema20Ref.current = ema20Series;
     ema30Ref.current = ema30Series;
     ema48Ref.current = ema48Series;
-
+    ema60Ref.current = ema60Series; 
+    ema90Ref.current = ema90Series;
+    ema120Ref.current = ema120Series;
+    ema240Ref.current = ema240Series;
     // 마커 표시
     if (markers && markers.length > 0) {
       const validMarkers = markers.map(marker => ({
