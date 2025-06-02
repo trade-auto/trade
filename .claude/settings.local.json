@@ -1,3 +1,14 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(claude mcp get)",
+      "Bash(claude mcp:*)",
+      "Bash(find:*)",
+      "Bash(env)",
+      "Bash(npx -y @smithery/cli install @cjo4m06/mcp-shrimp-task-manager --client claude)",
+      "Bash(mkdir:*)"
+    ]
+  },
   "enableAllProjectMcpServers": false
 }
