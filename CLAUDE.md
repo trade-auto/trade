@@ -1,107 +1,107 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+이 파일은 이 저장소의 코드 작업 시 Claude Code (claude.ai/code)에 대한 지침을 제공합니다.
 
-## Project Overview
-This is a cryptocurrency trading monitoring and automation platform built for the Upbit exchange. It provides real-time charting, technical analysis, automated trading strategies, and order management capabilities.
+## 프로젝트 개요
+업비트 거래소를 위한 암호화폐 거래 모니터링 및 자동화 플랫폼입니다. 실시간 차트, 기술적 분석, 자동 매매 전략, 주문 관리 기능을 제공합니다.
 
-## Tech Stack
-- **Framework**: Next.js 15 with App Router
-- **Language**: TypeScript
-- **State Management**: Zustand
-- **Charts**: Lightweight Charts
-- **Real-time Data**: WebSocket (native and react-websocket)
-- **API Client**: Axios
-- **Styling**: Tailwind CSS + Chakra UI
+## 기술 스택
+- **프레임워크**: Next.js 15 (App Router 사용)
+- **언어**: TypeScript
+- **상태 관리**: Zustand
+- **차트**: Lightweight Charts
+- **실시간 데이터**: WebSocket (native 및 react-websocket)
+- **API 클라이언트**: Axios
+- **스타일링**: Tailwind CSS + Chakra UI
 
-## Build Commands
+## 빌드 명령어
 ```bash
-yarn dev        # Start development server on port 3001
-yarn build      # Build for production
-yarn start      # Start production server
-yarn lint       # Run ESLint
+yarn dev        # 개발 서버 시작 (포트 3001)
+yarn build      # 프로덕션 빌드
+yarn start      # 프로덕션 서버 시작
+yarn lint       # ESLint 실행
 ```
 
-## Architecture
+## 아키텍처
 
-### Core Application Structure
-The application uses Next.js App Router with the following key routes:
-- `/` - Main trading dashboard with real-time charts
-- `/order` - Order creation and management
-- `/orders` - Order history and open orders view
-- `/account` - Account information
-- `/volume-chart` - Volume analysis
+### 핵심 애플리케이션 구조
+Next.js App Router를 사용하며 다음의 주요 라우트를 포함합니다:
+- `/` - 실시간 차트가 포함된 메인 트레이딩 대시보드
+- `/order` - 주문 생성 및 관리
+- `/orders` - 주문 내역 및 미체결 주문 보기
+- `/account` - 계정 정보
+- `/volume-chart` - 거래량 분석
 
-### API Integration (`/app/api/`)
-All Upbit API interactions are handled through server-side API routes to secure API keys:
-- **Account**: `/api/accounts` - Get account balances
-- **Market Data**: 
-  - `/api/candles` - Historical candle data
-  - `/api/ticker` - Real-time ticker information
-  - `/api/trades` - Recent trade history
-- **Order Management**:
-  - `/api/orders/create` - Place new orders
-  - `/api/orders/cancel` - Cancel orders
-  - `/api/orders/list`, `/open`, `/closed` - Order queries
-  - `/api/orders/chance` - Check order placement availability
+### API 통합 (`/app/api/`)
+모든 업비트 API 상호작용은 API 키 보안을 위해 서버사이드 API 라우트를 통해 처리됩니다:
+- **계정**: `/api/accounts` - 계정 잔고 조회
+- **시장 데이터**: 
+  - `/api/candles` - 과거 캔들 데이터
+  - `/api/ticker` - 실시간 시세 정보
+  - `/api/trades` - 최근 거래 내역
+- **주문 관리**:
+  - `/api/orders/create` - 신규 주문
+  - `/api/orders/cancel` - 주문 취소
+  - `/api/orders/list`, `/open`, `/closed` - 주문 조회
+  - `/api/orders/chance` - 주문 가능 정보 확인
 
-### Component Architecture
+### 컴포넌트 아키텍처
 
-#### Chart Components (`/app/components/`)
-- **CandlestickChartCore**: Main chart component with candlestick display, MA indicators, and trading signals
-- **MACDChart**: MACD indicator visualization
-- **PolMACDChart**: Custom MACD variant
-- **UpbitVolumeChart**: Volume analysis chart
-- **ChartContainer**: Wrapper managing chart lifecycle and data updates
-- **ChartControls/ChartSettings**: User interface for chart configuration
+#### 차트 컴포넌트 (`/app/components/`)
+- **CandlestickChartCore**: 캔들스틱 표시, MA 지표, 매매 신호가 포함된 메인 차트 컴포넌트
+- **MACDChart**: MACD 지표 시각화
+- **PolMACDChart**: 커스텀 MACD 변형
+- **UpbitVolumeChart**: 거래량 분석 차트
+- **ChartContainer**: 차트 생명주기 및 데이터 업데이트를 관리하는 래퍼
+- **ChartControls/ChartSettings**: 차트 설정을 위한 사용자 인터페이스
 
-#### Trading Components
-- **OrderForm/CreateOrder**: Order placement interface
-- **OpenOrders/ClosedOrders**: Order management views
-- **OrderChanceInfo**: Display available trading limits
-- **CoinSelector**: Cryptocurrency pair selection
+#### 트레이딩 컴포넌트
+- **OrderForm/CreateOrder**: 주문 생성 인터페이스
+- **OpenOrders/ClosedOrders**: 주문 관리 뷰
+- **OrderChanceInfo**: 거래 가능 한도 표시
+- **CoinSelector**: 암호화폐 페어 선택
 
-### State Management (`/app/store/`)
-- **useUpbitStore**: Main store for market data, orders, and trading state
-- **useCoinStore**: Selected coin and chart preferences
-- WebSocket connections and real-time data updates are managed through stores
+### 상태 관리 (`/app/store/`)
+- **useUpbitStore**: 시장 데이터, 주문, 거래 상태를 위한 메인 스토어
+- **useCoinStore**: 선택된 코인 및 차트 설정
+- WebSocket 연결과 실시간 데이터 업데이트는 스토어를 통해 관리됩니다
 
-### Trading Strategies (`/app/strategies/`)
-Multiple automated trading strategies are implemented:
-- **maCrossStrategy**: Moving average crossover
-- **maCrossDeviationStrategy**: MA cross with deviation filters
-- **macdStrategy**: MACD-based signals
-- **slopeFilterStrategy**: MA slope analysis
-Each strategy exports buy/sell signal detection functions used by the chart components.
+### 매매 전략 (`/app/strategies/`)
+여러 자동 매매 전략이 구현되어 있습니다:
+- **maCrossStrategy**: 이동평균선 교차
+- **maCrossDeviationStrategy**: 편차 필터가 포함된 MA 교차
+- **macdStrategy**: MACD 기반 신호
+- **slopeFilterStrategy**: MA 기울기 분석
+각 전략은 차트 컴포넌트에서 사용되는 매수/매도 신호 감지 함수를 내보냅니다.
 
-### Real-time Data Flow
-1. WebSocket connection established via `useUpbitWebSocket` hook
-2. Real-time ticker/trade data updates Zustand stores
-3. Chart components subscribe to store updates
-4. Trading strategies analyze data and generate signals
-5. Visual indicators and alerts displayed on charts
+### 실시간 데이터 흐름
+1. `useUpbitWebSocket` 훅을 통해 WebSocket 연결 설정
+2. 실시간 시세/거래 데이터가 Zustand 스토어 업데이트
+3. 차트 컴포넌트가 스토어 업데이트 구독
+4. 매매 전략이 데이터를 분석하고 신호 생성
+5. 차트에 시각적 지표와 알림 표시
 
-## Key Features
-- **Real-time Data**: WebSocket integration for live price updates
-- **Technical Analysis**: Multiple MA periods, MACD, volume analysis
-- **Automated Trading**: Configurable strategies with backtesting
-- **Order Management**: Create, cancel, and monitor orders
-- **CSV Import/Export**: Historical data analysis and strategy testing
+## 주요 기능
+- **실시간 데이터**: 실시간 가격 업데이트를 위한 WebSocket 통합
+- **기술적 분석**: 다중 MA 기간, MACD, 거래량 분석
+- **자동 매매**: 백테스팅이 가능한 설정 가능한 전략
+- **주문 관리**: 주문 생성, 취소, 모니터링
+- **CSV 가져오기/내보내기**: 과거 데이터 분석 및 전략 테스트
 
-## Development Patterns
-- API routes handle all exchange communication (security)
-- Zustand stores centralize state management
-- Components are modular and focused on specific features
-- Trading strategies are pure functions for testability
-- TypeScript interfaces define data structures throughout
+## 개발 패턴
+- API 라우트가 모든 거래소 통신 처리 (보안)
+- Zustand 스토어가 상태 관리 중앙화
+- 컴포넌트는 모듈화되어 특정 기능에 집중
+- 매매 전략은 테스트 가능성을 위한 순수 함수
+- TypeScript 인터페이스가 전체 데이터 구조 정의
 
-## Configuration
-- Upbit API keys must be set in environment variables
-- Chart settings and preferences stored in localStorage
-- Trading parameters configurable through UI
+## 설정
+- 업비트 API 키는 환경 변수에 설정해야 함
+- 차트 설정과 환경설정은 localStorage에 저장
+- 거래 매개변수는 UI를 통해 설정 가능
 
-## Important Considerations
-- All monetary values from Upbit API are in KRW (Korean Won)
-- WebSocket reconnection logic is built into the hooks
-- Rate limiting is handled in API routes
-- Order placement requires proper authentication and available balance
+## 중요 고려사항
+- 업비트 API의 모든 금액은 KRW(한국 원화) 단위
+- WebSocket 재연결 로직이 훅에 내장되어 있음
+- API 라우트에서 속도 제한 처리
+- 주문 실행은 적절한 인증과 가용 잔고가 필요함

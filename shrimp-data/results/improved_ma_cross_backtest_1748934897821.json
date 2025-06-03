@@ -1,0 +1,91 @@
+{
+  "strategy": "IMPROVED_MA_CROSS",
+  "symbol": "KRW-BTC",
+  "period": {
+    "start": "2025-05-30T12:30:00",
+    "end": "2025-06-03T16:00:00"
+  },
+  "parameters": {
+    "initial_capital": 10000000,
+    "fee_rate": 0.0005,
+    "ma_periods": [
+      20,
+      60,
+      120
+    ],
+    "conditions": {
+      "buy": "MA20 > MA60 AND MACD > Signal AND (RSI < 40 OR RSI recovering from oversold)",
+      "sell": "(MA20 < MA60 OR MACD < Signal) AND RSI > 60"
+    }
+  },
+  "results": {
+    "totalTrades": 2,
+    "winningTrades": 1,
+    "losingTrades": 1,
+    "winRate": 50,
+    "totalReturn": -0.37734113000480457,
+    "finalCapital": 9962265.88699952,
+    "profit": -37734.11300048046,
+    "averageReturn": -0.18866852416080448,
+    "maxProfit": 0.001078624245302211,
+    "maxLoss": -0.3784156725669112,
+    "profitFactor": 0.3630493330831085
+  },
+  "signals": [
+    {
+      "time": "2025-06-02T11:30:00",
+      "type": "buy",
+      "price": 147621000,
+      "ma20": "148448950",
+      "ma60": "147970767",
+      "ma120": "147609858",
+      "macd": "37339.81",
+      "signal": "29871.85",
+      "rsi": "38.3",
+      "reason": "MA20(148448950) > MA60(147970767), MACD 골든크로스, RSI 38.3"
+    },
+    {
+      "time": "2025-06-03T05:30:00",
+      "type": "sell",
+      "price": 147210000,
+      "ma20": "146739550",
+      "ma60": "147580567",
+      "ma120": "147634208",
+      "macd": "-83896.14",
+      "signal": "-67116.91",
+      "rsi": "64.2",
+      "reason": "MA 데드크로스 또는 MACD 데드크로스, RSI 64.2"
+    },
+    {
+      "time": "2025-06-03T14:00:00",
+      "type": "buy",
+      "price": 147410000,
+      "ma20": "147764250",
+      "ma60": "147413350",
+      "ma120": "147681958",
+      "macd": "91216.44",
+      "signal": "72973.15",
+      "rsi": "38.6",
+      "reason": "MA20(147764250) > MA60(147413350), MACD 골든크로스, RSI 38.6"
+    }
+  ],
+  "trades": [
+    {
+      "entryTime": "2025-06-02T11:30:00",
+      "entryPrice": 147621000,
+      "type": "long",
+      "exitTime": "2025-06-03T05:30:00",
+      "exitPrice": 147210000,
+      "profitPercentage": -0.2784156725669112
+    },
+    {
+      "entryTime": "2025-06-03T14:00:00",
+      "entryPrice": 147410000,
+      "type": "long",
+      "exitTime": "2025-06-03T16:00:00",
+      "exitPrice": 147559000,
+      "profitPercentage": 0.10107862424530221
+    }
+  ],
+  "timestamp": "2025-06-03T07:14:57.821Z"
+}

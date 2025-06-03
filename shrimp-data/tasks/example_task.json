@@ -1,0 +1,20 @@
+{
+  "id": "backtest_example_001",
+  "name": "MA_CROSS 전략 백테스트 예제",
+  "type": "backtest",
+  "description": "MA_CROSS 전략을 사용한 백테스트 작업 예제",
+  "parameters": {
+    "strategy": "MA_CROSS",
+    "symbol": "KRW-BTC",
+    "period": {
+      "start": "2024-01-01",
+      "end": "2024-03-31"
+    },
+    "timeframe": "minutes/5",
+    "initial_capital": 10000000
+  },
+  "schedule": null,
+  "status": "example",
+  "created_at": "2024-06-03T14:30:00Z",
+  "tags": ["trading", "crypto", "ma_cross"]
+}

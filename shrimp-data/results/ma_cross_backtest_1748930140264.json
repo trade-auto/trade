@@ -1,0 +1,24 @@
+{
+  "strategy": "MA_CROSS",
+  "symbol": "KRW-BTC",
+  "period": {
+    "start": "2025-05-30T11:00:00",
+    "end": "2025-06-03T14:30:00"
+  },
+  "parameters": {
+    "initial_capital": 10000000,
+    "fee_rate": 0.0005
+  },
+  "results": {
+    "totalTrades": 0,
+    "winningTrades": 0,
+    "winRate": 0,
+    "totalReturn": 0,
+    "finalCapital": 10000000,
+    "profit": 0,
+    "averageReturn": 0
+  },
+  "signals": [],
+  "trades": [],
+  "timestamp": "2025-06-03T05:55:40.264Z"
+}

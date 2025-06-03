@@ -1,0 +1,38 @@
+{
+  "id": "improved_ma_cross_backtest_20240603",
+  "name": "개선된 MA_CROSS 전략 백테스트",
+  "type": "backtest",
+  "description": "더 실용적인 조건으로 개선된 MA_CROSS 전략 백테스트",
+  "parameters": {
+    "strategy": "IMPROVED_MA_CROSS",
+    "symbol": "KRW-BTC",
+    "period": {
+      "lookback_candles": 1000
+    },
+    "timeframe": "minutes/30",
+    "initial_capital": 10000000,
+    "indicators": {
+      "ma_periods": [20, 60, 120],
+      "macd_settings": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      },
+      "rsi_period": 14
+    },
+    "conditions": {
+      "buy": "MA20 > MA60 AND MACD > Signal AND (RSI < 40 OR RSI recovering)",
+      "sell": "(MA20 < MA60 OR MACD < Signal) AND RSI > 60"
+    }
+  },
+  "output": {
+    "format": "json",
+    "include_trades": true,
+    "include_metrics": true,
+    "save_to": "/mnt/f/200.workspace/trade/shrimp-data/results/"
+  },
+  "status": "pending",
+  "priority": "high",
+  "created_at": "2025-06-03T14:56:00Z",
+  "tags": ["improved_ma_cross", "btc", "backtest", "crypto", "optimized"]
+}

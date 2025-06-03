@@ -1,0 +1,47 @@
+{
+  "id": "ma_cross_backtest_20240603",
+  "name": "MA_CROSS 전략 백테스트",
+  "type": "backtest",
+  "description": "MA_CROSS 전략을 사용한 BTC 백테스트 (최근 30일)",
+  "parameters": {
+    "strategy": "MA_CROSS",
+    "symbol": "KRW-BTC",
+    "period": {
+      "start": "2024-05-01",
+      "end": "2024-06-03"
+    },
+    "timeframe": "minutes/5",
+    "initial_capital": 10000000,
+    "indicators": {
+      "ma_periods": [60, 120, 240],
+      "macd_settings": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      },
+      "rsi_period": 14
+    },
+    "conditions": {
+      "buy": {
+        "ma_cross": "60 > 120 AND 60 > 240",
+        "macd": "macd > signal",
+        "rsi": "rsi < 30 OR (rsi > 30 AND rsi_prev <= 30)"
+      },
+      "sell": {
+        "ma_cross": "60 < 120 OR 60 < 240",
+        "macd": "macd < signal",
+        "rsi": "rsi > 70"
+      }
+    }
+  },
+  "output": {
+    "format": "json",
+    "include_trades": true,
+    "include_metrics": true,
+    "save_to": "/mnt/f/200.workspace/trade/shrimp-data/results/ma_cross_backtest_20240603.json"
+  },
+  "status": "pending",
+  "priority": "high",
+  "created_at": "2024-06-03T14:50:00Z",
+  "tags": ["ma_cross", "btc", "backtest", "crypto"]
+}

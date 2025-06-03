@@ -1,30 +1,127 @@
-# 트레이딩 차트 애플리케이션
+# 업비트 트레이딩 모니터링 플랫폼
 
-## 개요
-이 애플리케이션은 암호화폐 트레이딩을 위한 차트 및 분석 도구를 제공합니다. 볼린저 밴드 전략과 A15 기울기 필터 전략을 기반으로 매수/매도 신호를 분석하고 시각화합니다.
+## 프로젝트 개요
+업비트(Upbit) 거래소를 위한 실시간 암호화폐 트레이딩 모니터링 및 자동화 플랫폼입니다. 실시간 차트, 기술적 분석, 자동 매매 전략, 주문 관리 기능을 제공합니다.
 
 ## 주요 기능
-- 실시간 캔들스틱 차트 표시
-- 이동평균선(MA) 표시 및 설정
-- 자동 업데이트 및 실시간 API 연동
-- 백테스트 기능 (CSV 데이터 임포트/내보내기)
-- 트레이딩 전략 분석 및 신호 표시
 
-## 컴포넌트 구조
+### 📊 실시간 모니터링
+- 실시간 가격 차트 (캔들스틱)
+- 다중 이동평균선 표시 (5, 10, 20, 30, 48, 60, 90, 120, 240, 360, 600, 900)
+- 실시간 WebSocket 데이터 업데이트
+- 초봉(1분), 5분봉, 15분봉 등 다양한 시간 프레임 지원
 
-### CandlestickChartCore
-메인 차트 컴포넌트로, 다음 기능을 제공합니다:
-- 차트 데이터 표시 및 관리
-- 자동 업데이트 설정
-- 백테스트 결과 표시
-- CSV 데이터 관리
+### 📈 기술적 분석 지표
+- **MACD**: 추세 전환 신호 포착
+- **RSI**: 과매수/과매도 구간 분석  
+- **PolMACD**: 커스텀 MACD 변형 지표
+- **Stochastic**: 모멘텀 지표
+- **볼륨 분석**: 매수/매도 거래량 비율
 
-### 주요 훅(Hooks)
-- `useChartData`: 차트 데이터 및 기능 관리
-- `useCsvFunctions`: CSV 데이터 임포트/내보내기 기능
-- `useBacktestChart`: 백테스트 차트 관리
+### 🤖 자동 매매 전략
+1. **MACD 전략**: MACD 골든크로스/데드크로스 기반
+2. **MA_CROSS 전략**: 이동평균선 교차 + MACD + RSI 복합 전략
+3. **MA_CROSS_DEVIATION**: 이격도 필터 추가 전략
+4. **SLOPE_FILTER**: 이동평균선 기울기 분석 전략
 
-## 트레이딩 전략
+### 💹 백테스팅
+- 과거 데이터 기반 전략 성과 분석
+- 수익률, 승률, 최대 낙폭 등 상세 통계
+- CSV 데이터 임포트/익스포트 지원
+- 개별 거래 내역 분석
+
+### 📝 주문 관리  
+- 실시간 주문 생성/취소
+- 미체결/체결 주문 조회
+- 주문 한도 설정 및 관리
+- 테스트/실전/자동 모드 지원
+
+## 기술 스택
+- **Framework**: Next.js 15 (App Router)
+- **Language**: TypeScript
+- **State Management**: Zustand
+- **Charts**: Lightweight Charts
+- **Real-time**: WebSocket (native & react-websocket)
+- **Styling**: Tailwind CSS + Chakra UI
+- **API**: Axios
+
+## 프로젝트 구조
+```
+/app
+  /api              # 업비트 API 연동 (서버사이드)
+    /accounts       # 계정 정보
+    /candles        # 캔들 데이터
+    /orders         # 주문 관리
+    /ticker         # 실시간 시세
+  /components       # React 컴포넌트
+    /charts         # 차트 관련 컴포넌트
+    /orders         # 주문 관련 컴포넌트
+    /indicators     # 기술적 지표 컴포넌트
+  /strategies       # 자동매매 전략
+  /store           # Zustand 상태 관리
+  /utils           # 유틸리티 함수
+  /types           # TypeScript 타입 정의
+```
+
+## 설치 및 실행
+
+### 사전 요구사항
+- Node.js 18.0.0 이상
+- npm 또는 yarn
+- 업비트 API 키 (실전 거래용)
+
+### 설치
+```bash
+# 의존성 설치
+npm install
+# 또는
+yarn install
+```
+
+### 환경 변수 설정
+`.env.local` 파일을 생성하고 다음 내용을 추가하세요:
+```env
+UPBIT_ACCESS_KEY=your_access_key
+UPBIT_SECRET_KEY=your_secret_key
+```
+
+### 실행
+```bash
+# 개발 서버 실행 (포트 3001)
+npm run dev
+# 또는
+yarn dev
+
+# 프로덕션 빌드
+npm run build
+npm run start
+```
+
+## 사용 방법
+
+### 1. 코인 선택
+- 상단 드롭다운에서 거래할 코인 선택 (BTC, ETH, XRP, STORJ, ONDO)
+
+### 2. 차트 설정
+- 시간 프레임 선택 (1분봉, 5분봉, 15분봉 등)
+- 이동평균선 표시 설정
+- 자동 업데이트 활성화/비활성화
+
+### 3. 전략 선택
+- 우측 상단 전략 선택기에서 원하는 자동매매 전략 선택
+- 각 전략별 매수/매도 신호가 차트에 화살표로 표시
+
+### 4. 매매 실행
+- **테스트 모드**: 실제 거래 없이 시뮬레이션
+- **실전 모드**: 실제 자산으로 거래 (주의 필요)
+- **자동 모드**: 선택한 전략에 따라 자동 매매
+
+### 5. 백테스트
+- CSV 파일 다운로드로 과거 데이터 저장
+- 저장된 데이터로 전략 백테스트 실행
+- 결과 분석 및 전략 최적화
+
+## 트레이딩 전략 상세
 
 ### 볼린저 밴드 전략
 
@@ -140,11 +237,27 @@ const backtestMarkers = csvBacktestResult?.markers || [];
 4. 백테스트를 위한 CSV 데이터 임포트/내보내기
 5. 트레이딩 신호 분석 및 확인
 
-## 개발 환경
-- Next.js
-- TypeScript
-- Lightweight Charts 라이브러리
-- Zustand (상태 관리)
+## 주요 컴포넌트
+
+### 차트 컴포넌트
+- `CandlestickChartCore`: 메인 캔들스틱 차트
+- `MACDChart`: MACD 지표 차트
+- `RSIChart`: RSI 지표 차트
+- `PolMACDChart`: PolMACD 지표 차트
+- `MACrossChart`: MA_CROSS 전략 전용 차트
+- `UpbitVolumeChart`: 거래량 분석 차트
+
+### 주문 컴포넌트
+- `CreateOrder`: 주문 생성 폼
+- `OpenOrders`: 미체결 주문 목록
+- `ClosedOrders`: 체결 주문 목록
+- `OrderChanceInfo`: 주문 가능 정보
+- `OrderHistory`: 주문 내역
+
+### 전략 컴포넌트
+- `StrategySelector`: 전략 선택기
+- `BacktestResults`: 백테스트 결과 표시
+- `TradingStrategyHover`: 전략 설명 툴팁
 
 ## AB1 매매 조건
 

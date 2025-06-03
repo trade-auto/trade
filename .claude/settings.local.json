@@ -7,8 +7,25 @@
       "Bash(find:*)",
       "Bash(env)",
       "Bash(npx -y @smithery/cli install @cjo4m06/mcp-shrimp-task-manager --client claude)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(yarn dev)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(chmod:*)",
+      "Bash(node:*)",
+      "Bash(pkill:*)",
+      "Bash(yarn dev:*)",
+      "Bash(npm install)",
+      "Bash(npm audit fix:*)",
+      "Bash(curl:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(yarn config:*)",
+      "Bash(YARN_NPM_REGISTRY_SERVER=https://registry.npmjs.org npm run dev)"
     ]
   },
-  "enableAllProjectMcpServers": false
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "shrimp-task-manager"
+  ]
 }
