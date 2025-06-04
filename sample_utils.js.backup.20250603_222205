@@ -1,0 +1,14 @@
+// 간단한 유틸리티 함수들 (수정 전)
+function formatDate(date) {
+    return date.toISOString().split('T')[0];
+}
+
+function formatPrice(price) {
+    return price.toLocaleString();
+}
+
+function calculatePercentage(current, previous) {
+    return ((current - previous) / previous) * 100;
+}
+
+module.exports = { formatDate, formatPrice, calculatePercentage };

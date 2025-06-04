@@ -21,11 +21,35 @@
       "Bash(pip install:*)",
       "Bash(python:*)",
       "Bash(yarn config:*)",
-      "Bash(YARN_NPM_REGISTRY_SERVER=https://registry.npmjs.org npm run dev)"
+      "Bash(YARN_NPM_REGISTRY_SERVER=https://registry.npmjs.org npm run dev)",
+      "Bash(claude --mcp-debug)",
+      "Bash(cat:*)",
+      "mcp__shrimp-task-manager__plan_task",
+      "mcp__shrimp-task-manager__analyze_task",
+      "mcp__shrimp-task-manager__reflect_task",
+      "mcp__shrimp-task-manager__split_tasks",
+      "mcp__shrimp-task-manager__list_tasks",
+      "mcp__shrimp-task-manager__execute_task",
+      "mcp__shrimp-task-manager__verify_task",
+      "Bash(yarn lint)",
+      "Bash(npx tsc:*)",
+      "mcp__shrimp-task-manager__get_task_detail",
+      "mcp__claude__Write",
+      "mcp__claude__Read",
+      "mcp__claude__LS",
+      "mcp__claude__Grep",
+      "Bash(npm run build:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "shrimp-task-manager"
+    "filesystem",
+    "puppeteer",
+    "fetch",
+    "sequential-thinking",
+    "autoclaude",
+    "github",
+    "shrimp-task-manager",
+    "autoclaude-mcp"
   ]
 }

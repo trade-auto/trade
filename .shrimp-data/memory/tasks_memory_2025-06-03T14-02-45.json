@@ -1,0 +1,57 @@
+{
+  "tasks": [
+    {
+      "id": "6e311d7d-5c5e-458a-8a37-f88bfbbf6521",
+      "name": "수학 파일 구조 계획 및 준비",
+      "description": "/app/utils/math.ts 파일을 생성하기 위한 사전 준비 작업을 수행합니다. 기존 utils 디렉토리의 코딩 스타일을 분석하고 파일 구조를 계획합니다.",
+      "notes": "실제 파일 생성 전 기존 코드 패턴을 정확히 파악하는 단계",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2025-06-03T13:31:49.874Z",
+      "updatedAt": "2025-06-03T13:34:57.660Z",
+      "relatedFiles": [
+        {
+          "path": "/app/utils/formatters.ts",
+          "type": "REFERENCE",
+          "description": "코딩 스타일 참고용 기존 파일"
+        },
+        {
+          "path": "/app/utils/chartHelpers.ts",
+          "type": "REFERENCE",
+          "description": "추가 스타일 참고용 파일"
+        }
+      ],
+      "implementationGuide": "1. /app/utils/ 디렉토리 구조 확인\\n2. formatters.ts 파일의 코딩 스타일 분석\\n3. TypeScript 타입 정의 방식 확인\\n4. 한글 주석 스타일 파악\\n5. export 구문 패턴 분석",
+      "verificationCriteria": "1. 기존 utils 파일들의 코딩 스타일이 정확히 분석되었는지 확인\\n2. TypeScript 타입 정의 패턴이 파악되었는지 확인\\n3. 주석 및 export 스타일이 이해되었는지 확인",
+      "analysisResult": "Next.js 15 TypeScript 프로젝트의 /app/utils/ 디렉토리에 1+1=2 계산을 보여주는 간단한 수학 유틸리티 파일 생성. 기존 코드 스타일(export const, TypeScript 타입, 한글 주석)을 따라 구현",
+      "summary": "기존 utils 디렉토리의 코딩 스타일 분석 완료. 한글 주석, export const 함수 정의, TypeScript 타입 명시, camelCase 네이밍 등의 패턴을 파악하여 math.ts 파일 생성 준비 완료",
+      "completedAt": "2025-06-03T13:34:57.636Z"
+    },
+    {
+      "id": "29b6d93b-7486-4220-9def-278d39280e94",
+      "name": "math.ts 파일 생성 및 구현",
+      "description": "분석된 코딩 스타일을 바탕으로 /app/utils/math.ts 파일을 실제로 생성하고 1+1=2 계산 함수와 상수를 구현합니다.",
+      "notes": "첫 번째 작업에서 분석한 스타일을 정확히 적용하여 구현",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "6e311d7d-5c5e-458a-8a37-f88bfbbf6521"
+        }
+      ],
+      "createdAt": "2025-06-03T13:31:49.874Z",
+      "updatedAt": "2025-06-03T13:37:54.067Z",
+      "relatedFiles": [
+        {
+          "path": "/app/utils/math.ts",
+          "type": "CREATE",
+          "description": "새로 생성할 수학 유틸리티 파일"
+        }
+      ],
+      "implementationGuide": "1. /app/utils/math.ts 파일 생성\\n2. 한글 주석으로 파일 설명 추가\\n3. add 함수 구현: export const add = (a: number, b: number): number => a + b;\\n4. 상수 정의: export const SIMPLE_CALCULATION = 1 + 1;\\n5. 결과 상수: export const RESULT = 2;",
+      "verificationCriteria": "1. /app/utils/math.ts 파일이 정상적으로 생성되었는지 확인\\n2. 1+1=2 계산이 정확히 구현되었는지 확인\\n3. 기존 프로젝트 스타일과 일치하는지 확인\\n4. TypeScript 문법 오류가 없는지 확인",
+      "analysisResult": "Next.js 15 TypeScript 프로젝트의 /app/utils/ 디렉토리에 1+1=2 계산을 보여주는 간단한 수학 유틸리티 파일 생성. 기존 코드 스타일(export const, TypeScript 타입, 한글 주석)을 따라 구현",
+      "summary": "/app/utils/math.ts 파일을 성공적으로 생성하고 1+1=2 계산 함수와 상수를 구현 완료. 기존 프로젝트 스타일(한글 주석, export const, TypeScript 타입)을 정확히 적용하여 코드 품질과 일관성을 유지함. 모든 함수 동작 검증 완료",
+      "completedAt": "2025-06-03T13:37:54.042Z"
+    }
+  ]
+}
