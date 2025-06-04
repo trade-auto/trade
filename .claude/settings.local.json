@@ -38,7 +38,11 @@
       "mcp__claude__Read",
       "mcp__claude__LS",
       "mcp__claude__Grep",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "mcp__shrimp-task-manager__init_project_rules",
+      "mcp__shrimp-task-manager__process_thought",
+      "Bash(kill:*)",
+      "Bash(ss:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
