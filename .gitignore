@@ -46,5 +46,7 @@ next-env.d.ts
 *.md
 
 .claude
+.shrimp-data/*
+autobotclaudecode-mcp/*
 .shrimp-data
-*.shrimp-data
+math/

@@ -42,7 +42,10 @@
       "mcp__shrimp-task-manager__init_project_rules",
       "mcp__shrimp-task-manager__process_thought",
       "Bash(kill:*)",
-      "Bash(ss:*)"
+      "Bash(ss:*)",
+      "Bash(yarn install)",
+      "Bash(rm:*)",
+      "Bash(mv:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

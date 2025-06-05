@@ -5,6 +5,7 @@ import { getAccountBalance } from '../api/upbitAccount';
 import { OrderChanceInfo } from '../components/OrderChanceInfo';
 import { NavigationHeader } from '../components/NavigationHeader';
 import { OrderLimitSettings } from '../components/OrderLimitSettings';
+import { ClaudeMessageWindow } from '../components/ClaudeMessageWindow';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -133,6 +134,14 @@ export default function AccountPage() {
 
         {/* 주문 가능 정보 섹션 */}
         <OrderChanceInfo market={selectedSymbol} />
+        
+        {/* Claude MCP 메시지 창 */}
+        <ClaudeMessageWindow 
+          className="fixed bottom-4 right-4 w-96 h-80 z-50"
+          maxMessages={500}
+          websocketUrl="ws://localhost:8082"
+          windowId={1}
+        />
       </div>
     </main>
   );
