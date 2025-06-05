@@ -1,173 +1,246 @@
 {
   "tasks": [
     {
-      "id": "2c1d2b12-ea1c-4ea1-9120-9e983b89801d",
-      "name": "폴MACD 지표 계산 모듈 통합",
-      "description": "PolMACDChart 내부의 지표 계산 로직을 별도 모듈로 분리하고, 기존 indicators.ts와 PolMACD.ts를 활용하여 중복 제거",
-      "notes": "기존 코드와의 호환성을 유지하면서 점진적으로 마이그레이션",
+      "id": "3b0765c5-cdf0-47a7-af89-3b2b5eaf1b8f",
+      "name": "MCP 자동화 타입 시스템 구축",
+      "description": "기존 claude-mcp.ts 타입을 확장하여 코드 분석, 자동 리팩토링, 테스트 생성 등의 자동화 기능을 위한 완전한 타입 시스템을 구축합니다.",
+      "notes": "기존 타입 시스템과의 호환성을 유지하면서 새로운 자동화 기능을 위한 타입을 추가합니다.",
       "status": "pending",
       "dependencies": [],
-      "createdAt": "2025-06-05T02:52:51.854Z",
-      "updatedAt": "2025-06-05T02:52:51.854Z",
+      "createdAt": "2025-06-05T09:07:57.740Z",
+      "updatedAt": "2025-06-05T09:07:57.740Z",
       "relatedFiles": [
         {
-          "path": "app/components/PolMACDChart.tsx",
-          "type": "TO_MODIFY",
-          "description": "지표 계산 로직 추출 대상",
-          "lineStart": 42,
-          "lineEnd": 311
-        },
-        {
-          "path": "app/utils/indicators.ts",
+          "path": "app/types/claude-mcp.ts",
           "type": "REFERENCE",
-          "description": "재사용할 EMA 계산 함수"
+          "description": "기존 MCP 타입 정의 참조"
         },
         {
-          "path": "app/indicators/PolMACD.ts",
-          "type": "REFERENCE",
-          "description": "폴MACD 계산 클래스"
-        },
-        {
-          "path": "app/indicators/polMACDIndicators.ts",
+          "path": "app/types/mcp-automation.ts",
           "type": "CREATE",
-          "description": "새로운 통합 지표 모듈"
+          "description": "새로운 자동화 타입 정의 파일"
         }
       ],
-      "implementationGuide": "1. app/indicators/polMACDIndicators.ts 파일 생성\n2. 기존 utils/indicators.ts의 calculateEMA 함수 재사용\n3. indicators/PolMACD.ts 클래스를 활용한 폴MACD 계산\n4. 스토캐스틱 계산 함수를 별도로 분리\n5. useMemo를 활용한 계산 결과 캐싱 구조 설계",
-      "verificationCriteria": "1. 모든 지표 계산이 정상 작동\n2. 기존 차트 표시와 동일한 결과\n3. 중복 코드 제거 확인",
-      "analysisResult": "PolMACDChart.tsx 컴포넌트를 리팩토링하여 성능을 최적화하고 유지보수성을 향상시킵니다. 기존 840줄의 거대한 단일 컴포넌트를 논리적 단위로 분리하고, 중복 코드를 제거하며, 메모이제이션을 통한 성능 개선을 수행합니다."
+      "implementationGuide": "기존 app/types/claude-mcp.ts를 기반으로 확장:\\n\\n```typescript\\n// app/types/mcp-automation.ts\\nexport interface CodeAnalysisResult {\\n  filePath: string;\\n  issues: CodeIssue[];\\n  suggestions: RefactoringSuggestion[];\\n  complexity: number;\\n  testCoverage?: number;\\n}\\n\\nexport interface AutomationWorkflow {\\n  id: string;\\n  name: string;\\n  steps: WorkflowStep[];\\n  status: 'pending' | 'running' | 'completed' | 'failed';\\n}\\n\\nexport interface MCPAutomationTool {\\n  name: string;\\n  description: string;\\n  inputSchema: JSONSchema;\\n  handler: (params: any) => Promise<any>;\\n}\\n```\\n\\n기존 McpMessage 인터페이스를 확장하여 자동화 관련 메시지 타입 추가",
+      "verificationCriteria": "타입 정의가 완전하고 기존 타입과 호환되며, TypeScript 컴파일 오류가 없어야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
     },
     {
-      "id": "9fcb37f8-2214-4533-94d7-d2c06b4ef409",
-      "name": "차트 시리즈 관리 커스텀 훅 개발",
-      "description": "36개의 개별 useRef를 Map 구조로 통합하고, 차트 시리즈를 효율적으로 관리하는 커스텀 훅 생성",
-      "notes": "lightweight-charts 타입 정의를 정확히 활용",
+      "id": "520a1f7c-c0a0-4542-a4e6-620ee6b29dd0",
+      "name": "MCP 자동화 Zustand 스토어 구현",
+      "description": "기존 Zustand 패턴을 따라 MCP 자동화 기능을 위한 상태 관리 스토어를 구현합니다. 코드 분석 결과, 워크플로우 상태, 자동화 작업 진행 상황을 관리합니다.",
+      "notes": "기존 스토어 패턴과 일관성을 유지하며, MCP 메시지와 연동하여 실시간 상태 업데이트를 지원합니다.",
       "status": "pending",
       "dependencies": [
         {
-          "taskId": "2c1d2b12-ea1c-4ea1-9120-9e983b89801d"
+          "taskId": "3b0765c5-cdf0-47a7-af89-3b2b5eaf1b8f"
         }
       ],
-      "createdAt": "2025-06-05T02:52:51.854Z",
-      "updatedAt": "2025-06-05T02:52:51.854Z",
+      "createdAt": "2025-06-05T09:07:57.740Z",
+      "updatedAt": "2025-06-05T09:07:57.740Z",
       "relatedFiles": [
         {
-          "path": "app/components/PolMACDChart.tsx",
-          "type": "TO_MODIFY",
-          "description": "useRef 사용 부분",
-          "lineStart": 16,
-          "lineEnd": 36
-        },
-        {
-          "path": "app/hooks/useChartSeries.ts",
-          "type": "CREATE",
-          "description": "새로운 차트 시리즈 관리 훅"
-        }
-      ],
-      "implementationGuide": "1. app/hooks/useChartSeries.ts 파일 생성\n2. Map<string, ISeriesApi<any>> 구조로 시리즈 관리\n3. addSeries, updateSeries, removeSeries 메서드 구현\n4. 시리즈 타입별(line, candlestick, histogram) 팩토리 메서드\n5. 시리즈 가시성 제어 메서드 추가",
-      "verificationCriteria": "1. 모든 차트 시리즈가 정상 렌더링\n2. 메모리 사용량 감소 확인\n3. 시리즈 업데이트 성능 향상",
-      "analysisResult": "PolMACDChart.tsx 컴포넌트를 리팩토링하여 성능을 최적화하고 유지보수성을 향상시킵니다. 기존 840줄의 거대한 단일 컴포넌트를 논리적 단위로 분리하고, 중복 코드를 제거하며, 메모이제이션을 통한 성능 개선을 수행합니다."
-    },
-    {
-      "id": "78bfd9e3-0832-43f1-a692-526606fe5373",
-      "name": "백테스트 로직 모듈 분리",
-      "description": "calculateBacktestResult 함수를 별도 모듈로 분리하고, 백테스트 관련 타입과 유틸리티 함수 정리",
-      "notes": "기존 BacktestResult 타입과 호환성 유지",
-      "status": "pending",
-      "dependencies": [
-        {
-          "taskId": "2c1d2b12-ea1c-4ea1-9120-9e983b89801d"
-        }
-      ],
-      "createdAt": "2025-06-05T02:52:51.854Z",
-      "updatedAt": "2025-06-05T02:52:51.854Z",
-      "relatedFiles": [
-        {
-          "path": "app/components/PolMACDChart.tsx",
-          "type": "TO_MODIFY",
-          "description": "백테스트 로직 추출",
-          "lineStart": 314,
-          "lineEnd": 415
-        },
-        {
-          "path": "app/types/candlestick.ts",
+          "path": "app/store/useUpbitStore.ts",
           "type": "REFERENCE",
-          "description": "BacktestResult, Trade 타입"
+          "description": "기존 Zustand 스토어 패턴 참조"
         },
         {
-          "path": "app/utils/polMACDBacktest.ts",
+          "path": "app/store/useMCPAutomationStore.ts",
           "type": "CREATE",
-          "description": "백테스트 전용 모듈"
+          "description": "MCP 자동화 상태 관리 스토어"
         }
       ],
-      "implementationGuide": "1. app/utils/polMACDBacktest.ts 파일 생성\n2. calculateBacktestResult 함수 이동\n3. Trade 인터페이스 확장 및 타입 강화\n4. 백테스트 파라미터를 설정 객체로 관리\n5. 수수료 계산 로직 개선",
-      "verificationCriteria": "1. 백테스트 결과가 기존과 동일\n2. 단위 테스트 작성 가능한 구조\n3. 파라미터 변경이 용이",
-      "analysisResult": "PolMACDChart.tsx 컴포넌트를 리팩토링하여 성능을 최적화하고 유지보수성을 향상시킵니다. 기존 840줄의 거대한 단일 컴포넌트를 논리적 단위로 분리하고, 중복 코드를 제거하며, 메모이제이션을 통한 성능 개선을 수행합니다."
+      "implementationGuide": "기존 useUpbitStore.ts 패턴을 따라 구현:\\n\\n```typescript\\n// app/store/useMCPAutomationStore.ts\\ninterface MCPAutomationStore {\\n  // State\\n  analyses: Record<string, CodeAnalysisResult>;\\n  workflows: AutomationWorkflow[];\\n  currentWorkflow: string | null;\\n  \\n  // Actions\\n  addAnalysis: (analysis: CodeAnalysisResult) => void;\\n  updateWorkflow: (id: string, updates: Partial<AutomationWorkflow>) => void;\\n  startWorkflow: (workflow: AutomationWorkflow) => void;\\n}\\n```\\n\\nZustand의 persist 미들웨어를 사용하여 상태 영속화",
+      "verificationCriteria": "스토어가 기존 패턴을 따르며, 상태 관리가 정확하고 TypeScript 타입 안정성이 보장되어야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
     },
     {
-      "id": "f4f5d2d1-8e34-4568-99a9-05723671aeb7",
-      "name": "차트 설정 객체 분리",
-      "description": "차트 초기화 옵션, 시리즈 스타일 설정 등을 별도 설정 객체로 관리",
-      "notes": "설정 변경이 런타임에 가능하도록 구조화",
-      "status": "pending",
-      "dependencies": [],
-      "createdAt": "2025-06-05T02:52:51.854Z",
-      "updatedAt": "2025-06-05T02:52:51.854Z",
-      "relatedFiles": [
-        {
-          "path": "app/components/PolMACDChart.tsx",
-          "type": "TO_MODIFY",
-          "description": "차트 설정 부분",
-          "lineStart": 444,
-          "lineEnd": 494
-        },
-        {
-          "path": "app/config/polMACDChartConfig.ts",
-          "type": "CREATE",
-          "description": "차트 설정 모듈"
-        }
-      ],
-      "implementationGuide": "1. app/config/polMACDChartConfig.ts 파일 생성\n2. 차트 레이아웃, 그리드, 스케일 설정 객체화\n3. 시리즈별 스타일 설정 (색상, 선 두께 등)\n4. MACD +20%/-10% 레벨 설정\n5. 시간축 포맷터 설정",
-      "verificationCriteria": "1. 차트 스타일이 기존과 동일\n2. 설정 변경이 즉시 반영\n3. 타입 안정성 확보",
-      "analysisResult": "PolMACDChart.tsx 컴포넌트를 리팩토링하여 성능을 최적화하고 유지보수성을 향상시킵니다. 기존 840줄의 거대한 단일 컴포넌트를 논리적 단위로 분리하고, 중복 코드를 제거하며, 메모이제이션을 통한 성능 개선을 수행합니다."
-    },
-    {
-      "id": "1e32642b-37e2-4f10-8b9c-6491dd85e012",
-      "name": "메인 컴포넌트 리팩토링",
-      "description": "PolMACDChart 컴포넌트를 정리하고, 분리된 모듈들을 통합하여 간결한 구조로 재구성",
-      "notes": "기존 props 인터페이스 유지",
+      "id": "31e9944e-5234-49e2-9f9c-34ed0c4b1004",
+      "name": "코드 분석 MCP 도구 구현",
+      "description": "기존 autobotclaudecode-mcp의 코드 분석 기능을 TypeScript로 재구현하고 Next.js API 라우트로 통합합니다. 파일 분석, 복잡도 측정, 품질 평가 기능을 포함합니다.",
+      "notes": "기존 분석 로직을 유지하면서 타입 안정성과 에러 처리를 개선합니다.",
       "status": "pending",
       "dependencies": [
         {
-          "taskId": "2c1d2b12-ea1c-4ea1-9120-9e983b89801d"
+          "taskId": "3b0765c5-cdf0-47a7-af89-3b2b5eaf1b8f"
         },
         {
-          "taskId": "9fcb37f8-2214-4533-94d7-d2c06b4ef409"
-        },
-        {
-          "taskId": "78bfd9e3-0832-43f1-a692-526606fe5373"
-        },
-        {
-          "taskId": "f4f5d2d1-8e34-4568-99a9-05723671aeb7"
+          "taskId": "520a1f7c-c0a0-4542-a4e6-620ee6b29dd0"
         }
       ],
-      "createdAt": "2025-06-05T02:52:51.854Z",
-      "updatedAt": "2025-06-05T02:52:51.854Z",
+      "createdAt": "2025-06-05T09:07:57.740Z",
+      "updatedAt": "2025-06-05T09:07:57.740Z",
       "relatedFiles": [
         {
-          "path": "app/components/PolMACDChart.tsx",
-          "type": "TO_MODIFY",
-          "description": "전체 컴포넌트 리팩토링"
+          "path": "autobotclaudecode-mcp/cli.js",
+          "type": "REFERENCE",
+          "description": "기존 분석 로직 참조"
         },
         {
-          "path": "app/components/BacktestResults.tsx",
-          "type": "DEPENDENCY",
-          "description": "백테스트 결과 표시 컴포넌트"
+          "path": "app/api/mcp/analyze/route.ts",
+          "type": "CREATE",
+          "description": "코드 분석 API 라우트"
+        },
+        {
+          "path": "app/utils/codeAnalyzer.ts",
+          "type": "CREATE",
+          "description": "코드 분석 유틸리티 클래스"
         }
       ],
-      "implementationGuide": "1. 분리된 모듈들 import\n2. React.memo로 컴포넌트 최적화\n3. useMemo로 지표 계산 결과 캐싱\n4. useCallback으로 이벤트 핸들러 최적화\n5. 차트 초기화와 업데이트 로직 분리\n6. 정리된 JSX 구조",
-      "verificationCriteria": "1. 모든 기능이 정상 작동\n2. 렌더링 성능 향상 (React DevTools로 확인)\n3. 코드 라인 수 50% 이상 감소\n4. 메모리 사용량 개선",
-      "analysisResult": "PolMACDChart.tsx 컴포넌트를 리팩토링하여 성능을 최적화하고 유지보수성을 향상시킵니다. 기존 840줄의 거대한 단일 컴포넌트를 논리적 단위로 분리하고, 중복 코드를 제거하며, 메모이제이션을 통한 성능 개선을 수행합니다."
+      "implementationGuide": "Next.js API 라우트 패턴을 따라 구현:\\n\\n```typescript\\n// app/api/mcp/analyze/route.ts\\nexport async function POST(request: Request) {\\n  const { filePaths, options } = await request.json();\\n  \\n  const analyzer = new CodeAnalyzer(options);\\n  const results = await analyzer.analyzeFiles(filePaths);\\n  \\n  return Response.json(results);\\n}\\n\\n// app/utils/codeAnalyzer.ts\\nclass CodeAnalyzer {\\n  async analyzeFile(filePath: string): Promise<CodeAnalysisResult> {\\n    // AST 파싱 및 분석 로직\\n  }\\n}\\n```\\n\\n기존 autobotclaudecode-mcp/cli.js의 분석 로직을 TypeScript로 포팅",
+      "verificationCriteria": "코드 분석이 정확하게 수행되고 API 응답이 일관되며, 기존 분석 기능과 동등한 결과를 제공해야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
+    },
+    {
+      "id": "09c469b9-03e2-496c-b919-d06f5c4c0f64",
+      "name": "자동 리팩토링 엔진 구현",
+      "description": "코드 개선 제안을 자동으로 적용하는 리팩토링 엔진을 구현합니다. 안전한 변환, 백업 생성, 롤백 기능을 포함합니다.",
+      "notes": "파일 백업과 안전성 검증을 통해 안전한 자동 리팩토링을 보장합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "31e9944e-5234-49e2-9f9c-34ed0c4b1004"
+        }
+      ],
+      "createdAt": "2025-06-05T09:07:57.741Z",
+      "updatedAt": "2025-06-05T09:07:57.741Z",
+      "relatedFiles": [
+        {
+          "path": "app/api/mcp/refactor/route.ts",
+          "type": "CREATE",
+          "description": "리팩토링 API 라우트"
+        },
+        {
+          "path": "app/utils/refactoringEngine.ts",
+          "type": "CREATE",
+          "description": "리팩토링 엔진 유틸리티"
+        }
+      ],
+      "implementationGuide": "TypeScript 컴파일러 API와 AST 조작을 활용:\\n\\n```typescript\\n// app/utils/refactoringEngine.ts\\nclass RefactoringEngine {\\n  async applyRefactoring(\\n    filePath: string, \\n    suggestions: RefactoringSuggestion[]\\n  ): Promise<RefactoringResult> {\\n    // 1. 백업 생성\\n    // 2. AST 변환 적용\\n    // 3. 결과 검증\\n    // 4. 안전하지 않으면 롤백\\n  }\\n  \\n  private createBackup(filePath: string): string\\n  private validateRefactoring(before: string, after: string): boolean\\n}\\n```\\n\\nAPI 라우트로 노출하여 안전한 서버사이드 실행 보장",
+      "verificationCriteria": "리팩토링이 안전하게 수행되고, 백업/롤백 기능이 정상 작동하며, 코드 품질이 개선되어야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
+    },
+    {
+      "id": "d6dcd444-6fee-4fa5-9ddb-b922f8b9dc68",
+      "name": "자동 테스트 생성 도구 구현",
+      "description": "코드 분석 결과를 바탕으로 Jest 테스트를 자동 생성하는 도구를 구현합니다. 기존 프로젝트의 테스트 패턴을 학습하여 일관된 테스트를 생성합니다.",
+      "notes": "기존 테스트 스타일을 유지하면서 적절한 테스트 커버리지를 확보합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "31e9944e-5234-49e2-9f9c-34ed0c4b1004"
+        }
+      ],
+      "createdAt": "2025-06-05T09:07:57.741Z",
+      "updatedAt": "2025-06-05T09:07:57.741Z",
+      "relatedFiles": [
+        {
+          "path": "app/api/mcp/generate-tests/route.ts",
+          "type": "CREATE",
+          "description": "테스트 생성 API 라우트"
+        },
+        {
+          "path": "app/utils/testGenerator.ts",
+          "type": "CREATE",
+          "description": "테스트 생성 유틸리티"
+        }
+      ],
+      "implementationGuide": "템플릿 기반 테스트 생성 시스템:\\n\\n```typescript\\n// app/utils/testGenerator.ts\\nclass TestGenerator {\\n  async generateTests(\\n    analysis: CodeAnalysisResult\\n  ): Promise<GeneratedTest[]> {\\n    // 1. 함수/클래스 추출\\n    // 2. 테스트 케이스 생성\\n    // 3. Jest 템플릿 적용\\n  }\\n  \\n  private analyzeExistingTests(): TestPattern[]\\n  private generateTestCases(func: FunctionAnalysis): TestCase[]\\n}\\n```\\n\\n기존 테스트 파일 패턴을 분석하여 프로젝트 스타일에 맞는 테스트 생성",
+      "verificationCriteria": "생성된 테스트가 실행 가능하고, 기존 테스트 스타일과 일관되며, 적절한 커버리지를 제공해야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
+    },
+    {
+      "id": "1be46313-d998-4b17-ad3f-feafab91fc29",
+      "name": "MCP 자동화 대시보드 컴포넌트 구현",
+      "description": "기존 MCPDashboard.tsx를 확장하여 자동화 기능을 제어하고 모니터링할 수 있는 React 컴포넌트를 구현합니다.",
+      "notes": "기존 UI 패턴과 일관되게 구현하며, 실시간 업데이트와 상호작용을 지원합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "520a1f7c-c0a0-4542-a4e6-620ee6b29dd0"
+        }
+      ],
+      "createdAt": "2025-06-05T09:07:57.741Z",
+      "updatedAt": "2025-06-05T09:07:57.741Z",
+      "relatedFiles": [
+        {
+          "path": "app/components/MCPDashboard.tsx",
+          "type": "REFERENCE",
+          "description": "기존 대시보드 패턴 참조"
+        },
+        {
+          "path": "app/components/MCPAutomationDashboard.tsx",
+          "type": "CREATE",
+          "description": "자동화 대시보드 컴포넌트"
+        }
+      ],
+      "implementationGuide": "기존 컴포넌트 패턴을 따라 확장:\\n\\n```typescript\\n// app/components/MCPAutomationDashboard.tsx\\nexport default function MCPAutomationDashboard() {\\n  const { \\n    analyses, workflows, startAnalysis, executeWorkflow \\n  } = useMCPAutomationStore();\\n  \\n  return (\\n    <div className=\\\"grid grid-cols-1 lg:grid-cols-2 gap-6\\\">\\n      <CodeAnalysisPanel />\\n      <WorkflowControlPanel />\\n      <AutomationResults />\\n    </div>\\n  );\\n}\\n```\\n\\n기존 MCPDashboard 컴포넌트와 스타일 일관성 유지",
+      "verificationCriteria": "컴포넌트가 기존 스타일과 일관되고, 모든 자동화 기능에 접근 가능하며, 실시간 상태 업데이트가 작동해야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
+    },
+    {
+      "id": "413dfe07-0fe2-45ce-91ee-3b3ebb41fcf5",
+      "name": "워크플로우 실행 엔진 구현",
+      "description": "여러 자동화 작업을 순차적으로 실행하는 워크플로우 엔진을 구현합니다. 작업 큐, 에러 처리, 진행 상황 추적을 포함합니다.",
+      "notes": "안정적인 작업 실행과 에러 복구, 실시간 피드백을 제공합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "09c469b9-03e2-496c-b919-d06f5c4c0f64"
+        },
+        {
+          "taskId": "d6dcd444-6fee-4fa5-9ddb-b922f8b9dc68"
+        }
+      ],
+      "createdAt": "2025-06-05T09:07:57.741Z",
+      "updatedAt": "2025-06-05T09:07:57.741Z",
+      "relatedFiles": [
+        {
+          "path": "app/api/mcp/workflow/route.ts",
+          "type": "CREATE",
+          "description": "워크플로우 실행 API 라우트"
+        },
+        {
+          "path": "app/utils/workflowEngine.ts",
+          "type": "CREATE",
+          "description": "워크플로우 실행 엔진"
+        }
+      ],
+      "implementationGuide": "큐 기반 워크플로우 실행 시스템:\\n\\n```typescript\\n// app/utils/workflowEngine.ts\\nclass WorkflowEngine {\\n  private queue: WorkflowTask[] = [];\\n  private running = false;\\n  \\n  async executeWorkflow(workflow: AutomationWorkflow): Promise<WorkflowResult> {\\n    // 1. 작업 큐에 추가\\n    // 2. 순차 실행\\n    // 3. 진행 상황 브로드캐스트\\n    // 4. 에러 처리 및 복구\\n  }\\n}\\n```\\n\\n실시간 진행 상황을 WebSocket으로 클라이언트에 전송",
+      "verificationCriteria": "워크플로우가 안정적으로 실행되고, 에러 처리가 적절하며, 실시간 진행 상황이 정확하게 전달되어야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
+    },
+    {
+      "id": "ebf2d209-7504-4770-a0f9-8443d059c48a",
+      "name": "통합 테스트 및 문서화",
+      "description": "전체 MCP 자동화 시스템에 대한 통합 테스트를 작성하고, 사용 가이드와 API 문서를 생성합니다.",
+      "notes": "80% 이상의 테스트 커버리지를 달성하고 완전한 문서화를 제공합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "1be46313-d998-4b17-ad3f-feafab91fc29"
+        },
+        {
+          "taskId": "413dfe07-0fe2-45ce-91ee-3b3ebb41fcf5"
+        }
+      ],
+      "createdAt": "2025-06-05T09:07:57.741Z",
+      "updatedAt": "2025-06-05T09:07:57.741Z",
+      "relatedFiles": [
+        {
+          "path": "__tests__/mcp-automation.test.ts",
+          "type": "CREATE",
+          "description": "통합 테스트 파일"
+        },
+        {
+          "path": "docs/mcp-automation-guide.md",
+          "type": "CREATE",
+          "description": "사용자 가이드 문서"
+        }
+      ],
+      "implementationGuide": "Jest 기반 통합 테스트:\\n\\n```typescript\\n// __tests__/mcp-automation.test.ts\\ndescribe('MCP Automation System', () => {\\n  it('should analyze code and generate reports', async () => {\\n    // 전체 워크플로우 테스트\\n  });\\n  \\n  it('should handle errors gracefully', async () => {\\n    // 에러 처리 테스트\\n  });\\n});\\n```\\n\\n사용자 가이드와 API 문서 작성",
+      "verificationCriteria": "모든 테스트가 통과하고, 문서가 완전하며, 시스템이 요구사항을 모두 충족해야 합니다.",
+      "analysisResult": "autobotclaudecode-mcp 프로젝트를 기존 Next.js 트레이딩 플랫폼과 통합하여 TypeScript 기반의 코드 자동화 봇을 구축합니다. 기존 MCP 인프라를 활용하고, Next.js App Router 패턴을 따르며, Zustand 상태 관리와 기존 타입 시스템을 확장하여 일관된 아키텍처를 유지합니다."
     }
   ]
 }
