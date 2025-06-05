@@ -736,6 +736,17 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     }
   }, [showMA]);
 
+  // 마커 업데이트 처리
+  useEffect(() => {
+    if (seriesRefs.current.candle && markers && markers.length > 0) {
+      console.log('마커 업데이트:', markers.length, '개');
+      seriesRefs.current.candle.setMarkers(markers);
+    } else if (seriesRefs.current.candle && markers && markers.length === 0) {
+      // 마커가 비어있으면 기존 마커 제거
+      seriesRefs.current.candle.setMarkers([]);
+    }
+  }, [markers]);
+
   return (
     <div
       ref={chartContainerRef}

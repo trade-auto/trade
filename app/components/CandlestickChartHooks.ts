@@ -5,6 +5,7 @@ import { getInitialDateRange, calculateEMA, getChartEndpoint, createTradeMarkers
 import useUpbitStore from '../store/useUpbitStore';
 import { UpbitCandle } from '../types/candlestick';
 import { TradeStrategy, TradeSignal } from '../strategies/types';
+import strategies from '../strategies';
 
 // Time 타입을 timestamp로 변환하는 헬퍼 함수
 const getTimeAsTimestamp = (time: Time): number => {
@@ -142,6 +143,48 @@ export const useChartData = (
       markers: newMarkers
     }));
   }, []);
+
+  // 전략 분석 실행 함수 추가
+  const runStrategyAnalysis = useCallback((data: ExtendedCandlestickData[]) => {
+    if (!data || data.length < 35) return;
+    
+    try {
+      const strategy = strategies[currentStrategy];
+      if (strategy && strategy.analyze) {
+        console.log(`=== ${currentStrategy} 전략 분석 시작 ===`);
+        console.log('데이터 개수:', data.length);
+        
+        const result = strategy.analyze(data, {
+          realtime: isRealtimeAPIEnabled,
+          lastProcessedIndex: data.length - 1
+        });
+        
+        if (result.signals && result.signals.length > 0) {
+          console.log('생성된 신호 개수:', result.signals.length);
+          
+          const newMarkers = result.signals.map(signal => ({
+            time: signal.time as Time,
+            position: (signal.position === 'buy' ? 'belowBar' : 'aboveBar') as 'belowBar' | 'aboveBar',
+            color: signal.position === 'buy' ? '#00ff00' : '#ff0000',
+            shape: (signal.position === 'buy' ? 'arrowUp' : 'arrowDown') as 'arrowUp' | 'arrowDown',
+            text: signal.reason || (signal.position === 'buy' ? '매수' : '매도'),
+            size: 2
+          }));
+          
+          updateMarkers(newMarkers);
+          console.log('마커 업데이트 완료:', newMarkers.length, '개');
+        } else {
+          console.log('생성된 신호가 없습니다.');
+        }
+        
+        console.log(`=== ${currentStrategy} 전략 분석 완료 ===`);
+      } else {
+        console.log('전략을 찾을 수 없습니다:', currentStrategy);
+      }
+    } catch (error) {
+      console.error('전략 분석 중 오류 발생:', error);
+    }
+  }, [currentStrategy, isRealtimeAPIEnabled, updateMarkers]);
 
   // 실시간 API 업데이트로 전환하는 함수
   const switchToRealtimeAfterUpdate = useCallback(() => {
@@ -414,6 +457,10 @@ export const useChartData = (
       updateMovingAverages(sortedAllData);
       setProgress(100);
       
+      // 전략 분석 실행
+      console.log('데이터 로드 완료, 전략 분석 시작');
+      runStrategyAnalysis(sortedAllData);
+      
       // 전체 데이터 로드 후 실시간 API로 전환 (자동 업데이트 모드일 경우)
       console.log('데이터 로드 완료, 실시간 전환 조건 확인:', {
         isAutoUpdate,
@@ -454,7 +501,7 @@ export const useChartData = (
     } finally {
       ongoingRequestRef.current = false;
     }
-  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress]);
+  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress, runStrategyAnalysis]);
 
   // 차트 초기화 콜백
   const handleChartReady = useCallback((
@@ -974,6 +1021,9 @@ export const useChartData = (
           // 이동평균선 업데이트 (매 업데이트마다 수행)
           updateMovingAverages(updatedData);
           
+          // 실시간 데이터 업데이트 시 전략 분석 실행
+          runStrategyAnalysis(updatedData);
+          
           console.log('기존 캔들 업데이트:', newCandle);
         } else if ((newCandle.time as number) > (lastCandle.time as number)) {
           // 새 캔들 추가
@@ -996,6 +1046,9 @@ export const useChartData = (
           
           // 이동평균선 업데이트 (새 캔들이 추가될 때는 항상 수행)
           updateMovingAverages(updatedData);
+          
+          // 새 캔들 추가 시 전략 분석 실행
+          runStrategyAnalysis(updatedData);
           
           console.log('새 캔들 추가:', newCandle);
         }
@@ -1043,7 +1096,7 @@ export const useChartData = (
     } finally {
       ongoingRequestRef.current = false;
     }
-  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress]);
+  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress, runStrategyAnalysis]);
 
   // 실시간 업데이트를 위한 useEffect
   useEffect(() => {
@@ -1104,6 +1157,7 @@ export const useChartData = (
     updateMovingAverages,
     handleAutoUpdateToggle,
     handleRealtimeAPIToggle,
-    updateRealtimeData
+    updateRealtimeData,
+    runStrategyAnalysis
   };
 }; 

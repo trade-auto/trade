@@ -412,6 +412,12 @@ export default function OrdersPage() {
             onOrder={() => {}}
             onChartTypeChange={(type) => handleIntervalChange(type)}
             showMA={{
+              five: false,
+              ten: false,
+              twenty: false,
+              thirty: false,
+              fortyEight: false,
+              ninety: false,
               sixty: true,
               oneTwenty: true,
               twoForty: true,
