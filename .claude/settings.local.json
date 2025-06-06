@@ -47,7 +47,9 @@
       "Bash(rm:*)",
       "Bash(mv:*)",
       "mcp__filesystem__list_directory",
-      "mcp__filesystem__read_file"
+      "mcp__filesystem__read_file",
+      "Bash(npm start)",
+      "Bash(npm restart)"
     ]
   },
   "enableAllProjectMcpServers": true,
