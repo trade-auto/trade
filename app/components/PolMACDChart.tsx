@@ -23,21 +23,70 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
   const kLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const dLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ema5Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema10Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema20Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema30Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema48Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema60Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema90Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema120Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema240Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema360Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema600Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema900Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const rsiRef = useRef<ISeriesApi<'Line'> | null>(null);
   
   // 백테스트 결과 상태
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [showBacktestResults, setShowBacktestResults] = useState(false);
+
+  // RSI 계산 함수
+  const calculateRSI = (data: CandlestickData[], period = 14) => {
+    const results: { time: Time; value: number }[] = [];
+    
+    if (data.length <= period) {
+      console.log('Not enough data for RSI:', data.length, 'need:', period + 1);
+      return results;
+    }
+    
+    const closes = data.map(d => d.close);
+    
+    // 첫 번째 평균 계산
+    let avgGain = 0;
+    let avgLoss = 0;
+    
+    for (let i = 1; i <= period; i++) {
+      const change = closes[i] - closes[i - 1];
+      if (change >= 0) {
+        avgGain += change;
+      } else {
+        avgLoss -= change;
+      }
+    }
+    
+    avgGain = avgGain / period;
+    avgLoss = avgLoss / period;
+    
+    // 첫 번째 RSI 값
+    let rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss)));
+    results.push({
+      time: data[period].time as Time,
+      value: rsi
+    });
+    
+    // 나머지 RSI 값들 계산 (Wilder's smoothing)
+    for (let i = period + 1; i < closes.length; i++) {
+      const change = closes[i] - closes[i - 1];
+      const gain = change >= 0 ? change : 0;
+      const loss = change < 0 ? -change : 0;
+      
+      avgGain = ((avgGain * (period - 1)) + gain) / period;
+      avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+      
+      rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss)));
+      
+      results.push({
+        time: data[i].time as Time,
+        value: rsi
+      });
+    }
+    
+    console.log('RSI calculation complete:', results.length, 'values');
+    return results;
+  };
 
   // 스토캐스틱 계산 함수
   const calculateStochastic = (data: CandlestickData[], kPeriod = 20, dPeriod = 5, smoothPeriod = 3) => {
@@ -439,6 +488,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
     const { macdData, signalData, histogramData, markers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
     const stochasticData = calculateStochastic(data);
+    const rsiData = calculateRSI(data);
+    console.log('RSI Data calculated:', rsiData.length, 'points', rsiData[0], rsiData[rsiData.length - 1]);
 
     // 새로운 차트 생성
     const chart = createChart(chartContainerRef.current, {
@@ -548,49 +599,35 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const ema5Series = chart.addLineSeries({
       color: '#1E88E5',
       lineWidth: 2,
-      title: '5 EMA'
+      title: '5 EMA',
+      visible: true
     });
 
     const ema20Series = chart.addLineSeries({
       color: '#D81B60',
       lineWidth: 2,
-      title: '20 EMA'
-    });
-
-    const ema30Series = chart.addLineSeries({
-      color: '#FFB300',
-      lineWidth: 2,
-      title: '30 EMA'
+      title: '20 EMA',
+      visible: true
     });
 
     const ema48Series = chart.addLineSeries({
       color: '#00C853',
       lineWidth: 2,
-      title: '48 EMA'
-    });
-
-    const ema60Series = chart.addLineSeries({
-      color: '#FF00FF',
-      lineWidth: 2,
-      title: '60 EMA'
-    });
-    
-    
-    const ema90Series = chart.addLineSeries({
-      color: '#FF00FF',
-      lineWidth: 2,
-      title: '90 EMA'
+      title: '48 EMA',
+      visible: true
     });
 
     const ema120Series = chart.addLineSeries({
-      color: '#FF00FF',
+      color: '#1E90FF',  // Dodger Blue
       lineWidth: 2,
-      title: '120 EMA'
+      title: '120 EMA',
+      visible: true
     });
     const ema240Series = chart.addLineSeries({
-      color: '#FF00FF',   
-      lineWidth: 2,
-      title: '240 EMA'
+      color: '#00FF00',  // Lime Green   
+      lineWidth: 3,
+      title: '240 EMA',
+      visible: true
     });
 
 
@@ -599,25 +636,96 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       ema5Series.setData(ema5Data);
       ema20Series.setData(ema20Data);
       
-      // 30, 48 EMA 데이터 계산 및 설정
-      const ema30Data = calculateEMA(data, 30);
+      // 48, 120, 240 EMA 데이터 계산 및 설정
       const ema48Data = calculateEMA(data, 48);
+      const ema120Data = calculateEMA(data, 120);
+      const ema240Data = calculateEMA(data, 240);
       
-      if (ema30Data && ema48Data) {
-        ema30Series.setData(ema30Data);
+      if (ema48Data && ema48Data.length > 0) {
         ema48Series.setData(ema48Data);
+        ema48Series.applyOptions({ visible: true });
+      }
+      
+      if (ema120Data && ema120Data.length > 0) {
+        ema120Series.setData(ema120Data);
+        ema120Series.applyOptions({ visible: true });
+      }
+      
+      if (ema240Data && ema240Data.length > 0) {
+        console.log('240 EMA setting:', {
+          dataLength: data.length,
+          ema240DataLength: ema240Data.length,
+          firstData: ema240Data[0],
+          lastData: ema240Data[ema240Data.length - 1]
+        });
+        ema240Series.setData(ema240Data);
+        ema240Series.applyOptions({ visible: true });
+      } else {
+        console.log('240 EMA not set - data.length:', data.length, 'ema240Data:', ema240Data);
       }
     }
     
 
     ema5Ref.current = ema5Series;
     ema20Ref.current = ema20Series;
-    ema30Ref.current = ema30Series;
     ema48Ref.current = ema48Series;
-    ema60Ref.current = ema60Series; 
-    ema90Ref.current = ema90Series;
     ema120Ref.current = ema120Series;
     ema240Ref.current = ema240Series;
+    
+    // RSI 시리즈 추가
+    const rsiSeries = chart.addLineSeries({
+      color: '#9C27B0', // 보라색
+      lineWidth: 3, // 더 굵게
+      title: 'RSI(14)',
+      priceScaleId: 'left',
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
+      visible: true,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 5,
+    });
+    rsiRef.current = rsiSeries;
+    console.log('RSI series created:', !!rsiRef.current);
+
+    // RSI 과매수/과매도 라인 추가
+    const rsiOverboughtLine = chart.addLineSeries({
+      color: '#FF5252',
+      lineWidth: 2,
+      lineStyle: 2, // dashed
+      title: 'RSI 70',
+      priceScaleId: 'left',
+      visible: true,
+      lastValueVisible: false,
+      priceLineVisible: false,
+    });
+
+    const rsiOversoldLine = chart.addLineSeries({
+      color: '#4CAF50',
+      lineWidth: 2,
+      lineStyle: 2, // dashed
+      title: 'RSI 30',
+      priceScaleId: 'left',
+      visible: true,
+      lastValueVisible: false,
+      priceLineVisible: false,
+    });
+
+    // RSI 중간선 추가
+    const rsiMidLine = chart.addLineSeries({
+      color: '#888888',
+      lineWidth: 1,
+      lineStyle: 2, // dashed
+      title: 'RSI 50',
+      priceScaleId: 'left',
+      visible: true,
+      lastValueVisible: false,
+      priceLineVisible: false,
+    });
     // 마커 표시
     if (markers && markers.length > 0) {
       const validMarkers = markers.map(marker => ({
@@ -682,6 +790,47 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       { time: timeRange.to, value: minusTenPercent },
     ]);
 
+    // RSI 데이터를 MACD 스케일로 조정
+    const scaledRsiData = rsiData.map(d => ({
+      time: d.time,
+      value: (d.value - 50) * (macdRange / 50) // RSI를 MACD 스케일로 조정
+    }));
+
+    // RSI 과매수/과매도 라인도 같은 스케일로 조정
+    const scaledRsiOverboughtData = [
+      { time: timeRange.from, value: (70 - 50) * (macdRange / 50) },
+      { time: timeRange.to, value: (70 - 50) * (macdRange / 50) },
+    ];
+    
+    const scaledRsiOversoldData = [
+      { time: timeRange.from, value: (30 - 50) * (macdRange / 50) },
+      { time: timeRange.to, value: (30 - 50) * (macdRange / 50) },
+    ];
+    
+    const scaledRsiMidData = [
+      { time: timeRange.from, value: 0 }, // 50에서 50을 빼면 0
+      { time: timeRange.to, value: 0 },
+    ];
+
+    // RSI 데이터 설정
+    console.log('Setting RSI data:', {
+      rsiDataLength: rsiData.length,
+      scaledRsiDataLength: scaledRsiData.length,
+      rsiRef: !!rsiRef.current,
+      macdRange: macdRange,
+      firstScaledRsi: scaledRsiData[0],
+      lastScaledRsi: scaledRsiData[scaledRsiData.length - 1]
+    });
+    
+    if (rsiRef.current && scaledRsiData.length > 0) {
+      rsiRef.current.setData(scaledRsiData);
+      console.log('RSI data set successfully');
+    }
+    
+    rsiOverboughtLine.setData(scaledRsiOverboughtData);
+    rsiOversoldLine.setData(scaledRsiOversoldData);
+    rsiMidLine.setData(scaledRsiMidData);
+
     // 라인 설정 강화
     twentyPercentLineRef.applyOptions({
       lastValueVisible: true,
@@ -726,6 +875,23 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     chart.timeScale().fitContent();
 
     chartRef.current = chart;
+    
+    // 왼쪽 스케일 자동 조정 설정
+    chart.priceScale('left').applyOptions({
+      autoScale: true,
+      scaleMargins: {
+        top: 0.2,
+        bottom: 0.2,
+      },
+    });
+    
+    // RSI가 보이도록 강제로 시리즈 업데이트
+    setTimeout(() => {
+      if (rsiRef.current) {
+        rsiRef.current.applyOptions({ visible: true });
+        console.log('RSI visibility forced to true');
+      }
+    }, 100);
 
     // 업비트 스토어에서 다른 차트와 시간 동기화
     const upbitStore = useUpbitStore.getState();
@@ -764,50 +930,22 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
   useEffect(() => {
     if (showMA) {
       if (ema5Ref.current) 
-        ema5Ref.current.applyOptions({ visible: showMA.five });
-      
-      if (ema10Ref.current) 
-        ema10Ref.current.applyOptions({ visible: showMA.ten });
+        ema5Ref.current.applyOptions({ visible: true });
       
       if (ema20Ref.current) 
-        ema20Ref.current.applyOptions({ visible: showMA.twenty });
-      
-      if (ema30Ref.current) 
-        ema30Ref.current.applyOptions({ visible: showMA.thirty });
+        ema20Ref.current.applyOptions({ visible: true });
       
       if (ema48Ref.current) 
-        ema48Ref.current.applyOptions({ visible: showMA.fortyEight });
-      
-      if (ema60Ref.current) 
-        ema60Ref.current.applyOptions({ visible: showMA.sixty });
-      
-      if (ema90Ref.current) 
-        ema90Ref.current.applyOptions({ visible: showMA.ninety });
+        ema48Ref.current.applyOptions({ visible: true });
       
       if (ema120Ref.current) 
-        ema120Ref.current.applyOptions({ visible: showMA.oneTwenty });
+        ema120Ref.current.applyOptions({ visible: true });
       
       if (ema240Ref.current) 
-        ema240Ref.current.applyOptions({ visible: showMA.twoForty });
+        ema240Ref.current.applyOptions({ visible: true });
       
-      // 360MA 이상은 데이터가 충분한 경우에만 표시
-      if (ema360Ref.current) {
-        ema360Ref.current.applyOptions({ 
-          visible: data.length >= 360 ? showMA.threeHundredSixty : false 
-        });
-      }
-      
-      if (ema600Ref.current) {
-        ema600Ref.current.applyOptions({ 
-          visible: data.length >= 600 ? showMA.sixHundred : false 
-        });
-      }
-      
-      if (ema900Ref.current) {
-        ema900Ref.current.applyOptions({ 
-          visible: data.length >= 900 ? showMA.nineHundred : false 
-        });
-      }
+      if (rsiRef.current)
+        rsiRef.current.applyOptions({ visible: true });
     }
   }, [showMA, data.length]);
 

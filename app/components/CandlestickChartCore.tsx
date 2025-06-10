@@ -25,11 +25,12 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     symbol,
     chartType: propsChartType,
     initialAutoUpdate = true,
-    initialDataCount = 200, // 기본값 200으로 설정
+    initialDataCount = 500, // 기본값 500으로 설정 (240 EMA 표시를 위해)
     mode,
     handleOrder,
     onOrder,
     onChartTypeChange: propsOnChartTypeChange,
+    showMA: initialShowMA,
   } = props;
   
   // 차트 타입의 기본값을 5분봉으로 설정
@@ -42,21 +43,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     endDate: null
   });
   
-  // 이동평균선 표시 상태 초기화
-  const [showMA, setShowMA] = React.useState({
-    five: false,
-    ten: false,
-    twenty: false,
-    thirty: false,
-    fortyEight: false,
-    ninety: false,
-    sixty: false,
-    oneTwenty: false,
-    twoForty: false,
-    threeHundredSixty: false,
-    sixHundred: false,
-    nineHundred: false
-  });
+  // 이동평균선 표시 상태는 useChartData 훅에서 관리됨
   
   // 차트 타입이 변경될 때 props에 전달된 onChartTypeChange 함수 호출
   React.useEffect(() => {
@@ -94,17 +81,32 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     });
   }, []);
   
-  // 컴포넌트 마운트 시 localStorage에서 캔들 개수 불러오기
+  // 컴포넌트 마운트 시 localStorage에서 캔들 개수 불러오기 및 240 EMA 설정 확인
   React.useEffect(() => {
     try {
       const savedCount = localStorage.getItem('chartDataCount');
       if (savedCount) {
         setDataCount(parseInt(savedCount, 10));
       }
+      
+      // 240 EMA 설정 확인 및 수정
+      const maSettings = localStorage.getItem('maSettings');
+      if (maSettings) {
+        const parsedSettings = JSON.parse(maSettings);
+        console.log('Current maSettings in localStorage:', parsedSettings);
+        
+        // props로 240 EMA가 true로 전달되었는데 localStorage가 false인 경우
+        if (initialShowMA?.twoForty === true && parsedSettings.twoForty === false) {
+          console.log('Fixing 240 EMA setting in localStorage...');
+          parsedSettings.twoForty = true;
+          localStorage.setItem('maSettings', JSON.stringify(parsedSettings));
+          console.log('240 EMA setting updated in localStorage');
+        }
+      }
     } catch (error) {
-      console.error('저장된 캔들 개수 로드 실패:', error);
+      console.error('설정 로드/수정 실패:', error);
     }
-  }, []);
+  }, [initialShowMA]);
   
   // 차트 데이터 및 기능 훅
   const {
@@ -127,7 +129,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     handleRealtimeAPIToggle,
     handleChartReady,
     loadData
-  } = useChartData(symbol, chartType, initialAutoUpdate, mode, dataCount);
+  } = useChartData(symbol, chartType, initialAutoUpdate, mode, dataCount, initialShowMA);
   
   // 차트 높이 변경 핸들러
   const handleHeightChange = (height: number) => {
@@ -166,19 +168,19 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     let startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000); // 기본값 설정
     
     if (chartType.startsWith('seconds/')) {
-      // 초봉: 최근 2시간 데이터로 명시적 설정
-      startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-      console.log('초봉 차트 - 시작 날짜를 2시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
+      // 초봉: 12시간으로 확장 (12시간 = 720개 캔들)
+      startDate = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+      console.log('초봉 차트 - 시작 날짜를 12시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
       setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
     } else if (chartType.startsWith('minutes/')) {
       // 분봉: 기간 설정
       const minutes = parseInt(chartType.split('/')[1]);
       if (minutes === 5) {
-        // 5분봉: 576개 캔들 데이터 (5분 × 576 = 2880분 = 48시간)
-        startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-      } else if (minutes === 15) {
-        // 15분봉: 672개 캔들 데이터 (15분 × 672 = 10080분 = 168시간 = 7일)
+        // 5분봉: 더 많은 데이터를 위해 7일로 확장 (7일 = 2016개 캔들)
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else if (minutes === 15) {
+        // 15분봉: 14일로 확장 (14일 = 1344개 캔들)
+        startDate = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
       }
       console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
       setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
@@ -323,7 +325,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
               isAutoUpdate={isAutoUpdate}
               isRealtimeAPIEnabled={isRealtimeAPIEnabled}
               data={isDataImported ? importedData : allData}
-              showMA={showMA}
+              showMA={chartShowMA}
               onChartReady={isDataImported ? handleBacktestChartInit : handleChartReady}
             />
           </div>
@@ -350,7 +352,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
               <PolMACDChart 
                 data={isDataImported ? importedData : allData} 
                 height={400} 
-                showMA={showMA}
+                showMA={chartShowMA}
                 onBacktestResultChange={setPolMacdBacktestResult} 
               />
             </div>
@@ -364,8 +366,8 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
         <div className="flex flex-col md:flex-row gap-4">
           <div className="w-full md:w-1/2">
             <ChartSettings
-              showMA={showMA}
-              updateShowMA={setShowMA}
+              showMA={chartShowMA}
+              updateShowMA={updateShowMA}
               chartHeight={chartHeight}
               handleHeightChange={handleHeightChange}
               chartType={chartType}

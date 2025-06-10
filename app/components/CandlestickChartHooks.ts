@@ -27,7 +27,10 @@ const loadInitialMASettings = (): MASettings => {
     try {
       const savedSettings = localStorage.getItem('maSettings');
       if (savedSettings) {
-        return JSON.parse(savedSettings);
+        const parsed = JSON.parse(savedSettings);
+        console.log('Loaded MA settings from localStorage:', parsed);
+        console.log('240 EMA setting (twoForty):', parsed.twoForty);
+        return parsed;
       }
     } catch (error) {
       console.error('이동평균선 설정 로드 실패:', error);
@@ -49,6 +52,7 @@ const loadInitialMASettings = (): MASettings => {
     sixHundred: false,
     nineHundred: false,
   };
+  console.log('Using default MA settings, twoForty:', defaultSettings.twoForty);
   return defaultSettings;
 };
 
@@ -57,8 +61,10 @@ export const useChartData = (
   chartType: string,
   initialAutoUpdate: boolean,
   mode?: 'live' | 'test',
-  initialDataCount: number = 200 // 기본값 200으로 설정
+  initialDataCount: number = 200, // 기본값 200으로 설정
+  initialShowMA?: MASettings
 ) => {
+  console.log('useChartData 호출됨 - initialDataCount:', initialDataCount);
   // 차트 상태
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [chartHeight, setChartHeight] = useState(500);
@@ -97,7 +103,32 @@ export const useChartData = (
   
   // 설정 상태
   const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange(chartType));
-  const [showMA, setShowMA] = useState<MASettings>(loadInitialMASettings());
+  const [showMA, setShowMA] = useState<MASettings>(() => {
+    // localStorage에서 기존 설정 로드
+    const savedSettings = loadInitialMASettings();
+    
+    // props로 전달된 설정이 있으면 병합 (props 우선)
+    if (initialShowMA) {
+      // spread 연산자로 병합, initialShowMA가 우선
+      const mergedSettings = { ...savedSettings, ...initialShowMA };
+      console.log('Merging MA settings - localStorage:', savedSettings);
+      console.log('Merging MA settings - props:', initialShowMA);
+      console.log('Merging MA settings - result:', mergedSettings);
+      console.log('240 EMA will be:', mergedSettings.twoForty);
+      
+      // 병합된 설정을 localStorage에 저장
+      try {
+        localStorage.setItem('maSettings', JSON.stringify(mergedSettings));
+        console.log('Updated localStorage with merged MA settings');
+      } catch (error) {
+        console.error('Failed to save merged MA settings:', error);
+      }
+      
+      return mergedSettings;
+    }
+    
+    return savedSettings;
+  });
   
   // 차트 레퍼런스
   const chartRef = useRef<IChartApi | null>(null);
@@ -333,6 +364,8 @@ export const useChartData = (
       
       // 목표 캔들 수 설정
       let targetCandles = initialDataCount; // 전달받은 initialDataCount 사용
+      console.log(`목표 캔들 수 설정 - initialDataCount: ${initialDataCount}, chartType: ${chartType}`);
+      
       if (chartType.startsWith('minutes/')) {
         const minutesInterval = parseInt(chartType.split('/')[1]);
         if (minutesInterval === 5) {
@@ -340,6 +373,13 @@ export const useChartData = (
         } else if (minutesInterval === 15) {
           targetCandles = Math.max(672, initialDataCount); // 15분봉 최소 672개 또는 initialDataCount
         }
+      }
+      
+      console.log(`최종 목표 캔들 수: ${targetCandles}`);
+      
+      // 240 EMA를 위해 충분한 데이터가 있는지 확인
+      if (targetCandles < 240) {
+        console.warn(`⚠️ 목표 캔들 수(${targetCandles})가 240개 미만입니다. 240 EMA를 표시할 수 없습니다.`);
       }
       
       // API 요청 당 최대 캔들 수 제한 (업비트 API 제한)
@@ -579,6 +619,8 @@ export const useChartData = (
 
   // 이동평균선 표시 설정 업데이트
   const updateShowMA = useCallback((newShowMA: MASettings) => {
+    console.log('📊 이동평균선 설정 업데이트:', newShowMA);
+    console.log('📊 240MA 설정:', newShowMA.twoForty ? '표시됨' : '숨겨짐');
     setShowMA(newShowMA);
     
     // 로컬 스토리지에 설정 저장

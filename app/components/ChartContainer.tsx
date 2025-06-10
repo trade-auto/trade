@@ -12,7 +12,10 @@ import useUpbitStore from '../store/useUpbitStore';
 
 // 이동평균선 계산 함수
 const calculateEMA = (data: ExtendedCandlestickData[], period: number) => {
-  if (data.length < period) return [];
+  if (data.length < period) {
+    console.log(`EMA${period} 계산 스킵: 데이터 부족 (${data.length}개 < ${period}개)`);
+    return [];
+  }
   
   const result: { time: Time; value: number }[] = [];
   
@@ -39,6 +42,16 @@ const calculateEMA = (data: ExtendedCandlestickData[], period: number) => {
     result.push({
       time: data[i].time,
       value: ema
+    });
+  }
+  
+  if (period === 240) {
+    console.log(`EMA${period} 계산 완료:`, {
+      dataLength: data.length,
+      resultLength: result.length,
+      firstValue: result[0]?.value,
+      lastValue: result[result.length - 1]?.value,
+      multiplier
     });
   }
   
@@ -105,7 +118,7 @@ const CHART_COLORS = {
 const MA_COLORS = {
   sixty: '#0000FF',
   oneTwenty: '#800080',
-  twoForty: '#FFA500',
+  twoForty: '#00FF00',  // 밝은 녹색으로 변경
   threeHundredSixty: '#008000',
   sixHundred: '#00FFFF',
   nineHundred: '#FF00FF',
@@ -200,6 +213,10 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
   showMA,
   onChartReady,
 }) => {
+  // 디버깅: showMA props 확인
+  console.log('ChartContainer received showMA:', showMA);
+  console.log('240 EMA should be visible:', showMA?.twoForty);
+  
   const container = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -332,10 +349,12 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     });
     
     seriesRefs.current.twoFortyEMA = chart.addLineSeries({
-      color: '#FFFF00',  // Yellow
-      lineWidth: 2,
+      color: '#00FF00',  // 밝은 녹색 - MA_COLORS와 일치
+      lineWidth: 3,      // 선 굵기 증가
       priceLineVisible: false,
-      title: '240 EMA'
+      title: '240 EMA',
+      crosshairMarkerVisible: true,  // 크로스헤어에서 표시
+      lastValueVisible: true,  // 마지막 값 표시
     });
     
     seriesRefs.current.threeHundredSixtyEMA = chart.addLineSeries({
@@ -507,9 +526,26 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
           
           if (processedData.length >= 240 && seriesRefs.current.twoFortyEMA) {
             const ema240Data = calculateEMA(processedData, 240);
+            console.log('240MA 디버깅 정보:');
+            console.log('- 처리된 데이터 개수:', processedData.length);
+            console.log('- 240MA 데이터 개수:', ema240Data.length);
+            console.log('- showMA.twoForty 값:', showMA?.twoForty);
+            console.log('- 240MA 첫 번째 값:', ema240Data[0]?.value);
+            console.log('- 240MA 마지막 값:', ema240Data[ema240Data.length - 1]?.value);
+            
             seriesRefs.current.twoFortyEMA.setData(ema240Data);
-            seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA?.twoForty || false });
-            console.log(`240MA 설정 완료: ${ema240Data.length}개, 표시: ${showMA?.twoForty ? '표시' : '숨김'}`);
+            // 디버깅을 위해 일시적으로 강제로 visible 설정
+            const isVisible = showMA?.twoForty !== undefined ? showMA.twoForty : true;
+            seriesRefs.current.twoFortyEMA.applyOptions({ 
+              visible: isVisible,
+              color: '#00FF00',  // 색상 재확인
+              lineWidth: 3
+            });
+            console.log(`240MA 설정 완료: ${ema240Data.length}개, 표시: ${isVisible ? '표시' : '숨김'}, showMA.twoForty: ${showMA?.twoForty}`);
+          } else {
+            console.log('240MA 설정 스킵됨:');
+            console.log('- 데이터 개수:', processedData.length);
+            console.log('- 240MA 시리즈 존재:', !!seriesRefs.current.twoFortyEMA);
           }
           
           if (processedData.length >= 360 && seriesRefs.current.threeHundredSixtyEMA) {
@@ -661,10 +697,33 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       }
       
       if (processedData.length >= 240 && seriesRefs.current.twoFortyEMA) {
+        console.log('Setting 240 EMA data, showMA.twoForty:', showMA?.twoForty);
         const ema240Data = calculateEMA(processedData, 240);
         seriesRefs.current.twoFortyEMA.setData(ema240Data);
-        seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA?.twoForty || false });
-        console.log(`240MA 설정 완료: ${ema240Data.length}개, 표시: ${showMA?.twoForty ? '표시' : '숨김'}`);
+        // 디버깅을 위해 일시적으로 강제로 visible 설정
+        // orders 페이지에서는 항상 true로 설정되어야 함
+        const isVisible = showMA?.twoForty !== undefined ? showMA.twoForty : true;
+        
+        // Fallback: showMA가 전달되지 않았거나 twoForty가 없는 경우에도 표시
+        if (showMA === undefined || showMA.twoForty === undefined) {
+          console.warn('240 EMA visibility fallback activated - forcing visible');
+        }
+        seriesRefs.current.twoFortyEMA.applyOptions({ 
+          visible: isVisible,
+          color: '#00FF00',  // 색상 재확인
+          lineWidth: 3
+        });
+        console.log(`240MA 설정 완료: ${ema240Data.length}개, 표시: ${isVisible ? '표시' : '숨김'}, showMA.twoForty: ${showMA?.twoForty}`);
+        console.log('240 EMA series options:', {
+          visible: isVisible,
+          color: '#00FF00',
+          lineWidth: 3,
+          dataLength: ema240Data.length,
+          firstData: ema240Data[0],
+          lastData: ema240Data[ema240Data.length - 1]
+        });
+      } else {
+        console.log('240 EMA not set - processedData.length:', processedData.length, 'has series:', !!seriesRefs.current.twoFortyEMA);
       }
       
       if (processedData.length >= 360 && seriesRefs.current.threeHundredSixtyEMA) {
@@ -720,8 +779,14 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       if (seriesRefs.current.oneTwentyEMA) 
         seriesRefs.current.oneTwentyEMA.applyOptions({ visible: showMA.oneTwenty });
       
-      if (seriesRefs.current.twoFortyEMA) 
+      if (seriesRefs.current.twoFortyEMA) {
+        console.log('240MA visibility 업데이트:', showMA.twoForty);
+        console.log('240 EMA series exists:', !!seriesRefs.current.twoFortyEMA);
         seriesRefs.current.twoFortyEMA.applyOptions({ visible: showMA.twoForty });
+        console.log('240 EMA visibility applied');
+      } else {
+        console.log('240 EMA series not found when trying to update visibility');
+      }
       
       if (seriesRefs.current.threeHundredSixtyEMA) 
         seriesRefs.current.threeHundredSixtyEMA.applyOptions({ visible: showMA.threeHundredSixty });

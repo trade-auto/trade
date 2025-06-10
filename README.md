@@ -247,6 +247,54 @@ const backtestMarkers = csvBacktestResult?.markers || [];
 - `MACrossChart`: MA_CROSS 전략 전용 차트
 - `UpbitVolumeChart`: 거래량 분석 차트
 
+### MACD 전략 차트 표시
+MACD 전략이 선택되면 다음 차트들이 표시됩니다:
+
+1. **메인 캔들스틱 차트** (CandlestickChartCore)
+   - 캔들스틱 차트
+   - 이동평균선 (MA): 5, 10, 20, 30, 48, 60, 90, 120, 240, 360, 600, 900
+   - 거래량 히스토그램
+   - 매수/매도 신호 마커
+   - 높이: 기본 500px (조절 가능)
+
+2. **PolMACD 차트** (PolMACDChart) - 높이: 400px
+   **상단 차트:**
+   - 캔들스틱 차트
+   - EMA 이동평균선: 5, 20, 48, 120, 240 (간소화됨)
+   
+   **중단 차트:**
+   - MACD 라인 (EMA 23 - EMA 25)
+   - 시그널 라인 (MACD의 11일 EMA)
+   - MACD 히스토그램 (MACD - Signal)
+   - RSI (14일 기준) - 보라색 라인
+   - RSI 과매수선 (70) - 빨간색 점선
+   - RSI 과매도선 (30) - 녹색 점선
+   - RSI 중간선 (50) - 회색 점선
+   
+   **하단 차트:**
+   - 스토캐스틱 %K 라인 (20일 기준)
+   - 스토캐스틱 %D 라인 (%K의 5일 이동평균)
+   - 백테스트 결과 통합
+
+3. **MACD 차트** (MACDChart) - 높이: 300px
+   **상단 차트:**
+   - MACD 라인 (EMA 12 - EMA 26)
+   - 시그널 라인 (MACD의 9일 EMA)
+   - MACD 히스토그램
+   
+   **중단 차트:**
+   - RSI (14일 기준)
+   - 과매수선 (70)
+   - 과매도선 (30)
+   
+   **하단 차트:**
+   - 스토캐스틱 %K 라인 (20일 기준)
+   - 스토캐스틱 %D 라인 (%K의 5일 이동평균)
+   - 과매수선 (80)
+   - 과매도선 (20)
+
+이 세 차트는 MACD 전략(`tradeStrategy === 'MACD'`)이 선택될 때만 표시되며, CandlestickChartCore 컴포넌트 내부에서 조건부 렌더링됩니다.
+
 ### 주문 컴포넌트
 - `CreateOrder`: 주문 생성 폼
 - `OpenOrders`: 미체결 주문 목록
