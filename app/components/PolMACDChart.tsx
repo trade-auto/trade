@@ -505,16 +505,16 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       rightPriceScale: {
         borderColor: '#d1d4dc',
         scaleMargins: {
-          top: 0.1,
-          bottom: 0.2,
+          top: 0.05,
+          bottom: 0.3,  // 캔들차트 하단 여백 축소
         },
       },
       leftPriceScale: {
         visible: true,
         borderColor: '#d1d4dc',
         scaleMargins: {
-          top: 0.1,
-          bottom: 0.2,
+          top: 0.35,  // MACD를 위한 상단 공간
+          bottom: 0.4,  // RSI를 위한 하단 공간 + 간격
         },
         borderVisible: true,
         ticksVisible: true,
@@ -541,6 +541,15 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         axisDoubleClickReset: true,
         mouseWheel: true,
         pinch: true,
+      },
+    });
+    
+    // RSI를 위한 별도 프라이스 스케일 설정
+    const rsiPriceScale = chart.priceScale('');
+    rsiPriceScale.applyOptions({
+      scaleMargins: {
+        top: 0.75,  // RSI 영역을 차트 하단 25%에 배치 (MACD와 5% 간격)
+        bottom: 0.02,
       },
     });
 
@@ -672,12 +681,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     ema120Ref.current = ema120Series;
     ema240Ref.current = ema240Series;
     
-    // RSI 시리즈 추가
+    // RSI 시리즈 추가 (별도 스케일 사용)
     const rsiSeries = chart.addLineSeries({
       color: '#9C27B0', // 보라색
       lineWidth: 3, // 더 굵게
       title: 'RSI(14)',
-      priceScaleId: 'left',
+      priceScaleId: '',  // 기본 스케일 사용 (RSI 전용)
       priceFormat: {
         type: 'price',
         precision: 2,
@@ -698,7 +707,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       lineWidth: 2,
       lineStyle: 2, // dashed
       title: 'RSI 70',
-      priceScaleId: 'left',
+      priceScaleId: '',  // RSI와 같은 스케일
       visible: true,
       lastValueVisible: false,
       priceLineVisible: false,
@@ -709,7 +718,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       lineWidth: 2,
       lineStyle: 2, // dashed
       title: 'RSI 30',
-      priceScaleId: 'left',
+      priceScaleId: '',  // RSI와 같은 스케일
       visible: true,
       lastValueVisible: false,
       priceLineVisible: false,
@@ -721,7 +730,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       lineWidth: 1,
       lineStyle: 2, // dashed
       title: 'RSI 50',
-      priceScaleId: 'left',
+      priceScaleId: '',  // RSI와 같은 스케일
       visible: true,
       lastValueVisible: false,
       priceLineVisible: false,
@@ -790,46 +799,52 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       { time: timeRange.to, value: minusTenPercent },
     ]);
 
-    // RSI 데이터를 MACD 스케일로 조정
-    const scaledRsiData = rsiData.map(d => ({
-      time: d.time,
-      value: (d.value - 50) * (macdRange / 50) // RSI를 MACD 스케일로 조정
-    }));
+    // RSI 데이터는 원본 값 그대로 사용 (0-100 범위)
+    const rsiLineData = rsiData;
 
-    // RSI 과매수/과매도 라인도 같은 스케일로 조정
-    const scaledRsiOverboughtData = [
-      { time: timeRange.from, value: (70 - 50) * (macdRange / 50) },
-      { time: timeRange.to, value: (70 - 50) * (macdRange / 50) },
+    // RSI 과매수/과매도 라인 데이터 (원본 값 사용)
+    const rsiOverboughtData = [
+      { time: timeRange.from, value: 70 },
+      { time: timeRange.to, value: 70 },
     ];
     
-    const scaledRsiOversoldData = [
-      { time: timeRange.from, value: (30 - 50) * (macdRange / 50) },
-      { time: timeRange.to, value: (30 - 50) * (macdRange / 50) },
+    const rsiOversoldData = [
+      { time: timeRange.from, value: 30 },
+      { time: timeRange.to, value: 30 },
     ];
     
-    const scaledRsiMidData = [
-      { time: timeRange.from, value: 0 }, // 50에서 50을 빼면 0
-      { time: timeRange.to, value: 0 },
+    const rsiMidData = [
+      { time: timeRange.from, value: 50 },
+      { time: timeRange.to, value: 50 },
     ];
 
     // RSI 데이터 설정
     console.log('Setting RSI data:', {
       rsiDataLength: rsiData.length,
-      scaledRsiDataLength: scaledRsiData.length,
+      rsiLineDataLength: rsiLineData.length,
       rsiRef: !!rsiRef.current,
       macdRange: macdRange,
-      firstScaledRsi: scaledRsiData[0],
-      lastScaledRsi: scaledRsiData[scaledRsiData.length - 1]
+      firstRsi: rsiLineData[0],
+      lastRsi: rsiLineData[rsiLineData.length - 1]
     });
     
-    if (rsiRef.current && scaledRsiData.length > 0) {
-      rsiRef.current.setData(scaledRsiData);
+    if (rsiRef.current && rsiLineData.length > 0) {
+      rsiRef.current.setData(rsiLineData);
       console.log('RSI data set successfully');
     }
     
-    rsiOverboughtLine.setData(scaledRsiOverboughtData);
-    rsiOversoldLine.setData(scaledRsiOversoldData);
-    rsiMidLine.setData(scaledRsiMidData);
+    rsiOverboughtLine.setData(rsiOverboughtData);
+    rsiOversoldLine.setData(rsiOversoldData);
+    rsiMidLine.setData(rsiMidData);
+    
+    // RSI 스케일 범위 고정 (0-100)
+    chart.priceScale('').applyOptions({
+      autoScale: false,
+      scaleMargins: {
+        top: 0.75,  // MACD와 5% 간격 유지
+        bottom: 0.02,
+      },
+    });
 
     // 라인 설정 강화
     twentyPercentLineRef.applyOptions({
@@ -876,14 +891,32 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
     chartRef.current = chart;
     
-    // 왼쪽 스케일 자동 조정 설정
+    // 왼쪽 스케일 자동 조정 설정 (MACD 전용)
     chart.priceScale('left').applyOptions({
       autoScale: true,
       scaleMargins: {
-        top: 0.2,
-        bottom: 0.2,
+        top: 0.35,  // 상단 35% 비워두기
+        bottom: 0.45,  // 하단 45% 비워두기 (RSI와 10% 간격)
       },
     });
+    
+    // MACD와 RSI 사이에 구분선 추가
+    const separatorLine = chart.addLineSeries({
+      color: '#e0e0e0',
+      lineWidth: 1,
+      lineStyle: 0,
+      priceScaleId: '',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    
+    // 구분선 위치 설정 (RSI 상단 경계)
+    const separatorData = [
+      { time: timeRange.from, value: 102 },
+      { time: timeRange.to, value: 102 },
+    ];
+    separatorLine.setData(separatorData);
     
     // RSI가 보이도록 강제로 시리즈 업데이트
     setTimeout(() => {

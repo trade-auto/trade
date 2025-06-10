@@ -193,8 +193,8 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
   const signalRef = useRef<ISeriesApi<'Line'> | null>(null);
   const histogramRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const markerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const kLineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const dLineRef = useRef<ISeriesApi<'Line'> | null>(null);
+  // const kLineRef = useRef<ISeriesApi<'Line'> | null>(null);
+  // const dLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const rsiLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const candlestickRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
 
@@ -365,8 +365,8 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
       priceScaleId: 'left',
     });
 
-    // 스토캐스틱 라인 추가 (숨김)
-    kLineRef.current = chart.addLineSeries({
+    // 스토캐스틱 라인 추가 - 주석 처리하여 완전히 제거
+    /* kLineRef.current = chart.addLineSeries({
       color: '#1E88E5', // 파란색
       lineWidth: 2,
       title: 'Stoch %K',
@@ -399,7 +399,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
       title: 'Stoch 20',
       priceScaleId: 'left',
       visible: false, // 숨김
-    });
+    }); */
 
     // MACD 0선
     const macdZeroLine = chart.addLineSeries({
@@ -456,7 +456,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
       ema120Series.setData(ema120);
       ema240Series.setData(ema240);
       const macdData = calculateMACD(data);
-      const stochData = calculateStochastic(data);
+      // const stochData = calculateStochastic(data); // 스토캐스틱 사용 안함
       const rsiData = calculateRSI(data);
 
       const macdLine = macdData.macdData.map(d => ({
@@ -475,8 +475,8 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
         color: d.histogram >= 0 ? '#26a69a' : '#ef5350',
       }));
 
-      // 스토캐스틱 데이터
-      const kLine = stochData.map(d => ({
+      // 스토캐스틱 데이터 - 주석 처리
+      /* const kLine = stochData.map(d => ({
         time: d.time as Time,
         value: d.k,
       }));
@@ -484,7 +484,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
       const dLine = stochData.map(d => ({
         time: d.time as Time,
         value: d.d,
-      }));
+      })); */
 
       // 과매수/과매도 라인 데이터
       const timeRange = {
@@ -529,8 +529,8 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
       let minMacd = Math.min(...macdData.macdData.map(d => Math.min(d.macd, d.signal)));
       let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
 
-      // 스토캐스틱 값의 범위 조정 (MACD와 동일 공간에 표시)
-      const scaledKLine = kLine.map(d => ({
+      // 스토캐스틱 값의 범위 조정 - 주석 처리
+      /* const scaledKLine = kLine.map(d => ({
         time: d.time,
         value: (d.value - 50) * (macdRange / 50)  // 스토캐스틱을 MACD 스케일로 조정
       }));
@@ -549,7 +549,7 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
       const scaledStochOversoldData = [
         { time: timeRange.from, value: (20 - 50) * (macdRange / 50) },
         { time: timeRange.to, value: (20 - 50) * (macdRange / 50) },
-      ];
+      ]; */
 
       // RSI 값의 범위 조정 (MACD와 동일 공간에 표시)
       const scaledRsiData = rsiData.map(d => ({
@@ -609,26 +609,26 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
       if (signalRef.current) signalRef.current.setData(signalLine);
       if (histogramRef.current) histogramRef.current.setData(histogram);
       if (rsiLineRef.current) rsiLineRef.current.setData(scaledRsiData);
-      // 스토캐스틱 데이터는 설정하지만 표시하지 않음
-      if (kLineRef.current) {
+      // 스토캐스틱 데이터 설정 - 주석 처리
+      /* if (kLineRef.current) {
         kLineRef.current.setData(scaledKLine);
         kLineRef.current.applyOptions({ visible: false });
       }
       if (dLineRef.current) {
         dLineRef.current.setData(scaledDLine);
         dLineRef.current.applyOptions({ visible: false });
-      }
+      } */
       if (markerSeriesRef.current) markerSeriesRef.current.setMarkers(allMarkers);
       
       rsiOverboughtLine.setData(scaledRsiOverboughtData);
       rsiOversoldLine.setData(scaledRsiOversoldData);
       rsiMidLine.setData(scaledRsiMidData);
       macdZeroLine.setData(macdZeroData);
-      // 스토캐스틱 과매수/과매도 라인도 숨김
-      stochOverboughtLine.setData(scaledStochOverboughtData);
+      // 스토캐스틱 과매수/과매도 라인 설정 - 주석 처리
+      /* stochOverboughtLine.setData(scaledStochOverboughtData);
       stochOverboughtLine.applyOptions({ visible: false });
       stochOversoldLine.setData(scaledStochOversoldData);
-      stochOversoldLine.applyOptions({ visible: false });
+      stochOversoldLine.applyOptions({ visible: false }); */
 
       chart.timeScale().fitContent();
       

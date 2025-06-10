@@ -348,10 +348,10 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
         {/* MACD 관련 차트들 - tradeStrategy가 'MACD'일 때만 표시 */}
         {tradeStrategy === 'MACD' && (
           <>
-            <div className="w-full" style={{ height: '400px' }}>
+            <div className="w-full" style={{ height: '1600px' }}>
               <PolMACDChart 
                 data={isDataImported ? importedData : allData} 
-                height={400} 
+                height={1600} 
                 showMA={chartShowMA}
                 onBacktestResultChange={setPolMacdBacktestResult} 
               />
