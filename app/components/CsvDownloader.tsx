@@ -15,7 +15,7 @@ interface CsvDownloaderProps {
   saveToCSV: () => void;
   isDataImported?: boolean;
   importProgress?: number;
-  fileInputRef?: React.RefObject<HTMLInputElement>;
+  fileInputRef?: React.RefObject<HTMLInputElement | null> | null;
   onFileImport?: (event: React.ChangeEvent<HTMLInputElement>) => void;
   triggerFileInput?: () => void;
 }

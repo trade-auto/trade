@@ -12,7 +12,8 @@ interface PolMACDChartProps {
   onBacktestResultChange?: (result: BacktestResult | null) => void;
 }
 
-const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA, onBacktestResultChange }) => {
+const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange }) => {
+  console.log('PolMACDChart height prop:', height);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -388,7 +389,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const histogramData = data.map((item, index) => ({
       time: item.time,
       value: histogramValues[index] || 0,
-      color: histogramValues[index] >= 0 ? 'rgba(0, 150, 136, 0.8)' : 'rgba(255, 82, 82, 0.8)',
+      color: histogramValues[index] >= 0 ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
     }));
 
     const ema5Data = data.map((item, index) => ({
@@ -607,6 +608,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
   };
 
   useEffect(() => {
+    console.log('PolMACDChart useEffect - height:', height);
+    console.log('Container element:', chartContainerRef.current);
     if (data.length === 0 || !chartContainerRef.current) return;
 
     const { macdData, signalData, histogramData, markers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
@@ -615,7 +618,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     console.log('RSI Data calculated:', rsiData.length, 'points', rsiData[0], rsiData[rsiData.length - 1]);
 
     // 새로운 차트 생성
-    const chart = createChart(chartContainerRef.current, {
+    console.log('Creating chart with height:', height);
+    const chartOptions = {
       height: height,
       layout: {
         background: { color: '#ffffff' },
@@ -628,16 +632,16 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       rightPriceScale: {
         borderColor: '#d1d4dc',
         scaleMargins: {
-          top: 0.05,
-          bottom: 0.3,  // 캔들차트 하단 여백 축소
+          top: 0.02,
+          bottom: 0.48,  // 캔들차트가 전체의 50% 차지
         },
       },
       leftPriceScale: {
         visible: true,
         borderColor: '#d1d4dc',
         scaleMargins: {
-          top: 0.35,  // MACD를 위한 상단 공간
-          bottom: 0.4,  // RSI를 위한 하단 공간 + 간격
+          top: 0.55,  // MACD를 위한 상단 공간 (캔들차트 50% + 간격 5%)
+          bottom: 0.25,  // RSI를 위한 하단 공간
         },
         borderVisible: true,
         ticksVisible: true,
@@ -665,23 +669,38 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         mouseWheel: true,
         pinch: true,
       },
-    });
+    };
+    console.log('Chart creation options:', chartOptions);
+    const chart = createChart(chartContainerRef.current, chartOptions);
+    console.log('Created chart:', chart);
+    console.log('Chart height after creation:', chart.options().height);
     
-    // RSI를 위한 별도 프라이스 스케일 설정
-    const rsiPriceScale = chart.priceScale('right');
-    rsiPriceScale.applyOptions({
-      scaleMargins: {
-        top: 0.75,  // RSI 영역을 차트 하단 25%에 배치 (MACD와 5% 간격)
-        bottom: 0.02,
-      },
-    });
+    // RSI를 위한 독립적인 프라이스 스케일 생성 시도
+    console.log('Available price scales:', Object.keys(chart));
+    try {
+      const rsiScale = chart.priceScale('rsi');
+      console.log('RSI scale created:', rsiScale);
+      rsiScale.applyOptions({
+        scaleMargins: {
+          top: 0.80,  // RSI 영역을 차트 하단 20%에 배치
+          bottom: 0.02,
+        },
+        autoScale: false,
+        borderVisible: true,
+        borderColor: '#d1d4dc',
+      });
+    } catch (error) {
+      console.error('Failed to create RSI scale:', error);
+      console.log('Falling back to overlay solution');
+    }
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#4CAF50',
-      downColor: '#F44336',
+      upColor: '#26A69A',
+      downColor: '#EF5350',
       borderVisible: false,
-      wickUpColor: '#4CAF50',
-      wickDownColor: '#F44336',
+      wickUpColor: '#26A69A',
+      wickDownColor: '#EF5350',
+      priceScaleId: 'right',  // 명시적으로 right 스케일 지정
     });
 
     candleSeries.setData(data);
@@ -690,23 +709,23 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     // MACD 표시
     const macdSeries = chart.addLineSeries({
       color: '#2962FF',
-      lineWidth: 2,
+      lineWidth: 5,
       priceScaleId: 'left',  // 왼쪽 스케일 사용
       priceFormat: {
         type: 'price',
-        precision: 2,
-        minMove: 0.01,
+        precision: 6,
+        minMove: 0.000001,
       },
     });
 
     const signalSeries = chart.addLineSeries({
       color: '#FF6D00',
-      lineWidth: 2,
+      lineWidth: 4,
       priceScaleId: 'left',  // 왼쪽 스케일 사용
       priceFormat: {
         type: 'price',
-        precision: 2,
-        minMove: 0.01,
+        precision: 6,
+        minMove: 0.000001,
       },
     });
 
@@ -714,9 +733,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       priceScaleId: 'left',  // 왼쪽 스케일 사용
       priceFormat: {
         type: 'price',
-        precision: 2,
-        minMove: 0.01,
+        precision: 6,
+        minMove: 0.000001,
       },
+      color: 'rgba(0, 150, 136, 0.3)',
     });
 
     macdSeries.setData(macdData);
@@ -729,52 +749,59 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
     // EMA 5, 20 표시
     const ema5Series = chart.addLineSeries({
-      color: '#1E88E5',
-      lineWidth: 2,
+      color: '#00BCD4',  // 밝은 청록색
+      lineWidth: 3,
       title: '5 EMA',
-      visible: true
+      visible: true,
+      priceScaleId: 'right',  // 캔들차트와 같은 스케일
     });
 
     const ema20Series = chart.addLineSeries({
-      color: '#D81B60',
-      lineWidth: 2,
+      color: '#FFC107',  // 황금색
+      lineWidth: 3,
       title: '20 EMA',
-      visible: true
+      visible: true,
+      priceScaleId: 'right',  // 캔들차트와 같은 스케일
     });
 
     const ema48Series = chart.addLineSeries({
       color: '#00C853',
       lineWidth: 2,
       title: '48 EMA',
-      visible: false  // 기본값 false로 변경
+      visible: false,  // 기본값 false로 변경
+      priceScaleId: 'right',
     });
     
     const ema60Series = chart.addLineSeries({
-      color: '#FF9800',  // 주황색
-      lineWidth: 2,
+      color: '#FF5722',  // 진한 주황색
+      lineWidth: 3,
       title: '60 EMA',
-      visible: true
+      visible: true,
+      priceScaleId: 'right',
     });
 
     const ema120Series = chart.addLineSeries({
       color: '#1E90FF',  // Dodger Blue
       lineWidth: 2,
       title: '120 EMA',
-      visible: false  // 기본값 false로 변경
+      visible: false,  // 기본값 false로 변경
+      priceScaleId: 'right',
     });
     
     const ema200Series = chart.addLineSeries({
-      color: '#9C27B0',  // 보라색
-      lineWidth: 3,
+      color: '#673AB7',  // 진한 보라색
+      lineWidth: 4,
       title: '200 EMA',
-      visible: true
+      visible: true,
+      priceScaleId: 'right',
     });
     
     const ema240Series = chart.addLineSeries({
       color: '#00FF00',  // Lime Green   
       lineWidth: 3,
       title: '240 EMA',
-      visible: false  // 기본값 false로 변경
+      visible: false,  // 기본값 false로 변경
+      priceScaleId: 'right',
     });
 
 
@@ -820,22 +847,25 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     ema200Ref.current = ema200Series;
     ema240Ref.current = ema240Series;
     
-    // RSI 시리즈 추가 (별도 스케일 사용)
+    // RSI 시리즈 추가 (독립 스케일 사용)
     const rsiSeries = chart.addLineSeries({
-      color: '#9C27B0', // 보라색
-      lineWidth: 3, // 더 굵게
+      color: '#FF1744', // 더 밝은 빨간색
+      lineWidth: 6, // 더 굵게
       title: 'RSI(14)',
-      priceScaleId: 'right',  // RSI 전용 스케일
+      priceScaleId: 'rsi',  // RSI 전용 독립 스케일
       priceFormat: {
         type: 'price',
-        precision: 2,
-        minMove: 0.01,
+        precision: 0,
+        minMove: 1,
       },
       visible: true,
       lastValueVisible: true,
-      priceLineVisible: false,
+      priceLineVisible: true,
+      priceLineWidth: 3,
+      priceLineStyle: 0,
+      priceLineColor: '#FF1744',
       crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 5,
+      crosshairMarkerRadius: 7,
     });
     rsiRef.current = rsiSeries;
     console.log('RSI series created:', !!rsiRef.current);
@@ -843,35 +873,35 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     // RSI 과매수/과매도 라인 추가
     const rsiOverboughtLine = chart.addLineSeries({
       color: '#FF5252',
-      lineWidth: 2,
+      lineWidth: 4,
       lineStyle: 2, // dashed
       title: 'RSI 70',
-      priceScaleId: 'right',  // RSI와 같은 스케일
+      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
       visible: true,
-      lastValueVisible: false,
+      lastValueVisible: true,
       priceLineVisible: false,
     });
 
     const rsiOversoldLine = chart.addLineSeries({
       color: '#4CAF50',
-      lineWidth: 2,
+      lineWidth: 4,
       lineStyle: 2, // dashed
       title: 'RSI 30',
-      priceScaleId: 'right',  // RSI와 같은 스케일
+      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
       visible: true,
-      lastValueVisible: false,
+      lastValueVisible: true,
       priceLineVisible: false,
     });
 
     // RSI 중간선 추가
     const rsiMidLine = chart.addLineSeries({
-      color: '#888888',
-      lineWidth: 1,
+      color: '#FFA726',
+      lineWidth: 3,
       lineStyle: 2, // dashed
       title: 'RSI 50',
-      priceScaleId: 'right',  // RSI와 같은 스케일
+      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
       visible: true,
-      lastValueVisible: false,
+      lastValueVisible: true,
       priceLineVisible: false,
     });
     // 마커 표시
@@ -892,15 +922,26 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     let minMacd = Math.min(...macdData.map(d => d.value));
     let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
     
-    // +20%/-10% 레벨 계산
-    const plusTwentyPercent = macdRange * 0.1;
-    const minusTenPercent = -macdRange * 0.2;
+    // +20%/-10% 레벨 계산 (더 넓은 범위로 조정)
+    const plusTwentyPercent = macdRange * 0.3;
+    const minusTenPercent = -macdRange * 0.3;
 
     // 시간 범위 설정
     const timeRange = {
       from: data[0].time as Time,
       to: data[data.length - 1].time as Time,
     };
+    
+    // MACD 기준선 추가
+    const macdZeroLine = chart.addLineSeries({
+      color: '#666666',
+      lineWidth: 1,
+      lineStyle: 0,
+      title: 'MACD 0',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      priceScaleId: 'left',
+    });
     
     // +20% 라인 추가
     const twentyPercentLineRef = chart.addLineSeries({
@@ -929,6 +970,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     });
 
     // 데이터 설정
+    macdZeroLine.setData([
+      { time: timeRange.from, value: 0 },
+      { time: timeRange.to, value: 0 },
+    ]);
     twentyPercentLineRef.setData([
       { time: timeRange.from, value: plusTwentyPercent },
       { time: timeRange.to, value: plusTwentyPercent },
@@ -940,6 +985,24 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
     // RSI 데이터는 원본 값 그대로 사용 (0-100 범위)
     const rsiLineData = rsiData;
+    
+    // RSI 스케일 범위 설정 (0-100 고정)
+    setTimeout(() => {
+      if (chart && chart.priceScale('rsi')) {
+        chart.priceScale('rsi').applyOptions({
+          autoScale: false,
+          ticksVisible: true,
+        });
+        // RSI 스케일을 0-100으로 고정
+        const rsiVisibleRange = {
+          from: -5,
+          to: 105,
+        };
+        chart.priceScale('rsi').applyOptions({
+          autoScale: false,
+        });
+      }
+    }, 100);
 
     // RSI 과매수/과매도 라인 데이터 (원본 값 사용)
     const rsiOverboughtData = [
@@ -977,10 +1040,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     rsiMidLine.setData(rsiMidData);
     
     // RSI 스케일 범위 고정 (0-100)
-    chart.priceScale('right').applyOptions({
+    chart.priceScale('rsi').applyOptions({
       autoScale: false,
       scaleMargins: {
-        top: 0.75,  // MACD와 5% 간격 유지
+        top: 0.80,  // RSI를 하단 20%에 배치
         bottom: 0.02,
       },
     });
@@ -1008,20 +1071,26 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
     // MACD 선과 신호선 설정 강화
     macdSeries.applyOptions({
-      lineWidth: 3,
+      lineWidth: 5,
       lastValueVisible: true,
-      priceLineVisible: false,
+      priceLineVisible: true,
+      priceLineWidth: 2,
+      priceLineStyle: 0,
+      priceLineColor: '#2962FF',
       crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 5,
+      crosshairMarkerRadius: 6,
       title: 'MACD'
     });
     
     signalSeries.applyOptions({
-      lineWidth: 2,
+      lineWidth: 4,
       lastValueVisible: true,
-      priceLineVisible: false,
+      priceLineVisible: true,
+      priceLineWidth: 2,
+      priceLineStyle: 0,
+      priceLineColor: '#FF6D00',
       crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
+      crosshairMarkerRadius: 5,
       title: 'Signal'
     });
     
@@ -1034,28 +1103,46 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     chart.priceScale('left').applyOptions({
       autoScale: true,
       scaleMargins: {
-        top: 0.35,  // 상단 35% 비워두기
-        bottom: 0.45,  // 하단 45% 비워두기 (RSI와 10% 간격)
+        top: 0.55,  // 상단 55% 비워두기 (캔들차트 50% + 간격 5%)
+        bottom: 0.25,  // 하단 25% 비워두기 (RSI 20% + 간격 5%)
       },
     });
     
-    // MACD와 RSI 사이에 구분선 추가
-    const separatorLine = chart.addLineSeries({
-      color: '#e0e0e0',
-      lineWidth: 1,
+    // 차트 영역 구분선 추가
+    // 캔들-MACD 구분선
+    const candleMacdSeparator = chart.addLineSeries({
+      color: '#303030',
+      lineWidth: 2,
       lineStyle: 0,
-      priceScaleId: 'right',
+      priceScaleId: 'left',
       lastValueVisible: false,
       priceLineVisible: false,
       crosshairMarkerVisible: false,
     });
     
-    // 구분선 위치 설정 (RSI 상단 경계)
-    const separatorData = [
-      { time: timeRange.from, value: 102 },
-      { time: timeRange.to, value: 102 },
+    // MACD-RSI 구분선
+    const macdRsiSeparator = chart.addLineSeries({
+      color: '#303030',
+      lineWidth: 2,
+      lineStyle: 0,
+      priceScaleId: 'rsi',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    
+    // 구분선 위치 설정
+    const candleMacdSeparatorData = [
+      { time: timeRange.from, value: 0 },
+      { time: timeRange.to, value: 0 },
     ];
-    separatorLine.setData(separatorData);
+    candleMacdSeparator.setData(candleMacdSeparatorData);
+    
+    const macdRsiSeparatorData = [
+      { time: timeRange.from, value: 105 },
+      { time: timeRange.to, value: 105 },
+    ];
+    macdRsiSeparator.setData(macdRsiSeparatorData);
     
     // RSI가 보이도록 강제로 시리즈 업데이트
     setTimeout(() => {
@@ -1098,6 +1185,15 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     };
   }, [data, height]);
 
+  // height prop 변경 시 차트 리사이즈
+  useEffect(() => {
+    if (chartRef.current && chartContainerRef.current) {
+      console.log('Resizing chart to height:', height);
+      chartRef.current.applyOptions({ height: height });
+      chartRef.current.resize(chartContainerRef.current.clientWidth, height);
+    }
+  }, [height]);
+
   // 이동평균선 표시 설정이 변경되면 가시성 업데이트
   useEffect(() => {
     if (showMA) {
@@ -1123,7 +1219,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
 
   return (
     <div className="chart-wrapper">
-      <div ref={chartContainerRef} style={{ width: '100%' }} />
+      <div ref={chartContainerRef} style={{ width: '100%', height: `${height}px` }} />
       <div className="chart-controls" style={{ marginTop: '20px' }}>
         <button
           className="btn btn-primary"
