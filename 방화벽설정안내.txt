@@ -1,0 +1,23 @@
+Windows 방화벽 설정 방법:
+
+1. Windows PowerShell을 관리자 권한으로 실행
+   - Windows 키를 누르고 "PowerShell" 검색
+   - "Windows PowerShell"을 마우스 오른쪽 클릭
+   - "관리자 권한으로 실행" 선택
+
+2. 다음 명령어를 실행하여 스크립트 위치로 이동:
+   cd F:\200.workspace\trade
+
+3. 스크립트 실행:
+   .\add-firewall-rule.ps1
+
+만약 스크립트 실행이 차단된다면, 먼저 다음 명령어 실행:
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+4. 방화벽 규칙이 추가되면 브라우저에서 다음 주소로 접속:
+   - http://localhost:3001
+   - http://172.20.209.215:3001 (WSL IP 주소)
+
+추가 확인사항:
+- WSL 터미널에서 npm run dev가 실행 중인지 확인
+- 서버가 제대로 시작되었는지 로그 확인

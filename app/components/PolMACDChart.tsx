@@ -25,9 +25,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
   const ema5Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema20Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema48Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema60Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema120Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema200Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const ema240Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const rsiRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const atrRef = useRef<ISeriesApi<'Line'> | null>(null);
   
   // 백테스트 결과 상태
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
@@ -88,6 +91,46 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     return results;
   };
 
+  // ATR 계산 함수
+  const calculateATR = (data: CandlestickData[], period = 14) => {
+    const results: { time: Time; value: number }[] = [];
+    
+    if (data.length < period + 1) return results;
+    
+    // True Range 계산
+    const trueRanges: number[] = [];
+    for (let i = 1; i < data.length; i++) {
+      const high = data[i].high;
+      const low = data[i].low;
+      const prevClose = data[i - 1].close;
+      
+      const tr = Math.max(
+        high - low,
+        Math.abs(high - prevClose),
+        Math.abs(low - prevClose)
+      );
+      trueRanges.push(tr);
+    }
+    
+    // 초기 ATR
+    let atr = trueRanges.slice(0, period).reduce((sum, tr) => sum + tr, 0) / period;
+    results.push({
+      time: data[period].time as Time,
+      value: atr
+    });
+    
+    // 이후 ATR (Wilder's smoothing)
+    for (let i = period; i < trueRanges.length; i++) {
+      atr = ((atr * (period - 1)) + trueRanges[i]) / period;
+      results.push({
+        time: data[i + 1].time as Time,
+        value: atr
+      });
+    }
+    
+    return results;
+  };
+  
   // 스토캐스틱 계산 함수
   const calculateStochastic = (data: CandlestickData[], kPeriod = 20, dPeriod = 5, smoothPeriod = 3) => {
     const results: { time: Time; k: number; d: number }[] = [];
@@ -125,10 +168,11 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const ema60Values: number[] = []; 
     const ema90Values: number[] = [];
     const ema120Values: number[] = [];
+    const ema200Values: number[] = [];
     const ema240Values: number[] = [];
     const ema360Values: number[] = [];
-    const ema23Values: number[] = [];
-    const ema25Values: number[] = [];
+    const ema12Values: number[] = [];
+    const ema26Values: number[] = [];
     const macdValues: number[] = [];
     const signalValues: number[] = [];
     const histogramValues: number[] = [];
@@ -153,39 +197,59 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       ema20Values.push(ema20);
     }
 
-    // EMA 12 계산
-    let multiplier23 = 2 / (23 + 1);
-    let ema23 = closePrices[0];
-    ema23Values.push(ema23);
+    // EMA 12 계산 (표준 MACD용)
+    let multiplier12 = 2 / (12 + 1);
+    let ema12 = closePrices[0];
+    ema12Values.push(ema12);
 
     for (let i = 1; i < closePrices.length; i++) {
-      ema23 = (closePrices[i] - ema23) * multiplier23 + ema23;
-      ema23Values.push(ema23);
+      ema12 = (closePrices[i] - ema12) * multiplier12 + ema12;
+      ema12Values.push(ema12);
     }
 
-    // EMA 25 계산
-    let multiplier25 = 2 / (25 + 1);
-    let ema25 = closePrices[0];
-    ema25Values.push(ema25);
+    // EMA 26 계산 (표준 MACD용)
+    let multiplier26 = 2 / (26 + 1);
+    let ema26 = closePrices[0];
+    ema26Values.push(ema26);
 
     for (let i = 1; i < closePrices.length; i++) {
-      ema25 = (closePrices[i] - ema25) * multiplier25 + ema25;
-      ema25Values.push(ema25);
+      ema26 = (closePrices[i] - ema26) * multiplier26 + ema26;
+      ema26Values.push(ema26);
+    }
+    
+    // EMA 60 계산
+    let multiplier60 = 2 / (60 + 1);
+    let ema60 = closePrices[0];
+    ema60Values.push(ema60);
+
+    for (let i = 1; i < closePrices.length; i++) {
+      ema60 = (closePrices[i] - ema60) * multiplier60 + ema60;
+      ema60Values.push(ema60);
+    }
+    
+    // EMA 200 계산
+    let multiplier200 = 2 / (200 + 1);
+    let ema200 = closePrices[0];
+    ema200Values.push(ema200);
+
+    for (let i = 1; i < closePrices.length; i++) {
+      ema200 = (closePrices[i] - ema200) * multiplier200 + ema200;
+      ema200Values.push(ema200);
     }
 
-    // MACD 라인 계산: EMA23 - EMA25
-    for (let i = 0; i < ema23Values.length; i++) {
-      const macd = ema23Values[i] - ema25Values[i];
+    // MACD 라인 계산: EMA12 - EMA26
+    for (let i = 0; i < ema12Values.length; i++) {
+      const macd = ema12Values[i] - ema26Values[i];
       macdValues.push(macd);
     }
 
-    // Signal 라인 계산: MACD의 12일 EMA
-    let multiplier12 = 2 / (11 + 1);
+    // Signal 라인 계산: MACD의 9일 EMA
+    let multiplier9 = 2 / (9 + 1);
     let signal = macdValues[0];
     signalValues.push(signal);
 
     for (let i = 1; i < macdValues.length; i++) {
-      signal = (macdValues[i] - signal) * multiplier12 + signal;
+      signal = (macdValues[i] - signal) * multiplier9 + signal;
       signalValues.push(signal);
     }
 
@@ -204,63 +268,108 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     const plusTwentyPercent = macdRange * 0.15;
     const minusTenPercent = -macdRange * 0.1;
 
-    // 매수/매도 신호 생성
+    // ATR 계산
+    const atrData = calculateATR(data, 14);
+    
+    // RSI 데이터 미리 계산
+    const rsiValues = calculateRSI(data, 14);
+    
+    // 매수/매도 신호 생성 (전략에 따라)
     const type: ('buy' | 'sell' | null)[] = [];
     let lastSignal: 'buy' | 'sell' | null = null;
 
-    for (let i = 30; i < data.length; i++) {
-      // 초기 데이터는 건너뜀 (EMA가 안정화되도록)
-      if (i < 30) {
-        type.push(null);
-        continue;
-      }
+    // 0~199까지 null로 초기화
+    for (let i = 0; i < 200; i++) {
+      type.push(null);
+    }
+
+    for (let i = 200; i < data.length; i++) {
 
       const currentMacd = macdValues[i];
       const prevMacd = macdValues[i - 1];
       const currentSignal = signalValues[i];
       const prevSignal = signalValues[i - 1];
-
-      // MACD가 +/-10% 범위 이내인지 확인
-      const isWithinTenPercent = Math.abs(currentMacd) <= minusTenPercent;
-
-      // MACD가 10% 범위 이내면 신호 생성하지 않음
-      if (isWithinTenPercent) {
-        type.push(null);
-        continue;
+      const currentPrice = closePrices[i];
+      
+      // RSI 인덱스 기반 조회 (RSI는 인덱스 14부터 시작)
+      const rsiIndex = i - 14;
+      const currentRSI = rsiIndex >= 0 && rsiIndex < rsiValues.length ? rsiValues[rsiIndex].value : 50;
+      const prevRsiIndex = i - 1 - 14;
+      const prevRSI = prevRsiIndex >= 0 && prevRsiIndex < rsiValues.length ? rsiValues[prevRsiIndex].value : 50;
+      
+      // ATR 인덱스 기반 조회 (ATR은 인덱스 14부터 시작)
+      const atrIndex = i - 14;
+      const currentATR = atrIndex >= 0 && atrIndex < atrData.length ? atrData[atrIndex].value : 0;
+      
+      // 트렌드 필터: 200 EMA 기울기 ↑ & 종가 > 200 EMA
+      // 더 안정적인 기울기 계산 (20봉 사용, 초기 데이터 처리)
+      const lookback = Math.min(20, i - 200); // i가 200 이상이므로 최소 0
+      const ema200Slope = lookback > 0 && i - lookback >= 0 ? 
+        (ema200Values[i] - ema200Values[i - lookback]) / ema200Values[i - lookback] : 0;
+      const trendUp = ema200Slope > 0.0001; // 0.01% 이상 상승 시 상승 트렌드
+      const priceAbove200 = currentPrice > ema200Values[i];
+      
+      // 되돌림 확인: 가격이 20 EMA 근처(±0.25 ATR)
+      const pullback = Math.abs(currentPrice - ema20Values[i]) < 0.25 * currentATR;
+      
+      // MACD 골든크로스
+      const macdGoldenCross = prevMacd <= prevSignal && currentMacd > currentSignal && histogramValues[i] > 0;
+      
+      // RSI 50→55 상향 돌파
+      const rsiBreakup = prevRSI <= 50 && currentRSI > 55;
+      
+      // 디버그 로그 출력 (100개마다 또는 기본 조건 충족 시)
+      if (i % 100 === 0 || (trendUp && priceAbove200)) {
+        console.log(`Signal check at ${i}:`, {
+          time: data[i].time,
+          trendUp,
+          priceAbove200,
+          pullback,
+          macdGoldenCross,
+          rsiBreakup,
+          ema200Slope: ema200Slope.toFixed(4),
+          currentATR: currentATR.toFixed(2),
+          pullbackDistance: Math.abs(currentPrice - ema20Values[i]).toFixed(2),
+          currentRSI: currentRSI.toFixed(2),
+          prevRSI: prevRSI.toFixed(2),
+          lastSignal
+        });
       }
-
-      // 매수 신호 조건:
-      // 1. MACD가 -10% 이하에서:
-      // 2. MACD가 신호선을 상향돌파하거나
-      // 3. 5EMA가 20EMA 상향돌파할 때
-      // 4. 20EMA가 상승 중일 때만 매수
-      if (currentMacd <= minusTenPercent && 
-          (
-            (prevMacd <= prevSignal && currentMacd > currentSignal) || // MACD가 신호선 상향돌파
-            (ema5Values[i - 1] <= ema20Values[i - 1] && ema5Values[i] > ema20Values[i]) // EMA 크로스
-          ) && 
-          ema20Values[i] > ema20Values[i - 1] && // 20EMA 상승 확인
+      
+      // 매수 신호
+      if (trendUp && priceAbove200 && pullback && macdGoldenCross && rsiBreakup &&
           (lastSignal === null || lastSignal === 'sell')) {
         type.push('buy');
         lastSignal = 'buy';
+        console.log(`BUY SIGNAL at ${i}:`, {
+          time: data[i].time,
+          price: currentPrice,
+          conditions: { trendUp, priceAbove200, pullback, macdGoldenCross, rsiBreakup }
+        });
       }
-      // 매도 신호 조건:
-      // 1. MACD가 신호선을 하향돌파할 때
-      // 2. 이전에 매수 신호가 있었을 때
-      else if (currentMacd >= plusTwentyPercent && 
-        prevMacd > prevSignal && currentMacd <= currentSignal && 
-        ema20Values[i] < ema20Values[i - 1] &&
-              lastSignal === 'buy') {
+      // 조기 청산 조건
+      else if (lastSignal === 'buy' && (
+        // 5 EMA가 20 EMA 데드크로스
+        (ema5Values[i-1] >= ema20Values[i-1] && ema5Values[i] < ema20Values[i]) ||
+        // MACD 히스토그램 2봉 연속 음전환
+        (histogramValues[i] < 0 && histogramValues[i-1] < 0) ||
+        // RSI ≥ 70 돌파 후 첫 음봉
+        (currentRSI >= 70 && prevRSI >= 70 && currentPrice < closePrices[i-1])
+      )) {
         type.push('sell');
         lastSignal = 'sell';
+        console.log(`SELL SIGNAL at ${i}:`, {
+          time: data[i].time,
+          price: currentPrice,
+          conditions: {
+            emaDeathCross: ema5Values[i-1] >= ema20Values[i-1] && ema5Values[i] < ema20Values[i],
+            macdHistNegative: histogramValues[i] < 0 && histogramValues[i-1] < 0,
+            rsiOverboughtReversal: currentRSI >= 70 && prevRSI >= 70 && currentPrice < closePrices[i-1]
+          }
+        });
       } else {
         type.push(null);
       }
-    }
-
-    // 부족한 배열 길이 채우기
-    while (type.length < data.length) {
-      type.unshift(null);
     }
 
     // 매수/매도 신호에 대한 백테스트 계산
@@ -363,6 +472,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
   const calculateBacktestResult = (data: CandlestickData[], signals: (string | null)[]) => {
     if (!data || data.length === 0) return;
 
+    // 신호 카운트 추가
+    let buySignalCount = 0;
+    let sellSignalCount = 0;
+
     const trades: Trade[] = [];
     let totalValue = 10000000; // 초기 자금 1천만원
     let maxValue = totalValue;
@@ -379,6 +492,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     for (let i = 0; i < data.length; i++) {
       const candle = data[i];
       const signal = signals[i];
+
+      // 신호 카운트
+      if (signal === 'buy') buySignalCount++;
+      else if (signal === 'sell') sellSignalCount++;
 
       if (signal === 'buy' && !inPosition) {
         // 매수 신호
@@ -401,16 +518,18 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
         exitTime = candle.time;
         
         // 거래 기록 업데이트
-        const returnValue = (exitPrice / entryPrice) - 1;
+        const feeRate = 0.0005; // 0.05% 수수료
+        const grossReturn = (exitPrice / entryPrice) - 1;
+        const netReturn = grossReturn - (feeRate * 2); // 매수, 매도 수수료
         
         currentTrade.exitTime = exitTime;
         currentTrade.exitPrice = exitPrice;
-        currentTrade.return = returnValue;
-        currentTrade.isSuccess = returnValue > 0;
+        currentTrade.return = netReturn; // 수수료 반영된 수익률
+        currentTrade.isSuccess = netReturn > 0;
         currentTrade.status = 'closed';  // 거래 상태 업데이트
         
-        // 잔고 업데이트
-        totalValue = totalValue * (1 + returnValue);
+        // 잔고 업데이트 (수수료 반영)
+        totalValue = totalValue * (1 + netReturn);
         if (totalValue > maxValue) maxValue = totalValue;
         if (totalValue < minValue) minValue = totalValue;
         
@@ -438,22 +557,26 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     // 승률 계산 (종료된 거래만 계산)
     const closedTrades = sortedTrades.filter(trade => trade.status === 'closed');
     const winningTrades = closedTrades.filter(trade => (trade.return ?? 0) > 0);
-    const feeRate = 0.0005; // 0.05% 수수료
-    const totalReturn = (totalValue / 10000000) - 1;
-    const totalNetReturn = totalReturn - (closedTrades.length * feeRate * 2); // 매수, 매도 수수료 고려
+    const totalReturn = (totalValue / 10000000) - 1; // 이미 수수료가 반영된 총 수익률
     
     const result: BacktestResult = {
       totalTrades: sortedTrades.length,
       successfulTrades: winningTrades.length,
       totalReturn: totalReturn,
-      totalNetReturn: totalNetReturn,
+      totalNetReturn: totalReturn, // 수수료가 이미 반영됨
       successRate: closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0,
       averageReturn: closedTrades.length > 0 ? totalReturn / closedTrades.length : 0,
-      averageNetReturn: closedTrades.length > 0 ? totalNetReturn / closedTrades.length : 0,
+      averageNetReturn: closedTrades.length > 0 ? totalReturn / closedTrades.length : 0,
       trades: sortedTrades
     };
     
     console.log('백테스트 계산 완료:', result.trades.length, '개 거래 발견');
+    console.log('신호 통계:', {
+      buySignals: buySignalCount,
+      sellSignals: sellSignalCount,
+      totalCandles: data.length,
+      signalRatio: `${((buySignalCount + sellSignalCount) / data.length * 100).toFixed(2)}%`
+    });
     
     setBacktestResult(result);
     
@@ -545,7 +668,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     });
     
     // RSI를 위한 별도 프라이스 스케일 설정
-    const rsiPriceScale = chart.priceScale('');
+    const rsiPriceScale = chart.priceScale('right');
     rsiPriceScale.applyOptions({
       scaleMargins: {
         top: 0.75,  // RSI 영역을 차트 하단 25%에 배치 (MACD와 5% 간격)
@@ -623,6 +746,13 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       color: '#00C853',
       lineWidth: 2,
       title: '48 EMA',
+      visible: false  // 기본값 false로 변경
+    });
+    
+    const ema60Series = chart.addLineSeries({
+      color: '#FF9800',  // 주황색
+      lineWidth: 2,
+      title: '60 EMA',
       visible: true
     });
 
@@ -630,13 +760,21 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       color: '#1E90FF',  // Dodger Blue
       lineWidth: 2,
       title: '120 EMA',
+      visible: false  // 기본값 false로 변경
+    });
+    
+    const ema200Series = chart.addLineSeries({
+      color: '#9C27B0',  // 보라색
+      lineWidth: 3,
+      title: '200 EMA',
       visible: true
     });
+    
     const ema240Series = chart.addLineSeries({
       color: '#00FF00',  // Lime Green   
       lineWidth: 3,
       title: '240 EMA',
-      visible: true
+      visible: false  // 기본값 false로 변경
     });
 
 
@@ -645,32 +783,31 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       ema5Series.setData(ema5Data);
       ema20Series.setData(ema20Data);
       
-      // 48, 120, 240 EMA 데이터 계산 및 설정
+      // 48, 60, 120, 200, 240 EMA 데이터 계산 및 설정
       const ema48Data = calculateEMA(data, 48);
+      const ema60Data = calculateEMA(data, 60);
       const ema120Data = calculateEMA(data, 120);
+      const ema200Data = calculateEMA(data, 200);
       const ema240Data = calculateEMA(data, 240);
       
       if (ema48Data && ema48Data.length > 0) {
         ema48Series.setData(ema48Data);
-        ema48Series.applyOptions({ visible: true });
+      }
+      
+      if (ema60Data && ema60Data.length > 0) {
+        ema60Series.setData(ema60Data);
       }
       
       if (ema120Data && ema120Data.length > 0) {
         ema120Series.setData(ema120Data);
-        ema120Series.applyOptions({ visible: true });
+      }
+      
+      if (ema200Data && ema200Data.length > 0) {
+        ema200Series.setData(ema200Data);
       }
       
       if (ema240Data && ema240Data.length > 0) {
-        console.log('240 EMA setting:', {
-          dataLength: data.length,
-          ema240DataLength: ema240Data.length,
-          firstData: ema240Data[0],
-          lastData: ema240Data[ema240Data.length - 1]
-        });
         ema240Series.setData(ema240Data);
-        ema240Series.applyOptions({ visible: true });
-      } else {
-        console.log('240 EMA not set - data.length:', data.length, 'ema240Data:', ema240Data);
       }
     }
     
@@ -678,7 +815,9 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     ema5Ref.current = ema5Series;
     ema20Ref.current = ema20Series;
     ema48Ref.current = ema48Series;
+    ema60Ref.current = ema60Series;
     ema120Ref.current = ema120Series;
+    ema200Ref.current = ema200Series;
     ema240Ref.current = ema240Series;
     
     // RSI 시리즈 추가 (별도 스케일 사용)
@@ -686,7 +825,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       color: '#9C27B0', // 보라색
       lineWidth: 3, // 더 굵게
       title: 'RSI(14)',
-      priceScaleId: '',  // 기본 스케일 사용 (RSI 전용)
+      priceScaleId: 'right',  // RSI 전용 스케일
       priceFormat: {
         type: 'price',
         precision: 2,
@@ -707,7 +846,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       lineWidth: 2,
       lineStyle: 2, // dashed
       title: 'RSI 70',
-      priceScaleId: '',  // RSI와 같은 스케일
+      priceScaleId: 'right',  // RSI와 같은 스케일
       visible: true,
       lastValueVisible: false,
       priceLineVisible: false,
@@ -718,7 +857,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       lineWidth: 2,
       lineStyle: 2, // dashed
       title: 'RSI 30',
-      priceScaleId: '',  // RSI와 같은 스케일
+      priceScaleId: 'right',  // RSI와 같은 스케일
       visible: true,
       lastValueVisible: false,
       priceLineVisible: false,
@@ -730,7 +869,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       lineWidth: 1,
       lineStyle: 2, // dashed
       title: 'RSI 50',
-      priceScaleId: '',  // RSI와 같은 스케일
+      priceScaleId: 'right',  // RSI와 같은 스케일
       visible: true,
       lastValueVisible: false,
       priceLineVisible: false,
@@ -838,7 +977,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
     rsiMidLine.setData(rsiMidData);
     
     // RSI 스케일 범위 고정 (0-100)
-    chart.priceScale('').applyOptions({
+    chart.priceScale('right').applyOptions({
       autoScale: false,
       scaleMargins: {
         top: 0.75,  // MACD와 5% 간격 유지
@@ -905,7 +1044,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 400, showMA,
       color: '#e0e0e0',
       lineWidth: 1,
       lineStyle: 0,
-      priceScaleId: '',
+      priceScaleId: 'right',
       lastValueVisible: false,
       priceLineVisible: false,
       crosshairMarkerVisible: false,

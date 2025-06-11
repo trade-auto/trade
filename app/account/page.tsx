@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getAccountBalance } from '../api/upbitAccount';
 import { OrderChanceInfo } from '../components/OrderChanceInfo';
 import { NavigationHeader } from '../components/NavigationHeader';
@@ -23,14 +23,18 @@ interface AccountInfo {
 }
 
 export default function AccountPage() {
-  const [selectedSymbol, setSelectedSymbol] = useState(() => {
-    const saved = localStorage.getItem('selectedSymbol');
-    return saved || 'KRW-BTC';
-  });
+  const [selectedSymbol, setSelectedSymbol] = useState('KRW-BTC');
   const [accounts, setAccounts] = useState<AccountInfo[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [selectedOrderUuid, setSelectedOrderUuid] = useState<string>('');
+
+  useEffect(() => {
+    const saved = localStorage.getItem('selectedSymbol');
+    if (saved) {
+      setSelectedSymbol(saved);
+    }
+  }, []);
 
   const loadAccountInfo = async () => {
     try {

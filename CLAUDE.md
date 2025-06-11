@@ -49,8 +49,35 @@ Next.js App Router를 사용하며 다음의 주요 라우트를 포함합니다
 
 #### 차트 컴포넌트 (`/app/components/`)
 - **CandlestickChartCore**: 캔들스틱 표시, MA 지표, 매매 신호가 포함된 메인 차트 컴포넌트
-- **MACDChart**: MACD 지표 시각화
-- **PolMACDChart**: 커스텀 MACD 변형
+- **MACDChart**: MACD 지표 시각화 (표준 MACD 12-26-9, RSI, 캔들차트, EMA)
+- **PolMACDChart**: EMA-MACD-RSI 추세추종 전략 구현
+  - 표준 MACD (12-26-9)
+  - EMA: 5, 20, 60, 200 (주요 지표)
+  - RSI(14) 하단 25% 영역에 별도 표시
+  - ATR(14) 되돌림 계산용
+  - 차트 높이: 1600px (상단 65% 캔들차트, 중앙 20% MACD, 하단 25% RSI)
+   1. MACD 설정 변경
+  - 기존: 23-25-11
+  - 변경: 12-26-9 (표준 MACD)
+
+  2. EMA 추가
+  - EMA 60 (주황색) ✓
+  - EMA 200 (보라색, 굵게) ✓
+
+  3. 매매 신호 로직
+  - 200 EMA 상승 추세 확인 ✓
+  - 종가 > 200 EMA ✓
+  - 20 EMA 근처 되돌림 (±0.25 ATR) ✓
+  - MACD 골든크로스 ✓
+  - RSI 50→55 상향 돌파 ✓
+
+  4. 조기 청산 조건
+  - 5 EMA < 20 EMA 데드크로스 ✓
+  - MACD 히스토그램 2봉 연속 음수 ✓
+  - RSI ≥ 70 후 첫 음봉 ✓
+
+  5. 백테스트
+  - 수수료 0.1% (왕복) 자동 반영 ✓
 - **UpbitVolumeChart**: 거래량 분석 차트
 - **ChartContainer**: 차트 생명주기 및 데이터 업데이트를 관리하는 래퍼
 - **ChartControls/ChartSettings**: 차트 설정을 위한 사용자 인터페이스
@@ -72,6 +99,11 @@ Next.js App Router를 사용하며 다음의 주요 라우트를 포함합니다
 - **maCrossDeviationStrategy**: 편차 필터가 포함된 MA 교차
 - **macdStrategy**: MACD 기반 신호
 - **slopeFilterStrategy**: MA 기울기 분석
+- **EMA-MACD-RSI 추세추종 전략** (PolMACDChart에 구현):
+  - 트렌드 필터: 200 EMA 상승 & 가격 > 200 EMA
+  - 진입: 20 EMA 되돌림(±0.25 ATR) + MACD 골든크로스 + RSI 50→55 돌파
+  - 청산: 5/20 EMA 데드크로스, MACD 히스토그램 2봉 음전환, RSI ≥70 후 첫 음봉
+  - 백테스트: 수수료 0.1% 자동 반영, RR 1.8:1 목표
 각 전략은 차트 컴포넌트에서 사용되는 매수/매도 신호 감지 함수를 내보냅니다.
 
 ### 실시간 데이터 흐름
