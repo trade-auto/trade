@@ -38,7 +38,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
   const [showBacktestResults, setShowBacktestResults] = useState(false);
 
   // RSI 계산 함수
-  const calculateRSI = (data: CandlestickData[], period = 14) => {
+  const calculateRSI = (data: CandlestickData[], period = 20) => {
     const results: { time: Time; value: number }[] = [];
     
     if (data.length <= period) {
@@ -273,7 +273,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     const atrData = calculateATR(data, 14);
     
     // RSI 데이터 미리 계산
-    const rsiValues = calculateRSI(data, 14);
+    const rsiValues = calculateRSI(data, 20);
     
     // 매수/매도 신호 생성 (전략에 따라)
     const type: ('buy' | 'sell' | null)[] = [];
@@ -709,7 +709,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     // MACD 표시
     const macdSeries = chart.addLineSeries({
       color: '#2962FF',
-      lineWidth: 5,
+      lineWidth: 2,
       priceScaleId: 'left',  // 왼쪽 스케일 사용
       priceFormat: {
         type: 'price',
@@ -850,8 +850,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     // RSI 시리즈 추가 (독립 스케일 사용)
     const rsiSeries = chart.addLineSeries({
       color: '#FF1744', // 더 밝은 빨간색
-      lineWidth: 6, // 더 굵게
-      title: 'RSI(14)',
+      lineWidth: 2, // 더 굵게
+      title: 'RSI(20)',
       priceScaleId: 'rsi',  // RSI 전용 독립 스케일
       priceFormat: {
         type: 'price',
@@ -1071,7 +1071,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
 
     // MACD 선과 신호선 설정 강화
     macdSeries.applyOptions({
-      lineWidth: 5,
+      lineWidth: 2,
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineWidth: 2,
