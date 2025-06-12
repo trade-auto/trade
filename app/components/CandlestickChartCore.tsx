@@ -25,7 +25,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     symbol,
     chartType: propsChartType,
     initialAutoUpdate = true,
-    initialDataCount = 500, // 기본값 500으로 설정 (240 EMA 표시를 위해)
+    initialDataCount = 300, // 기본값 300으로 설정
     mode,
     handleOrder,
     onOrder,
@@ -86,7 +86,18 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     try {
       const savedCount = localStorage.getItem('chartDataCount');
       if (savedCount) {
-        setDataCount(parseInt(savedCount, 10));
+        const parsedCount = parseInt(savedCount, 10);
+        // 200이었다면 300으로 업데이트
+        if (parsedCount === 200) {
+          setDataCount(300);
+          localStorage.setItem('chartDataCount', '300');
+        } else {
+          setDataCount(parsedCount);
+        }
+      } else {
+        // 저장된 값이 없으면 300으로 설정
+        setDataCount(300);
+        localStorage.setItem('chartDataCount', '300');
       }
       
       // 240 EMA 설정 확인 및 수정
