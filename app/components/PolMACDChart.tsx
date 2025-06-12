@@ -157,6 +157,141 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     return results;
   };
 
+  // 백테스트 결과 계산 함수
+  const calculateBacktestResult = (data: CandlestickData[], signals: (string | null)[]) => {
+    if (!data || data.length === 0) return;
+
+    // 신호 카운트 추가
+    let buySignalCount = 0;
+    let sellSignalCount = 0;
+
+    const trades: Trade[] = [];
+    let totalValue = 10000000; // 초기 자금 1천만원
+    let maxValue = totalValue;
+    let minValue = totalValue;
+    let inPosition = false;
+    let entryPrice = 0;
+    let entryTime: Time | null = null;
+    let exitPrice = 0;
+    let exitTime: Time | null = null;
+    let buyQuantity = 0;
+    let currentTrade: Partial<Trade> | null = null;
+
+    // 각 캔들에 대해 거래 시뮬레이션 수행
+    for (let i = 0; i < data.length; i++) {
+      const candle = data[i];
+      const signal = signals[i];
+
+      // 신호 카운트
+      if (signal === 'buy') buySignalCount++;
+      else if (signal === 'sell') sellSignalCount++;
+
+      if (signal === 'buy' && !inPosition) {
+        // 매수 신호
+        entryPrice = candle.close;
+        entryTime = candle.time;
+        buyQuantity = Math.floor(totalValue / entryPrice);
+        inPosition = true;
+        
+        // 새로운 거래 시작
+        currentTrade = {
+          entryTime,
+          entryPrice,
+          mode: 'test',
+          status: 'open'  // 거래 상태 추가
+        };
+        trades.push(currentTrade as Trade);
+      } else if (signal === 'sell' && inPosition && entryTime !== null && currentTrade) {
+        // 매도 신호로만 청산
+        exitPrice = candle.close;
+        exitTime = candle.time;
+        
+        // 거래 기록 업데이트
+        const feeRate = 0.0005; // 0.05% 수수료
+        const grossReturn = ((exitPrice - entryPrice) / entryPrice);
+        
+        // currentTrade 업데이트
+        currentTrade.exitTime = exitTime;
+        currentTrade.exitPrice = exitPrice;
+        currentTrade.return = grossReturn * 100;
+        currentTrade.status = 'closed';
+        
+        // 자산 업데이트 (수수료 포함)
+        const buyFee = entryPrice * buyQuantity * feeRate;
+        const sellFee = exitPrice * buyQuantity * feeRate;
+        const sellAmount = exitPrice * buyQuantity - sellFee;
+        totalValue = totalValue - (entryPrice * buyQuantity + buyFee) + sellAmount;
+        
+        maxValue = Math.max(maxValue, totalValue);
+        minValue = Math.min(minValue, totalValue);
+        
+        inPosition = false;
+        entryTime = null;
+        currentTrade = null;
+      }
+    }
+    
+    // 마지막 포지션이 열려있는 경우
+    if (inPosition && currentTrade && entryTime !== null && data.length > 0) {
+      const lastCandle = data[data.length - 1];
+      exitPrice = lastCandle.close;
+      exitTime = lastCandle.time;
+      
+      // 수수료를 고려한 수익률 계산
+      const feeRate = 0.0005;
+      const grossReturn = ((exitPrice - entryPrice) / entryPrice);
+      
+      currentTrade.exitTime = exitTime;
+      currentTrade.exitPrice = exitPrice;
+      currentTrade.return = grossReturn * 100;
+      currentTrade.status = 'open';  // 아직 열려있는 포지션
+      
+      // 현재 가치 계산 (미실현 손익 포함)
+      const buyFee = entryPrice * buyQuantity * feeRate;
+      const currentValueBeforeFee = exitPrice * buyQuantity;
+      const sellFee = currentValueBeforeFee * feeRate;
+      totalValue = totalValue - (entryPrice * buyQuantity + buyFee) + (currentValueBeforeFee - sellFee);
+    }
+    
+    // 시간순으로 정렬
+    const sortedTrades = trades.sort((a, b) => {
+      const aTime = parseInt(a.entryTime?.toString() || '0');
+      const bTime = parseInt(b.entryTime?.toString() || '0');
+      return aTime - bTime;
+    });
+    
+    // 승률 계산 (종료된 거래만 계산)
+    const closedTrades = sortedTrades.filter(trade => trade.status === 'closed');
+    const winningTrades = closedTrades.filter(trade => (trade.return ?? 0) > 0);
+    const totalReturn = (totalValue / 10000000) - 1; // 이미 수수료가 반영된 총 수익률
+    
+    const result: BacktestResult = {
+      totalTrades: sortedTrades.length,
+      successfulTrades: winningTrades.length,
+      totalReturn: totalReturn,
+      totalNetReturn: totalReturn, // 수수료가 이미 반영됨
+      successRate: closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0,
+      averageReturn: closedTrades.length > 0 ? totalReturn / closedTrades.length : 0,
+      averageNetReturn: closedTrades.length > 0 ? totalReturn / closedTrades.length : 0,
+      trades: sortedTrades
+    };
+    
+    console.log('백테스트 계산 완료:', result.trades.length, '개 거래 발견');
+    console.log('신호 통계:', {
+      buySignals: buySignalCount,
+      sellSignals: sellSignalCount,
+      totalCandles: data.length,
+      signalRatio: `${((buySignalCount + sellSignalCount) / data.length * 100).toFixed(2)}%`
+    });
+    
+    setBacktestResult(result);
+    
+    // 부모 컴포넌트에 백테스트 결과 전달
+    if (onBacktestResultChange) {
+      onBacktestResultChange(result);
+    }
+  };
+
   // MACD 계산 함수
   const calculateMACD = (data: CandlestickData[]) => {
     if (!data || data.length === 0) return { macdData: [], signalData: [], histogramData: [] };
@@ -275,16 +410,36 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     // RSI 데이터 미리 계산
     const rsiValues = calculateRSI(data, 20);
     
+    // 디버깅 모드 설정
+    const DEBUG_MODE = true; // 실제 운영 시 false로 변경
+    
     // 매수/매도 신호 생성 (전략에 따라)
     const type: ('buy' | 'sell' | null)[] = [];
     let lastSignal: 'buy' | 'sell' | null = null;
 
-    // 0~199까지 null로 초기화
-    for (let i = 0; i < 200; i++) {
+    // 초기화 - DEBUG_MODE에서는 50개부터 시작
+    const startIndex = DEBUG_MODE ? 50 : 200;
+    for (let i = 0; i < startIndex; i++) {
       type.push(null);
     }
+    
+    // 디버깅용 변수
+    let buySignalCount = 0;
+    let sellSignalCount = 0;
+    const conditionStats = {
+      emaAligned: 0,
+      macdCrossUp: 0,
+      hasGoodGap: 0,
+      signalSlopePositive: 0,
+      rsiAbove53: 0,
+      allConditionsMet: 0
+    };
+    
+    console.log(`\n=== PolMACDChart Signal Generation Started ===`);
+    console.log(`DEBUG_MODE: ${DEBUG_MODE}`);
+    console.log(`Data length: ${data.length}`);
 
-    for (let i = 200; i < data.length; i++) {
+    for (let i = startIndex; i < data.length; i++) {
 
       const currentMacd = macdValues[i];
       const prevMacd = macdValues[i - 1];
@@ -292,86 +447,199 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       const prevSignal = signalValues[i - 1];
       const currentPrice = closePrices[i];
       
-      // RSI 인덱스 기반 조회 (RSI는 인덱스 14부터 시작)
-      const rsiIndex = i - 14;
+      // RSI 인덱스 기반 조회 (RSI는 인덱스 20부터 시작)
+      const rsiIndex = i - 20;
       const currentRSI = rsiIndex >= 0 && rsiIndex < rsiValues.length ? rsiValues[rsiIndex].value : 50;
-      const prevRsiIndex = i - 1 - 14;
+      const prevRsiIndex = i - 1 - 20;
       const prevRSI = prevRsiIndex >= 0 && prevRsiIndex < rsiValues.length ? rsiValues[prevRsiIndex].value : 50;
       
       // ATR 인덱스 기반 조회 (ATR은 인덱스 14부터 시작)
       const atrIndex = i - 14;
       const currentATR = atrIndex >= 0 && atrIndex < atrData.length ? atrData[atrIndex].value : 0;
       
-      // 트렌드 필터: 200 EMA 기울기 ↑ & 종가 > 200 EMA
-      // 더 안정적인 기울기 계산 (20봉 사용, 초기 데이터 처리)
-      const lookback = Math.min(20, i - 200); // i가 200 이상이므로 최소 0
+      // 이평선 정배열 체크
+      let isEmaAligned;
+      if (DEBUG_MODE) {
+        // 디버그 모드: 60 > 200만 체크
+        isEmaAligned = ema60Values[i] > ema200Values[i];
+      } else {
+        // 원래 조건: 5 > 20 > 60 > 200
+        isEmaAligned = ema5Values[i] > ema20Values[i] && 
+                       ema20Values[i] > ema60Values[i] && 
+                       ema60Values[i] > ema200Values[i];
+      }
+      
+      // MACD 상향 돌파 및 이격 체크
+      const macdCrossUp = prevMacd <= prevSignal && currentMacd > currentSignal;
+      const macdGap = currentMacd - currentSignal;
+      let hasGoodGap;
+      if (DEBUG_MODE) {
+        // 디버그 모드: MACD 이격 조건 제거
+        hasGoodGap = true;
+      } else {
+        // 원래 조건
+        hasGoodGap = macdGap > 0 && Math.abs(macdGap) > 0.001;
+      }
+      
+      // 신호선 기울기 계산 (플러스 체크)
+      const signalSlope = i > 0 ? currentSignal - prevSignal : 0;
+      const signalSlopePositive = signalSlope > 0;
+      
+      // RSI 체크
+      let rsiAbove53;
+      if (DEBUG_MODE) {
+        // 디버그 모드: RSI > 50
+        rsiAbove53 = currentRSI > 50;
+      } else {
+        // 원래 조건: RSI > 53
+        rsiAbove53 = currentRSI > 53;
+      }
+      
+      // 200 EMA 기울기 계산 (0도 근처 또는 마이너스 체크용)
+      const lookback = Math.min(20, i - 200);
       const ema200Slope = lookback > 0 && i - lookback >= 0 ? 
         (ema200Values[i] - ema200Values[i - lookback]) / ema200Values[i - lookback] : 0;
-      const trendUp = ema200Slope > 0.0001; // 0.01% 이상 상승 시 상승 트렌드
-      const priceAbove200 = currentPrice > ema200Values[i];
+      const ema200NotUptrend = ema200Slope <= 0.0001; // 0.01% 이하면 횡보 또는 하락
       
-      // 되돌림 확인: 가격이 20 EMA 근처(±0.25 ATR)
-      const pullback = Math.abs(currentPrice - ema20Values[i]) < 0.25 * currentATR;
+      // 역배열 체크
+      const isEmaReversed = ema5Values[i] < ema20Values[i] || 
+                            ema20Values[i] < ema60Values[i] || 
+                            ema60Values[i] < ema200Values[i];
       
-      // MACD 골든크로스
-      const macdGoldenCross = prevMacd <= prevSignal && currentMacd > currentSignal && histogramValues[i] > 0;
-      
-      // RSI 50→55 상향 돌파
-      const rsiBreakup = prevRSI <= 50 && currentRSI > 55;
-      
-      // 디버그 로그 출력 (100개마다 또는 기본 조건 충족 시)
-      if (i % 100 === 0 || (trendUp && priceAbove200)) {
-        console.log(`Signal check at ${i}:`, {
-          time: data[i].time,
-          trendUp,
-          priceAbove200,
-          pullback,
-          macdGoldenCross,
-          rsiBreakup,
-          ema200Slope: ema200Slope.toFixed(4),
-          currentATR: currentATR.toFixed(2),
-          pullbackDistance: Math.abs(currentPrice - ema20Values[i]).toFixed(2),
+      // 개별 조건 통계 업데이트
+      if (isEmaAligned) conditionStats.emaAligned++;
+      if (macdCrossUp) conditionStats.macdCrossUp++;
+      if (hasGoodGap) conditionStats.hasGoodGap++;
+      if (signalSlopePositive) conditionStats.signalSlopePositive++;
+      if (rsiAbove53) conditionStats.rsiAbove53++;
+
+      // 디버그 로그 출력 (더 상세하게)
+      if (i % 50 === 0 || (DEBUG_MODE && i % 20 === 0)) {
+        console.log(`\n=== Signal check at index ${i} (${data[i].time}) ===`);
+        console.log(`EMA Values: 5=${ema5Values[i].toFixed(2)}, 20=${ema20Values[i].toFixed(2)}, 60=${ema60Values[i].toFixed(2)}, 200=${ema200Values[i].toFixed(2)}`);
+        console.log(`Conditions:`, {
+          isEmaAligned,
+          macdCrossUp,
+          hasGoodGap,
+          macdGap: macdGap.toFixed(6),
+          signalSlopePositive,
+          signalSlope: signalSlope.toFixed(6),
+          rsiAbove53,
           currentRSI: currentRSI.toFixed(2),
-          prevRSI: prevRSI.toFixed(2),
           lastSignal
         });
       }
-      
-      // 매수 신호
-      if (trendUp && priceAbove200 && pullback && macdGoldenCross && rsiBreakup &&
-          (lastSignal === null || lastSignal === 'sell')) {
-        type.push('buy');
-        lastSignal = 'buy';
-        console.log(`BUY SIGNAL at ${i}:`, {
-          time: data[i].time,
-          price: currentPrice,
-          conditions: { trendUp, priceAbove200, pullback, macdGoldenCross, rsiBreakup }
-        });
+
+      // 매수 조건 충족 시 상세 로그
+      if (isEmaAligned && macdCrossUp && hasGoodGap && signalSlopePositive && rsiAbove53) {
+        conditionStats.allConditionsMet++;
+        console.log(`\n*** ALL BUY CONDITIONS MET at index ${i} ***`);
+        console.log(`Last Signal: ${lastSignal}`);
       }
-      // 조기 청산 조건
-      else if (lastSignal === 'buy' && (
-        // 5 EMA가 20 EMA 데드크로스
-        (ema5Values[i-1] >= ema20Values[i-1] && ema5Values[i] < ema20Values[i]) ||
-        // MACD 히스토그램 2봉 연속 음전환
-        (histogramValues[i] < 0 && histogramValues[i-1] < 0) ||
-        // RSI ≥ 70 돌파 후 첫 음봉
-        (currentRSI >= 70 && prevRSI >= 70 && currentPrice < closePrices[i-1])
-      )) {
-        type.push('sell');
-        lastSignal = 'sell';
-        console.log(`SELL SIGNAL at ${i}:`, {
-          time: data[i].time,
-          price: currentPrice,
-          conditions: {
-            emaDeathCross: ema5Values[i-1] >= ema20Values[i-1] && ema5Values[i] < ema20Values[i],
-            macdHistNegative: histogramValues[i] < 0 && histogramValues[i-1] < 0,
-            rsiOverboughtReversal: currentRSI >= 70 && prevRSI >= 70 && currentPrice < closePrices[i-1]
+      
+      // 매수 신호 (초기 매수 또는 매도 후 재매수)
+      // DEBUG: 이평선 조건만 체크
+      if (DEBUG_MODE) {
+        if (isEmaAligned && (lastSignal === null || lastSignal === 'sell')) {
+          // 매도 후 재매수 시 200 EMA 조건 체크
+          if (lastSignal === 'sell' && (ema200NotUptrend || isEmaReversed)) {
+            type.push(null); // 200 EMA 조건 미충족 시 매수 안함
+          } else {
+            type.push('buy');
+            lastSignal = 'buy';
+            buySignalCount++;
+            console.log(`\n\n🟢🟢🟢 BUY SIGNAL GENERATED at index ${i} 🟢🟢🟢`);
+            console.log(`Time: ${data[i].time}, Price: ${currentPrice}`);
+            console.log(`EMA Values: 5=${ema5Values[i].toFixed(2)}, 20=${ema20Values[i].toFixed(2)}, 60=${ema60Values[i].toFixed(2)}, 200=${ema200Values[i].toFixed(2)}`);
+            console.log(`Total Buy Signals: ${buySignalCount}`);
           }
-        });
+        } else {
+          type.push(null);
+        }
+      } else {
+        // 원래 조건 (모든 조건 체크)
+        if (isEmaAligned && macdCrossUp && hasGoodGap && signalSlopePositive && rsiAbove53 &&
+            (lastSignal === null || lastSignal === 'sell')) {
+        // 매도 후 재매수 시 200 EMA 조건 체크
+        if (lastSignal === 'sell' && (ema200NotUptrend || isEmaReversed)) {
+          type.push(null); // 200 EMA 조건 미충족 시 매수 안함
+        } else {
+          type.push('buy');
+          lastSignal = 'buy';
+          buySignalCount++;
+          console.log(`\n\n🟢🟢🟢 BUY SIGNAL GENERATED at index ${i} 🟢🟢🟢`);
+          console.log(`Time: ${data[i].time}, Price: ${currentPrice}`);
+          console.log(`Total Buy Signals: ${buySignalCount}`);
+        }
+      }
+      // 매도 신호
+      else if (lastSignal === 'buy') {
+        if (DEBUG_MODE) {
+          // DEBUG: 이평선 역배열만 체크 (60 < 200)
+          const isEmaReversedSimple = ema60Values[i] < ema200Values[i];
+          if (isEmaReversedSimple) {
+            type.push('sell');
+            lastSignal = 'sell';
+            sellSignalCount++;
+            console.log(`\n\n🔴🔴🔴 SELL SIGNAL GENERATED at index ${i} 🔴🔴🔴`);
+            console.log(`Time: ${data[i].time}, Price: ${currentPrice}`);
+            console.log(`EMA Values: 60=${ema60Values[i].toFixed(2)} < 200=${ema200Values[i].toFixed(2)}`);
+            console.log(`Total Sell Signals: ${sellSignalCount}`);
+          } else {
+            type.push(null);
+          }
+        } else {
+          // 원래 조건
+          // MACD 하향 돌파 체크
+          const macdCrossDown = prevMacd >= prevSignal && currentMacd < currentSignal;
+          // 신호선 기울기 마이너스 체크
+          const signalSlopeNegative = signalSlope < 0;
+          // 5 EMA가 60 EMA를 하향 관통
+          const ema5CrossDown60 = ema5Values[i-1] >= ema60Values[i-1] && ema5Values[i] < ema60Values[i];
+          // RSI 체크
+          const rsiBelow53 = currentRSI < 53;
+          
+          if (macdCrossDown && signalSlopeNegative && 
+              ema5CrossDown60 && rsiBelow53) {
+            type.push('sell');
+            lastSignal = 'sell';
+            sellSignalCount++;
+            console.log(`\n\n🔴🔴🔴 SELL SIGNAL GENERATED at index ${i} 🔴🔴🔴`);
+            console.log(`Time: ${data[i].time}, Price: ${currentPrice}`);
+            console.log(`Conditions: MACD Cross Down=${macdCrossDown}, Signal Slope Negative=${signalSlopeNegative}, EMA5 Cross Down 60=${ema5CrossDown60}, RSI Below 53=${rsiBelow53}`);
+            console.log(`Total Sell Signals: ${sellSignalCount}`);
+          } else {
+            type.push(null);
+          }
+        }
       } else {
         type.push(null);
       }
     }
+
+    // 최종 통계 출력
+    console.log(`\n\n===== FINAL SIGNAL GENERATION STATISTICS =====`);
+    console.log(`Total Data Points: ${data.length}`);
+    console.log(`Analyzed Points: ${data.length - 200}`);
+    console.log(`\nCondition Hit Rates:`);
+    console.log(`- EMA Aligned: ${conditionStats.emaAligned} times (${(conditionStats.emaAligned / (data.length - 200) * 100).toFixed(2)}%)`);
+    console.log(`- MACD Cross Up: ${conditionStats.macdCrossUp} times`);
+    console.log(`- Has Good Gap: ${conditionStats.hasGoodGap} times`);
+    console.log(`- Signal Slope Positive: ${conditionStats.signalSlopePositive} times`);
+    console.log(`- RSI Above 53: ${conditionStats.rsiAbove53} times`);
+    console.log(`- All Conditions Met: ${conditionStats.allConditionsMet} times`);
+    console.log(`\nGenerated Signals:`);
+    console.log(`- Buy Signals: ${buySignalCount}`);
+    console.log(`- Sell Signals: ${sellSignalCount}`);
+    console.log(`\nType Array Summary:`);
+    const typeStats = type.reduce((acc, val) => {
+      if (val === 'buy') acc.buy++;
+      else if (val === 'sell') acc.sell++;
+      else acc.null++;
+      return acc;
+    }, { buy: 0, sell: 0, null: 0 });
+    console.log(`- Buy: ${typeStats.buy}, Sell: ${typeStats.sell}, Null: ${typeStats.null}`);
+    console.log(`==============================================\n`);
 
     // 매수/매도 신호에 대한 백테스트 계산
     calculateBacktestResult(data, type);
@@ -467,124 +735,6 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       ema120Data,
       ema240Data
     };
-  };
-
-  // 백테스트 결과 계산 함수
-  const calculateBacktestResult = (data: CandlestickData[], signals: (string | null)[]) => {
-    if (!data || data.length === 0) return;
-
-    // 신호 카운트 추가
-    let buySignalCount = 0;
-    let sellSignalCount = 0;
-
-    const trades: Trade[] = [];
-    let totalValue = 10000000; // 초기 자금 1천만원
-    let maxValue = totalValue;
-    let minValue = totalValue;
-    let inPosition = false;
-    let entryPrice = 0;
-    let entryTime: Time | null = null;
-    let exitPrice = 0;
-    let exitTime: Time | null = null;
-    let buyQuantity = 0;
-    let currentTrade: Partial<Trade> | null = null;
-
-    // 각 캔들에 대해 거래 시뮬레이션 수행
-    for (let i = 0; i < data.length; i++) {
-      const candle = data[i];
-      const signal = signals[i];
-
-      // 신호 카운트
-      if (signal === 'buy') buySignalCount++;
-      else if (signal === 'sell') sellSignalCount++;
-
-      if (signal === 'buy' && !inPosition) {
-        // 매수 신호
-        entryPrice = candle.close;
-        entryTime = candle.time;
-        buyQuantity = Math.floor(totalValue / entryPrice);
-        inPosition = true;
-        
-        // 새로운 거래 시작
-        currentTrade = {
-          entryTime,
-          entryPrice,
-          mode: 'test',
-          status: 'open'  // 거래 상태 추가
-        };
-        trades.push(currentTrade as Trade);
-      } else if (signal === 'sell' && inPosition && entryTime !== null && currentTrade) {
-        // 매도 신호로만 청산
-        exitPrice = candle.close;
-        exitTime = candle.time;
-        
-        // 거래 기록 업데이트
-        const feeRate = 0.0005; // 0.05% 수수료
-        const grossReturn = (exitPrice / entryPrice) - 1;
-        const netReturn = grossReturn - (feeRate * 2); // 매수, 매도 수수료
-        
-        currentTrade.exitTime = exitTime;
-        currentTrade.exitPrice = exitPrice;
-        currentTrade.return = netReturn; // 수수료 반영된 수익률
-        currentTrade.isSuccess = netReturn > 0;
-        currentTrade.status = 'closed';  // 거래 상태 업데이트
-        
-        // 잔고 업데이트 (수수료 반영)
-        totalValue = totalValue * (1 + netReturn);
-        if (totalValue > maxValue) maxValue = totalValue;
-        if (totalValue < minValue) minValue = totalValue;
-        
-        // 포지션 리셋
-        inPosition = false;
-        entryPrice = 0;
-        entryTime = null;
-        exitPrice = 0;
-        exitTime = null;
-        currentTrade = null;
-      }
-    }
-    
-    // 마지막 포지션이 있다면 유지 (강제 청산하지 않음)
-    
-    // 시간 순으로 거래 정렬
-    const sortedTrades = [...trades].sort((a, b) => {
-      const timeA = typeof a.entryTime === 'number' ? a.entryTime : 
-                    typeof a.entryTime === 'string' ? new Date(a.entryTime).getTime() / 1000 : 0;
-      const timeB = typeof b.entryTime === 'number' ? b.entryTime : 
-                    typeof b.entryTime === 'string' ? new Date(b.entryTime).getTime() / 1000 : 0;
-      return timeA - timeB;
-    });
-    
-    // 승률 계산 (종료된 거래만 계산)
-    const closedTrades = sortedTrades.filter(trade => trade.status === 'closed');
-    const winningTrades = closedTrades.filter(trade => (trade.return ?? 0) > 0);
-    const totalReturn = (totalValue / 10000000) - 1; // 이미 수수료가 반영된 총 수익률
-    
-    const result: BacktestResult = {
-      totalTrades: sortedTrades.length,
-      successfulTrades: winningTrades.length,
-      totalReturn: totalReturn,
-      totalNetReturn: totalReturn, // 수수료가 이미 반영됨
-      successRate: closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0,
-      averageReturn: closedTrades.length > 0 ? totalReturn / closedTrades.length : 0,
-      averageNetReturn: closedTrades.length > 0 ? totalReturn / closedTrades.length : 0,
-      trades: sortedTrades
-    };
-    
-    console.log('백테스트 계산 완료:', result.trades.length, '개 거래 발견');
-    console.log('신호 통계:', {
-      buySignals: buySignalCount,
-      sellSignals: sellSignalCount,
-      totalCandles: data.length,
-      signalRatio: `${((buySignalCount + sellSignalCount) / data.length * 100).toFixed(2)}%`
-    });
-    
-    setBacktestResult(result);
-    
-    // 부모 컴포넌트에 백테스트 결과 전달
-    if (onBacktestResultChange) {
-      onBacktestResultChange(result);
-    }
   };
 
   // EMA 계산 함수

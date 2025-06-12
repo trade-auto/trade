@@ -53,7 +53,8 @@
       "Bash(yarn build)",
       "Bash(true)",
       "Bash(npm run dev:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(sed:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
