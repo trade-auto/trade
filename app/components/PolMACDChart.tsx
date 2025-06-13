@@ -1175,7 +1175,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         horzLines: { color: '#f0f0f0' },
       },
       timeScale: {
-        visible: false,
+        borderColor: '#d1d4dc',
+        timeVisible: true,
+        secondsVisible: true,
+        visible: true,
       },
     });
 
@@ -1196,6 +1199,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
           top: 0.1,
           bottom: 0.1,
         },
+      },
+      timeScale: {
+        borderColor: '#d1d4dc',
+        timeVisible: true,
+        secondsVisible: true,
+        visible: true,
       },
     });
     
