@@ -54,7 +54,9 @@
       "Bash(true)",
       "Bash(npm run dev:*)",
       "Bash(timeout:*)",
-      "mcp__shrimp-task-manager__clear_all_tasks"
+      "mcp__shrimp-task-manager__clear_all_tasks",
+      "Bash(sed:*)",
+      "WebFetch(domain:localhost)"
     ]
   },
   "enableAllProjectMcpServers": true,

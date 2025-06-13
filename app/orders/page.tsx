@@ -10,6 +10,9 @@ import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
 import { CandlestickChart, OrderParams } from '../components/CandlestickChart';
+import PolMACDChartFixed from '../components/PolMACDChartFixed';
+import SeparatedStrategyCharts from '../components/SeparatedStrategyCharts';
+import { CandlestickData } from '../types/candlestick';
 import { getAccountBalance } from '../api/upbitAccount';
 import { useCoinStore, AVAILABLE_COINS } from '../store/useCoinStore';
 
@@ -63,6 +66,74 @@ export default function OrdersPage() {
       unitCurrency: string;
     } | null;
   }>({ coin: null, krw: null });
+  const [chartData, setChartData] = useState<CandlestickData[]>([]);
+
+  // 시드 기반 의사 난수 생성기 (test-chart와 동일)
+  function seededRandom(seed: number) {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  }
+
+  // 임시 데이터 생성 (PolMACD 차트용)
+  const generateTempData = () => {
+    const data = [];
+    const baseTime = Math.floor(Date.now() / 1000) - (300 * 60); // 300분 전부터
+    
+    let basePrice = currentPrice || 50000;
+    let trend = 1;
+    let seed = 12345;
+    
+    console.log('🔢 차트 데이터 생성 시작, basePrice:', basePrice);
+    
+    for (let i = 0; i < 300; i++) {
+      const time = baseTime + i * 60; // 1분 간격
+      
+      seed++;
+      const volatility = 50 + seededRandom(seed) * 100;
+      seed++;
+      const trendChange = trend * (10 + seededRandom(seed) * 30);
+      
+      if (i > 50 && i % 80 === 0) {
+        trend *= -1;
+      }
+      
+      seed++;
+      basePrice += trendChange + (seededRandom(seed) - 0.5) * volatility;
+      
+      if (basePrice < basePrice * 0.7) basePrice = basePrice * 0.7;
+      if (basePrice > basePrice * 1.3) basePrice = basePrice * 1.3;
+      
+      seed++;
+      const open = basePrice + (seededRandom(seed) - 0.5) * 200;
+      seed++;
+      const close = basePrice + (seededRandom(seed) - 0.5) * 200;
+      seed++;
+      const high = Math.max(open, close) + seededRandom(seed) * 300;
+      seed++;
+      const low = Math.min(open, close) - seededRandom(seed) * 300;
+      
+      data.push({
+        time: time,
+        open: open,
+        high: high,
+        low: Math.max(low, open * 0.95),
+        close: close,
+        volume: 500000 + seededRandom(seed++) * 1000000
+      });
+    }
+    
+    console.log('📊 생성된 차트 데이터 요약:', {
+      총개수: data.length,
+      첫번째: data[0],
+      마지막: data[data.length - 1],
+      가격범위: {
+        최고: Math.max(...data.map(d => d.high)),
+        최저: Math.min(...data.map(d => d.low))
+      }
+    });
+    
+    return data;
+  };
   const createOrderRef = useRef<{ 
     handleAutomaticTrade: (params: {
       market: string;
@@ -187,6 +258,14 @@ export default function OrdersPage() {
   useEffect(() => {
     loadBalance();
   }, [selectedCoin, loadBalance]);
+
+  // 임시 차트 데이터 생성 (PolMACD 차트용)
+  useEffect(() => {
+    if (mounted && currentPrice) {
+      const tempData = generateTempData();
+      setChartData(tempData);
+    }
+  }, [mounted, currentPrice]);
 
   const handleOrderCreated = () => {
     // OpenOrders 컴포넌트의 새로고침 함수 호출
@@ -427,6 +506,19 @@ export default function OrdersPage() {
             }}
           />
         </div>
+
+        {/* PolMACD 분리된 전략 차트 섹션 */}
+        {chartData.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold text-white mb-4">PolMACD 분리된 전략 차트</h2>
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <SeparatedStrategyCharts 
+                data={chartData}
+                height={400}
+              />
+            </div>
+          </div>
+        )}
 
         {/* 주문 목록 조회 섹션 */}
         <OrderList mode={mode} onSelectOrder={setSelectedOrderUuid} />

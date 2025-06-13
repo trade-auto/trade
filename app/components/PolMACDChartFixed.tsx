@@ -12,7 +12,7 @@ interface PolMACDChartProps {
   onBacktestResultChange?: (result: BacktestResult | null) => void;
 }
 
-const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange }) => {
+const PolMACDChartFixed: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange }) => {
   if (!data || data.length === 0) {
     return <div>데이터가 없습니다.</div>;
   }
@@ -844,7 +844,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
   };
 
   useEffect(() => {
-    console.log('PolMACDChart useEffect triggered:', {
+    console.log('PolMACDChartFixed useEffect triggered:', {
       dataLength: data?.length || 0,
       hasContainer: !!chartContainerRef.current,
       height: height,
@@ -853,16 +853,16 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     
     // 데이터 또는 컨테이너가 없으면 early return
     if (!data || data.length === 0) {
-      console.log('PolMACDChart useEffect - No data available, skipping chart creation');
+      console.log('PolMACDChartFixed useEffect - No data available, skipping chart creation');
       return;
     }
     
     if (!chartContainerRef.current) {
-      console.log('PolMACDChart useEffect - No container element, skipping chart creation');
+      console.log('PolMACDChartFixed useEffect - No container element, skipping chart creation');
       return;
     }
 
-    console.log('PolMACDChart proceeding with chart creation, data length:', data.length);
+    console.log('PolMACDChartFixed proceeding with chart creation, data length:', data.length);
     const { macdData, signalData, histogramData, markers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
     const stochasticData = calculateStochastic(data);
     const rsiData = calculateRSI(data);
@@ -931,24 +931,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     console.log('Created chart:', chart);
     console.log('Chart height after creation:', chart.options().height);
     
-    // RSI를 위한 독립적인 프라이스 스케일 생성 시도
-    console.log('Available price scales:', Object.keys(chart));
-    try {
-      const rsiScale = chart.priceScale('rsi');
-      console.log('RSI scale created:', rsiScale);
-      rsiScale.applyOptions({
-        scaleMargins: {
-          top: 0.80,  // RSI 영역을 차트 하단 20%에 배치
-          bottom: 0.02,
-        },
-        autoScale: false,
-        borderVisible: true,
-        borderColor: '#d1d4dc',
-      });
-    } catch (error) {
-      console.error('Failed to create RSI scale:', error);
-      console.log('Falling back to overlay solution');
-    }
+    // RSI 스케일은 나중에 RSI 시리즈를 추가할 때 자동으로 생성됨
+    console.log('Chart created, RSI scale will be created with RSI series');
 
     const candleSeries = chart.addCandlestickSeries({
       upColor: '#26A69A',
@@ -1207,12 +1191,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     ema200Ref.current = ema200Series;
     ema240Ref.current = ema240Series;
     
-    // RSI 시리즈 추가 (독립 스케일 사용)
+    // RSI 시리즈 추가 (왼쪽 스케일 사용)
     const rsiSeries = chart.addLineSeries({
       color: '#FF1744', // 더 밝은 빨간색
       lineWidth: 2, // 더 굵게
       title: 'RSI(20)',
-      priceScaleId: 'rsi',  // RSI 전용 독립 스케일
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
       priceFormat: {
         type: 'price',
         precision: 0,
@@ -1236,7 +1220,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       lineWidth: 4,
       lineStyle: 2, // dashed
       title: 'RSI 70',
-      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
       visible: true,
       lastValueVisible: true,
       priceLineVisible: false,
@@ -1247,7 +1231,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       lineWidth: 4,
       lineStyle: 2, // dashed
       title: 'RSI 30',
-      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
       visible: true,
       lastValueVisible: true,
       priceLineVisible: false,
@@ -1259,7 +1243,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       lineWidth: 3,
       lineStyle: 2, // dashed
       title: 'RSI 50',
-      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
       visible: true,
       lastValueVisible: true,
       priceLineVisible: false,
@@ -1334,23 +1318,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     // RSI 데이터는 원본 값 그대로 사용 (0-100 범위)
     const rsiLineData = rsiData;
     
-    // RSI 스케일 범위 설정 (0-100 고정)
-    setTimeout(() => {
-      if (chart && chart.priceScale('rsi')) {
-        chart.priceScale('rsi').applyOptions({
-          autoScale: false,
-          ticksVisible: true,
-        });
-        // RSI 스케일을 0-100으로 고정
-        const rsiVisibleRange = {
-          from: -5,
-          to: 105,
-        };
-        chart.priceScale('rsi').applyOptions({
-          autoScale: false,
-        });
-      }
-    }, 100);
+    // RSI는 왼쪽 스케일을 사용하므로 별도 설정 불필요
 
     // RSI 과매수/과매도 라인 데이터 (원본 값 사용)
     const rsiOverboughtData = [
@@ -1387,14 +1355,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     rsiOversoldLine.setData(rsiOversoldData);
     rsiMidLine.setData(rsiMidData);
     
-    // RSI 스케일 범위 고정 (0-100)
-    chart.priceScale('rsi').applyOptions({
-      autoScale: false,
-      scaleMargins: {
-        top: 0.80,  // RSI를 하단 20%에 배치
-        bottom: 0.02,
-      },
-    });
+    // RSI는 이제 왼쪽 스케일을 공유하므로 별도 설정 불필요
 
     // 라인 설정 강화
     twentyPercentLineRef.applyOptions({
@@ -1507,7 +1468,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       color: '#303030',
       lineWidth: 2,
       lineStyle: 0,
-      priceScaleId: 'rsi',
+      priceScaleId: 'left',  // 왼쪽 스케일 사용
       lastValueVisible: false,
       priceLineVisible: false,
       crosshairMarkerVisible: false,
@@ -1700,7 +1661,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
 
   // 데이터 변경 감지 전용 useEffect - 차트가 이미 생성된 경우 데이터만 업데이트
   useEffect(() => {
-    console.log('Data change detected in PolMACDChart:', {
+    console.log('Data change detected in PolMACDChartFixed:', {
       dataLength: data?.length || 0,
       hasChart: !!chartRef.current,
       hasCandleSeries: !!candleRef.current,
@@ -1752,4 +1713,4 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
   );
 };
 
-export default PolMACDChart; 
+export default PolMACDChartFixed;

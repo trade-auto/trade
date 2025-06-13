@@ -1,40 +1,56 @@
 'use client';
 
 import { useState } from 'react';
-import PolMACDChart from '../components/PolMACDChart';
+import PolMACDChart from '../components/PolMACDChartFixed';
 import PolMACDChartSimple from '../components/PolMACDChartSimple';
 import SimpleTestChart from '../components/SimpleTestChart';
+import SeparatedStrategyCharts from '../components/SeparatedStrategyCharts';
+
+// 시드 기반 의사 난수 생성기
+function seededRandom(seed: number) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
 
 // 더미 데이터 생성 (조건을 만족하는 트렌드 데이터)
 const generateDummyData = () => {
   const data = [];
-  const now = Date.now() / 1000;
+  // 고정된 시간값 사용 (2024년 1월 1일 기준)
+  const baseTime = 1704067200; // 2024-01-01 00:00:00 UTC
   
   let basePrice = 50000;
   let trend = 1; // 상승 트렌드
+  let seed = 12345; // 고정된 시드값
   
   for (let i = 0; i < 300; i++) {
-    const time = now - (300 - i - 1) * 60; // 1분 간격 (시간 순서 수정)
+    const time = baseTime + i * 60; // 1분 간격
     
     // 트렌드 기반 가격 변동
-    const volatility = 50 + Math.random() * 100;
-    const trendChange = trend * (10 + Math.random() * 30);
+    seed++;
+    const volatility = 50 + seededRandom(seed) * 100;
+    seed++;
+    const trendChange = trend * (10 + seededRandom(seed) * 30);
     
     // 가끔 트렌드 변경 (조건 만족을 위해)
     if (i > 50 && i % 80 === 0) {
       trend *= -1;
     }
     
-    basePrice += trendChange + (Math.random() - 0.5) * volatility;
+    seed++;
+    basePrice += trendChange + (seededRandom(seed) - 0.5) * volatility;
     
     // 가격이 너무 낮아지지 않도록
     if (basePrice < 30000) basePrice = 30000;
     if (basePrice > 80000) basePrice = 80000;
     
-    const open = basePrice + (Math.random() - 0.5) * 200;
-    const close = basePrice + (Math.random() - 0.5) * 200;
-    const high = Math.max(open, close) + Math.random() * 300;
-    const low = Math.min(open, close) - Math.random() * 300;
+    seed++;
+    const open = basePrice + (seededRandom(seed) - 0.5) * 200;
+    seed++;
+    const close = basePrice + (seededRandom(seed) - 0.5) * 200;
+    seed++;
+    const high = Math.max(open, close) + seededRandom(seed) * 300;
+    seed++;
+    const low = Math.min(open, close) - seededRandom(seed) * 300;
     
     data.push({
       time: time,
@@ -42,7 +58,7 @@ const generateDummyData = () => {
       high: high,
       low: Math.max(low, 100), // 최소 가격 보장
       close: close,
-      volume: 500000 + Math.random() * 1000000
+      volume: 500000 + seededRandom(seed++) * 1000000
     });
   }
   
@@ -54,7 +70,7 @@ const generateDummyData = () => {
 };
 
 export default function TestChartPage() {
-  const [dummyData] = useState(generateDummyData);
+  const [dummyData] = useState(() => generateDummyData());
 
   return (
     <div className="min-h-screen bg-gray-900 p-4">
@@ -73,38 +89,18 @@ export default function TestChartPage() {
       {/* 간단한 테스트 차트 먼저 */}
       <SimpleTestChart data={dummyData} />
 
-      {/* 간단한 PolMACDChart 버전 */}
-      <PolMACDChartSimple data={dummyData} height={600} showMA={true} />
-
-      {/* 실제 PolMACDChart */}
+      {/* 분리된 전략 차트 - 새로 추가 */}
       <div style={{
-        background: '#e3f2fd',
-        border: '3px solid blue',
-        padding: '10px',
-        margin: '10px 0'
+        background: '#1a1a1a',
+        border: '3px solid #9C27B0',
+        padding: '20px',
+        margin: '20px 0',
+        borderRadius: '8px'
       }}>
-        <div style={{ color: 'blue', fontWeight: 'bold', marginBottom: '10px' }}>
-          실제 PolMACDChart 렌더링 영역:
-        </div>
-        <PolMACDChart 
-          data={dummyData}
-          height={600}
-          showMA={{
-            five: false,
-            ten: false,
-            twenty: false,
-            thirty: false,
-            fortyEight: false,
-            sixty: false,
-            ninety: false,
-            oneTwenty: false,
-            twoForty: false,
-            threeHundredSixty: false,
-            sixHundred: false,
-            nineHundred: false,
-          }}
-        />
+        <SeparatedStrategyCharts data={dummyData} height={400} />
       </div>
+
+
     </div>
   );
 }
