@@ -367,7 +367,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
             height={600} 
             showMA={chartShowMA}
             onBacktestResultChange={setPolMacdBacktestResult}
-            visibleBars={100} // 상위 차트와 동일하게 100개 캔들 표시
+            visibleBars={200} // 200개 캔들 표시
           />
         </div>
         

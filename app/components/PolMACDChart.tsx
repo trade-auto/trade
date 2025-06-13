@@ -13,7 +13,7 @@ interface PolMACDChartProps {
   visibleBars?: number; // 표시할 캔들 개수
 }
 
-const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange, visibleBars = 100 }) => {
+const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange, visibleBars = 200 }) => {
   // 받은 데이터 디버깅
   console.log('🔍 PolMACDChart 받은 데이터 확인:', {
     dataLength: data?.length,

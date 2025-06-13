@@ -382,10 +382,10 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     if (data && data.length > 0) {
       seriesRefs.current.candle!.setData(data);
       
-      // 초기 표시 범위 설정 - 최신 100개 캔들만 표시
-      if (data.length > 100) {
+      // 초기 표시 범위 설정 - 최신 200개 캔들만 표시
+      if (data.length > 200) {
         setTimeout(() => {
-          const visibleBars = 100;
+          const visibleBars = 200;
           const logicalRange = {
             from: data.length - visibleBars,
             to: data.length - 1
@@ -663,8 +663,8 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
       
       // 차트 타입 변경 시 초기 표시 범위 설정
       setTimeout(() => {
-        if (processedData.length > 100) {
-          const visibleBars = 100;
+        if (processedData.length > 200) {
+          const visibleBars = 200;
           const logicalRange = {
             from: processedData.length - visibleBars,
             to: processedData.length - 1
@@ -789,9 +789,9 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         console.log(`900MA 설정 완료: ${ema900Data.length}개, 표시: ${showMA?.nineHundred ? '표시' : '숨김'}`);
       }
       
-      // 차트 영역 조정 - 최신 100개 캔들만 표시
-      if (processedData.length > 100) {
-        const visibleBars = 100;
+      // 차트 영역 조정 - 최신 200개 캔들만 표시
+      if (processedData.length > 200) {
+        const visibleBars = 200;
         const logicalRange = {
           from: processedData.length - visibleBars,
           to: processedData.length - 1
