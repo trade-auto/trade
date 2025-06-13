@@ -15,6 +15,7 @@ import SeparatedStrategyCharts from '../components/SeparatedStrategyCharts';
 import { CandlestickData } from '../types/candlestick';
 import { getAccountBalance } from '../api/upbitAccount';
 import { useCoinStore, AVAILABLE_COINS } from '../store/useCoinStore';
+import { Time } from 'lightweight-charts';
 
 const SYMBOLS = [
   { symbol: 'KRW-BTC', name: '비트코인' },
@@ -117,7 +118,7 @@ export default function OrdersPage() {
       const low = Math.min(open, close) - seededRandom(seed) * 300;
       
       data.push({
-        time: time,
+        time: time as Time,
         open: open,
         high: high,
         low: Math.max(low, 100), // 최소 가격 보장
@@ -511,10 +512,58 @@ export default function OrdersPage() {
           />
         </div>
 
+        {/* EMA-MACD-RSI 전략 차트 섹션 (test-chart 동일 조건) */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-white mb-4">EMA-MACD-RSI 전략 차트 (test-chart 동일 조건)</h2>
+          <div className="bg-gray-700 p-3 rounded-lg mb-3 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-white">
+              <div>
+                <strong className="text-blue-400">매수 조건 (모두 충족 시):</strong>
+                <ul className="list-disc list-inside mt-1 text-gray-300">
+                  <li><span className="text-purple-400">TREND</span>: 200 EMA 상승 & 가격 > 200 EMA</li>
+                  <li><span className="text-purple-500">EMA20</span>: 20 EMA 근처 되돌림 (±0.5 ATR)</li>
+                  <li><span className="text-purple-600">MACD+</span>: MACD 골든크로스</li>
+                  <li><span className="text-purple-300">RSI+</span>: RSI 55 상향 돌파</li>
+                  <li><span className="text-blue-500 font-bold">BUY ▲</span>: 모든 조건 충족 시 매수 신호</li>
+                </ul>
+              </div>
+              <div>
+                <strong className="text-red-400">매도 조건 (하나라도 충족 시):</strong>
+                <ul className="list-disc list-inside mt-1 text-gray-300">
+                  <li>5 EMA < 20 EMA 데드크로스</li>
+                  <li><span className="text-purple-600">MACD-</span>: 히스토그램 2봉 연속 음수</li>
+                  <li><span className="text-purple-300">RSI-</span>: RSI ≥ 70 후 첫 음봉</li>
+                  <li><span className="text-red-500 font-bold">SELL ▼</span>: 조건 충족 시 매도 신호</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <PolMACDChartFixed 
+              data={chartData.length > 0 ? chartData : generateTempData()}
+              height={800}
+              showMA={{
+                five: true,
+                ten: false,
+                twenty: true,
+                thirty: false,
+                fortyEight: false,
+                ninety: false,
+                sixty: true,
+                oneTwenty: false,
+                twoForty: false,
+                threeHundredSixty: false,
+                sixHundred: false,
+                nineHundred: false
+              }}
+            />
+          </div>
+        </div>
+
         {/* PolMACD 분리된 전략 차트 섹션 */}
         {chartData.length > 0 && (
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-white mb-4">PolMACD 분리된 전략 차트</h2>
+            <h2 className="text-xl font-bold text-white mb-4">단순화된 EMA 크로스 전략 차트</h2>
             <div className="bg-gray-800 p-4 rounded-lg">
               <SeparatedStrategyCharts 
                 data={chartData}

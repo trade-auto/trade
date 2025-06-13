@@ -9,6 +9,7 @@ import { DateRange, BacktestResult } from '../types/candlestick';
 import { CandlestickChart } from './CandlestickChart';
 import MACDChart from './MACDChart';
 import PolMACDChart from './PolMACDChart';
+import PolMACDChartFixed from './PolMACDChartFixed';
 
 // 컴포넌트
 import ChartControls from './ChartControls';
@@ -362,10 +363,35 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
         </div>
 
         {/* MACD 관련 차트들 - 항상 표시 */}
-        <div className="w-full" style={{ height: '800px' }}>
-          
-          
-          <PolMACDChart 
+        <div className="w-full" style={{ height: '900px' }}>
+          <h3 className="text-lg font-bold mb-2 text-white">EMA-MACD-RSI 전략 차트</h3>
+          <div className="bg-gray-800 p-3 rounded-lg mb-3 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-white">
+              <div>
+                <strong className="text-blue-400">매수 조건 (모두 충족 시):</strong>
+                <ul className="list-disc list-inside mt-1 text-gray-300">
+                  <li><span className="text-purple-400">TREND</span>: 200 EMA 상승 & 가격 > 200 EMA</li>
+                  <li><span className="text-purple-500">EMA20</span>: 20 EMA 근처 되돌림 (±0.5 ATR)</li>
+                  <li><span className="text-purple-600">MACD+</span>: MACD 골든크로스</li>
+                  <li><span className="text-purple-300">RSI+</span>: RSI 55 상향 돌파</li>
+                  <li><span className="text-blue-500 font-bold">BUY ▲</span>: 모든 조건 충족 시 매수 신호</li>
+                </ul>
+              </div>
+              <div>
+                <strong className="text-red-400">매도 조건 (하나라도 충족 시):</strong>
+                <ul className="list-disc list-inside mt-1 text-gray-300">
+                  <li>5 EMA < 20 EMA 데드크로스</li>
+                  <li><span className="text-purple-600">MACD-</span>: 히스토그램 2봉 연속 음수</li>
+                  <li><span className="text-purple-300">RSI-</span>: RSI ≥ 70 후 첫 음봉</li>
+                  <li><span className="text-red-500 font-bold">SELL ▼</span>: 조건 충족 시 매도 신호</li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-2 text-yellow-400">
+              💡 보라색 마커는 매매 신호 전후 10개 캔들에서만 표시됩니다.
+            </div>
+          </div>
+          <PolMACDChartFixed 
             data={isDataImported ? importedData : allData} 
             height={800} 
             showMA={chartShowMA}
