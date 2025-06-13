@@ -25,7 +25,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
     symbol,
     chartType: propsChartType,
     initialAutoUpdate = true,
-    initialDataCount = 300, // 기본값 300으로 설정
+    initialDataCount = 400, // 기본값 400으로 설정
     mode,
     handleOrder,
     onOrder,
@@ -85,19 +85,24 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   React.useEffect(() => {
     try {
       const savedCount = localStorage.getItem('chartDataCount');
+      console.log('Saved candle count from localStorage:', savedCount);
       if (savedCount) {
         const parsedCount = parseInt(savedCount, 10);
-        // 200이었다면 300으로 업데이트
-        if (parsedCount === 200) {
-          setDataCount(300);
-          localStorage.setItem('chartDataCount', '300');
+        // 2300이면 400으로 재설정
+        if (parsedCount > 1000) {
+          console.log('Resetting candle count from', parsedCount, 'to 400');
+          setDataCount(400);
+          localStorage.setItem('chartDataCount', '400');
+        } else if (parsedCount === 200 || parsedCount === 300) {
+          setDataCount(400);
+          localStorage.setItem('chartDataCount', '400');
         } else {
           setDataCount(parsedCount);
         }
       } else {
-        // 저장된 값이 없으면 300으로 설정
-        setDataCount(300);
-        localStorage.setItem('chartDataCount', '300');
+        // 저장된 값이 없으면 400으로 설정
+        setDataCount(400);
+        localStorage.setItem('chartDataCount', '400');
       }
       
       // 240 EMA 설정 확인 및 수정
@@ -356,21 +361,21 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
           )}
         </div>
 
-        {/* MACD 관련 차트들 - tradeStrategy가 'MACD'일 때만 표시 */}
+        {/* MACD 관련 차트들 - 항상 표시 */}
+        <div className="w-full" style={{ height: '800px' }}>
+          
+          
+          <PolMACDChart 
+            data={isDataImported ? importedData : allData} 
+            height={800} 
+            showMA={chartShowMA}
+            onBacktestResultChange={setPolMacdBacktestResult} 
+          />
+        </div>
         {tradeStrategy === 'MACD' && (
-          <>
-            <div className="w-full" style={{ height: '800px' }}>
-              <PolMACDChart 
-                data={isDataImported ? importedData : allData} 
-                height={800} 
-                showMA={chartShowMA}
-                onBacktestResultChange={setPolMacdBacktestResult} 
-              />
-            </div>
-            <div className="w-full" style={{ height: '300px' }}>
-              <MACDChart data={isDataImported ? importedData : allData} />
-            </div>
-          </>
+          <div className="w-full" style={{ height: '300px' }}>
+            <MACDChart data={isDataImported ? importedData : allData} />
+          </div>
         )}
         
         {/* 설정 및 결과 섹션 */}

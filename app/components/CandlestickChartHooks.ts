@@ -488,6 +488,12 @@ export const useChartData = (
       });
       
       console.log(`총 ${sortedAllData.length}개 캔들 데이터 처리 완료`);
+      console.log('setAllData 호출 직전:', {
+        dataLength: sortedAllData.length,
+        firstItem: sortedAllData[0],
+        lastItem: sortedAllData[sortedAllData.length - 1],
+        timestamp: new Date().toISOString()
+      });
       setProgress(50);
       
       // 모든 데이터 저장

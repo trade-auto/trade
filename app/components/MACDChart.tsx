@@ -578,18 +578,18 @@ const MACDChart: React.FC<MACDChartProps> = ({ data, height = 430 }) => {
         .filter(d => d.tradeSignal)
         .map(d => ({
           time: d.time as Time,
-          position: d.tradeSignal === 'buy' ? 'belowBar' as const : 'aboveBar' as const,
+          position: (d.tradeSignal === 'buy' ? 'belowBar' : 'aboveBar') as 'belowBar' | 'aboveBar',
           color: d.tradeSignal === 'buy' ? '#4CAF50' : '#FF5252',
-          shape: d.tradeSignal === 'buy' ? 'arrowUp' as const : 'arrowDown' as const,
+          shape: (d.tradeSignal === 'buy' ? 'arrowUp' : 'arrowDown') as 'arrowUp' | 'arrowDown',
           text: d.tradeSignal === 'buy' ? '매수' : '매도',
         }));
 
       // 교차 신호 마커 추가
       const crossMarkers = macdData.crossSignals.map(signal => ({
         time: signal.time as Time,
-        position: signal.type === 'cross_buy' ? 'belowBar' as const : 'aboveBar' as const,
+        position: (signal.type === 'cross_buy' ? 'belowBar' : 'aboveBar') as 'belowBar' | 'aboveBar',
         color: signal.type === 'cross_buy' ? '#00FFAA' : '#FF00AA',
-        shape: signal.type === 'cross_buy' ? 'arrowUp' as const : 'arrowDown' as const,
+        shape: (signal.type === 'cross_buy' ? 'arrowUp' : 'arrowDown') as 'arrowUp' | 'arrowDown',
         text: signal.type === 'cross_buy' ? `MACD 매수(${signal.level})` : `MACD 매도(${signal.level})`,
         size: 2
       }));
