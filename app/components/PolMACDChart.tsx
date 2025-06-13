@@ -377,7 +377,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       if (rsiAbove50) {
         rsiConditionMet = true;
         rsiConditionIndex = i;
-        console.log(`RSI 매수 조건 충족 at ${i}, RSI: ${currentRSI.toFixed(2)}`);
+        console.log(`✅ PolMACD RSI 매수 조건 충족 at ${i}, time: ${data[i].time}, RSI: ${prevRSI.toFixed(2)} → ${currentRSI.toFixed(2)} (50 돌파)`);
       }
       
       // MACD 매수 조건 체크
@@ -385,7 +385,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       if (macdGoldenCross) {
         macdConditionMet = true;
         macdConditionIndex = i;
-        console.log(`MACD 매수 조건 충족 at ${i}, MACD: ${currentMACD.toFixed(4)}, Signal: ${currentSignal.toFixed(4)}`);
+        console.log(`✅ PolMACD MACD 매수 조건 충족 at ${i}, time: ${data[i].time}, MACD: ${prevMACD.toFixed(4)} → ${currentMACD.toFixed(4)}, Signal: ${prevSignal.toFixed(4)} → ${currentSignal.toFixed(4)} (골든크로스)`);
       }
       
       // 20 EMA vs 60 EMA 골든크로스 체크
@@ -399,12 +399,36 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       const rsi50Buy = prevRSI <= 50 && currentRSI > 50;
       const rsi50Sell = prevRSI >= 50 && currentRSI < 50;
       
+      // 진짜 매수 조건 체크 및 디버깅
+      const canBuy = !inPosition;
+      const hasRsiCondition = rsiConditionMet;
+      const hasMacdCondition = macdConditionMet;
+      const hasEmaCross = ema20GoldenCross;
+      const ema200OK = !ema200Declining;
+      
+      // 상세 디버깅 로그 (EMA 크로스가 발생했을 때)
+      if (ema20GoldenCross) {
+        console.log(`📊 PolMACD 20/60 EMA 골든크로스 발생! at ${i}, time: ${data[i].time}:`, {
+          canBuy: canBuy ? '✅' : '❌ (이미 포지션 보유)',
+          hasRsiCondition: hasRsiCondition ? `✅ (${rsiConditionIndex})` : '❌ RSI 조건 미충족',
+          hasMacdCondition: hasMacdCondition ? `✅ (${macdConditionIndex})` : '❌ MACD 조건 미충족',
+          hasEmaCross: hasEmaCross ? '✅' : '❌',
+          ema200OK: ema200OK ? '✅ 200EMA OK' : '❌ 200EMA 음의기울기',
+          ema200Declining,
+          currentEMA20: currentEMA20.toFixed(2),
+          currentEMA60: currentEMA60.toFixed(2),
+          prevEMA20: prevEMA20.toFixed(2),
+          prevEMA60: prevEMA60.toFixed(2),
+          finalCondition: (canBuy && hasRsiCondition && hasMacdCondition && hasEmaCross && ema200OK) ? '🎯 매수신호 생성!' : '❌ 조건 미충족'
+        });
+      }
+      
       // 진짜 매수 조건:
       // 1. 포지션이 없고 (초기 또는 매도 후)
       // 2. RSI와 MACD 조건이 먼저 충족되고
       // 3. 20 EMA가 60 EMA를 상향 돌파
       // 4. 200 EMA가 음의 기울기가 아닐 때 (매수 금지 조건 아님)
-      if (!inPosition && rsiConditionMet && macdConditionMet && ema20GoldenCross && !ema200Declining) {
+      if (canBuy && hasRsiCondition && hasMacdCondition && hasEmaCross && ema200OK) {
         type.push('buy');
         inPosition = true;
         buyConditionsMetCount++;
@@ -414,9 +438,6 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
           currentIndex: i,
           ema200Rising,
           ema200Declining,
-          rsiConditionMet,
-          macdConditionMet,
-          ema20GoldenCross,
           condition: 'RSI+MACD 충족 후 20/60 EMA 골든크로스 + 200EMA 음의기울기 아님'
         });
         // 조건 리셋
@@ -449,6 +470,17 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       macdCrossConditions.push(macdGoldenCross ? 'golden' : (macdDeadCross ? 'dead' : null));
       rsiCrossConditions.push(rsi50Buy ? 'buy' : (rsi50Sell ? 'sell' : null));
       macdPositionConditions.push(null);
+      
+      // 조건 상태 주기적 체크 (매 50봉마다)
+      if (i % 50 === 0 && i > 50) {
+        console.log(`📋 조건 상태 at ${i}:`, {
+          position: inPosition ? '보유중' : '대기중',
+          rsiMet: rsiConditionMet ? `✅ (${rsiConditionIndex})` : '❌',
+          macdMet: macdConditionMet ? `✅ (${macdConditionIndex})` : '❌',
+          ema200: ema200Declining ? '❌ 음의기울기' : '✅ OK',
+          waitingFor: (!inPosition && rsiConditionMet && macdConditionMet && !ema200Declining) ? '20/60 EMA 골든크로스 대기중!' : 'RSI/MACD 조건 대기중'
+        });
+      }
     }
     
     // 조건 충족 통계
