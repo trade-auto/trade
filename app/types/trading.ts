@@ -1,6 +1,20 @@
 import { Time, CandlestickData } from 'lightweight-charts';
 
-export type TradeStrategy = 'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER';
+export type TradeStrategy = 'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' | 'BOLLINGER';
+
+export interface BollingerBands {
+  upperBand: number;
+  middleBand: number;
+  lowerBand: number;
+  price: number;
+  timestamp: Time;
+}
+
+export interface BollingerStrategy {
+  period: number;
+  deviation: number;
+  analyze: (data: CandlestickData<Time>[]) => BollingerBands[];
+}
 
 export interface OrderParams {
   market: string;

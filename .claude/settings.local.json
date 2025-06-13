@@ -56,7 +56,9 @@
       "Bash(timeout:*)",
       "mcp__shrimp-task-manager__clear_all_tasks",
       "Bash(sed:*)",
-      "WebFetch(domain:localhost)"
+      "WebFetch(domain:localhost)",
+      "Bash(npm install:*)",
+      "Bash(claude-code --restart-mcp)"
     ]
   },
   "enableAllProjectMcpServers": true,

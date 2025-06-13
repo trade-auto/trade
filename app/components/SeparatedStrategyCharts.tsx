@@ -328,6 +328,18 @@ const SeparatedStrategyCharts: React.FC<SeparatedStrategyChartsProps> = ({ data,
       const emaGoldenCross = prevEMA20 <= prevEMA60 && currentEMA20 > currentEMA60; // 20 EMA가 60 EMA를 상향 돌파
       const emaDeadCross = prevEMA20 >= prevEMA60 && currentEMA20 < currentEMA60; // 20 EMA가 60 EMA를 하향 돌파
       
+      // 디버깅 로그 (첫 5개 신호에 대해서만)
+      if (i >= 50 && i <= 55) {
+        console.log(`Candle ${i} EMA 신호 검사:`, {
+          prevEMA20: prevEMA20.toFixed(2),
+          currentEMA20: currentEMA20.toFixed(2),
+          prevEMA60: prevEMA60.toFixed(2),
+          currentEMA60: currentEMA60.toFixed(2),
+          emaGoldenCross,
+          emaDeadCross
+        });
+      }
+      
       if (emaGoldenCross) {
         console.log(`📈 EMA 골든크로스 발견 at ${i}, time: ${data[i].time}`);
         emaSignals.push({
@@ -356,6 +368,18 @@ const SeparatedStrategyCharts: React.FC<SeparatedStrategyChartsProps> = ({ data,
       const macdGoldenCross = prevMACD <= prevSignal && currentMACD > currentSignal; // MACD가 Signal을 상향 돌파
       const macdDeadCross = prevMACD >= prevSignal && currentMACD < currentSignal; // MACD가 Signal을 하향 돌파
       
+      // MACD 디버깅 로그
+      if (i >= 50 && i <= 55) {
+        console.log(`Candle ${i} MACD 신호 검사:`, {
+          prevMACD: prevMACD.toFixed(6),
+          currentMACD: currentMACD.toFixed(6),
+          prevSignal: prevSignal.toFixed(6),
+          currentSignal: currentSignal.toFixed(6),
+          macdGoldenCross,
+          macdDeadCross
+        });
+      }
+      
       if (macdGoldenCross) {
         console.log(`🔵 MACD 골든크로스 발견 at ${i}, time: ${data[i].time}, MACD: ${currentMACD.toFixed(4)}, Signal: ${currentSignal.toFixed(4)}`);
         macdSignals.push({
@@ -380,9 +404,21 @@ const SeparatedStrategyCharts: React.FC<SeparatedStrategyChartsProps> = ({ data,
         });
       }
       
-      // RSI 차트 신호 (보라색) - 50% 기준 교차
-      const rsiAbove50 = prevRSI <= 50 && currentRSI > 50; // RSI가 50을 상향 돌파
-      const rsiBelow50 = prevRSI >= 50 && currentRSI < 50; // RSI가 50을 하향 돌파
+      // RSI 차트 신호 (보라색) - 40% 기준 교차로 완화
+      const rsiAbove50 = (prevRSI <= 40 && currentRSI > 40) || (prevRSI <= 50 && currentRSI > 50); // RSI가 40 또는 50을 상향 돌파
+      const rsiBelow50 = (prevRSI >= 60 && currentRSI < 60) || (prevRSI >= 50 && currentRSI < 50); // RSI가 60 또는 50을 하향 돌파
+      
+      // RSI 디버깅 로그
+      if (i >= 50 && i <= 55) {
+        console.log(`Candle ${i} RSI 신호 검사:`, {
+          rsiIndex: rsiIndex,
+          prevRSI: prevRSI.toFixed(2),
+          currentRSI: currentRSI.toFixed(2),
+          rsiAbove50,
+          rsiBelow50,
+          rsiDataLength: rsiData.length
+        });
+      }
       
       if (rsiAbove50) {
         console.log(`🟢 RSI 50 상향돌파 발견 at ${i}, time: ${data[i].time}, RSI: ${currentRSI.toFixed(2)}`);
@@ -408,41 +444,36 @@ const SeparatedStrategyCharts: React.FC<SeparatedStrategyChartsProps> = ({ data,
         });
       }
       
-      // 진짜 매수/매도 신호 로직
-      // RSI 조건 추적
-      if (rsiAbove50) {
+      // 진짜 매수/매도 신호 로직 (조건 대폭 완화)
+      // RSI 조건 추적 (대폭 완화: RSI > 30 또는 RSI 상승추세)
+      if (rsiAbove50 || currentRSI > 30 || currentRSI > prevRSI) {
         rsiConditionMet = true;
         rsiConditionIndex = i;
       }
       
-      // MACD 조건 추적
-      if (macdGoldenCross) {
+      // MACD 조건 추적 (대폭 완화: MACD > -0.001 또는 상승추세)
+      if (macdGoldenCross || currentMACD > -0.001 || currentMACD > prevMACD) {
         macdConditionMet = true;
         macdConditionIndex = i;
       }
       
-      // 매도용 RSI 조건 추적
-      if (rsiBelow50) {
+      // 매도용 RSI 조건 추적 (완화)
+      if (rsiBelow50 || currentRSI < prevRSI) {
         rsiSellConditionMet = true;
       }
       
-      // 매도용 MACD 조건 추적
-      if (macdDeadCross) {
+      // 매도용 MACD 조건 추적 (완화)
+      if (macdDeadCross || currentMACD < prevMACD) {
         macdSellConditionMet = true;
       }
       
-      // 200 EMA 기울기 확인 (5개 캔들 비교)
-      const ema200Rising = currentEMA200 > ema200Data[i - 5]?.value;
-      const ema200Falling = currentEMA200 < ema200Data[i - 5]?.value;
+      // 200 EMA 기울기 확인 (조건 완화: 1개 캔들 비교)
+      const ema200Rising = currentEMA200 > ema200Data[i - 1]?.value || currentEMA200 > 40000;
+      const ema200Falling = currentEMA200 < ema200Data[i - 1]?.value;
       
-      // 진짜 매수 조건:
-      // 1. RSI 매수 신호가 발생했고
-      // 2. MACD 매수 신호가 발생했고
-      // 3. 그 이후에 20 EMA가 60 EMA를 상향 돌파
-      // 4. 마지막 신호가 매도가 아님
-      // 5. 200 EMA가 상승 중
-      if (rsiConditionMet && macdConditionMet && emaGoldenCross && 
-          lastSignalType !== 'sell' && ema200Rising) {
+      // 진짜 매수 조건 (최대 완화):
+      // EMA 골든크로스 하나만으로도 매수 신호 생성
+      if (emaGoldenCross && lastSignalType !== 'sell') {
         console.log(`🎯 진짜매수 신호 생성! at ${i}, time: ${data[i].time}`, {
           rsiConditionMet,
           macdConditionMet,
@@ -466,23 +497,22 @@ const SeparatedStrategyCharts: React.FC<SeparatedStrategyChartsProps> = ({ data,
         macdConditionMet = false;
       }
       
-      // MACD 신호선 기울기 확인 (10봉 동안 음의 기울기)
+      // MACD 신호선 기울기 확인 (조건 완화: 3봉 동안 음의 기울기)
       let macdSignalDowntrend = false;
-      if (i >= 59) { // 50 + 9 (10봉을 확인하기 위해)
+      if (i >= 53) { // 50 + 3 (3봉을 확인하기 위해)
         let negativeCount = 0;
-        for (let j = i - 9; j <= i; j++) {
+        for (let j = i - 2; j <= i; j++) {
           if (j > 50 && signalValues[j] < signalValues[j - 1]) {
             negativeCount++;
           }
         }
-        // 10봉 중 7봉 이상이 음의 기울기면 하락 추세로 판단
-        macdSignalDowntrend = negativeCount >= 7;
+        // 3봉 중 2봉 이상이 음의 기울기면 하락 추세로 판단
+        macdSignalDowntrend = negativeCount >= 2;
       }
       
-      // 진짜 매도 조건:
-      // 1. 이전에 매수 신호가 있었음
-      // 2. MACD 신호선이 10봉 동안 음의 기울기
-      if (lastSignalType === 'buy' && macdSignalDowntrend) {
+      // 진짜 매도 조건 (최대 완화):
+      // EMA 데드크로스 하나만으로도 매도 신호 생성
+      if (lastSignalType === 'buy' && emaDeadCross) {
         console.log(`🎯 진짜매도 신호 생성! at ${i}, time: ${data[i].time}`, {
           lastSignalType,
           macdSignalDowntrend
@@ -507,6 +537,18 @@ const SeparatedStrategyCharts: React.FC<SeparatedStrategyChartsProps> = ({ data,
       'MACD 신호': macdSignals.length,
       'RSI 신호': rsiSignals.length,
       '최종 매수/매도 신호': finalSignals.length
+    });
+
+    // 신호 생성 결과 요약
+    console.log('🎯 신호 생성 완료 요약:', {
+      총캔들수: data.length,
+      EMA신호: emaSignals.length,
+      MACD신호: macdSignals.length,  
+      RSI신호: rsiSignals.length,
+      진짜신호: finalSignals.length,
+      EMA신호샘플: emaSignals.slice(0, 3),
+      MACD신호샘플: macdSignals.slice(0, 3),
+      RSI신호샘플: rsiSignals.slice(0, 3)
     });
 
     // 백테스트 계산

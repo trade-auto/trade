@@ -2,7 +2,7 @@
   "server": {
     "name": "shrimp-task-manager",
     "version": "1.0.19",
-    "data_dir": "/mnt/f/200.workspace/trade/shrimp-data",
+    "data_dir": "/home/sk/trade/shrimp-data",
     "enable_gui": false,
     "template_language": "en"
   },

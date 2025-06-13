@@ -74,25 +74,28 @@ export default function OrdersPage() {
     return x - Math.floor(x);
   }
 
-  // 임시 데이터 생성 (PolMACD 차트용)
+  // 임시 데이터 생성 (test-chart와 동일한 방식)
   const generateTempData = () => {
     const data = [];
-    const baseTime = Math.floor(Date.now() / 1000) - (300 * 60); // 300분 전부터
+    // 고정된 시간값 사용 (2024년 1월 1일 기준)
+    const baseTime = 1704067200; // 2024-01-01 00:00:00 UTC
     
-    let basePrice = currentPrice || 50000;
-    let trend = 1;
-    let seed = 12345;
+    let basePrice = 50000; // 고정된 기준 가격 사용
+    let trend = 1; // 상승 트렌드
+    let seed = 12345; // 고정된 시드값
     
-    console.log('🔢 차트 데이터 생성 시작, basePrice:', basePrice);
+    console.log('🔢 차트 데이터 생성 시작 (test-chart 방식), basePrice:', basePrice);
     
     for (let i = 0; i < 300; i++) {
       const time = baseTime + i * 60; // 1분 간격
       
+      // 트렌드 기반 가격 변동
       seed++;
       const volatility = 50 + seededRandom(seed) * 100;
       seed++;
       const trendChange = trend * (10 + seededRandom(seed) * 30);
       
+      // 가끔 트렌드 변경 (조건 만족을 위해)
       if (i > 50 && i % 80 === 0) {
         trend *= -1;
       }
@@ -100,8 +103,9 @@ export default function OrdersPage() {
       seed++;
       basePrice += trendChange + (seededRandom(seed) - 0.5) * volatility;
       
-      if (basePrice < basePrice * 0.7) basePrice = basePrice * 0.7;
-      if (basePrice > basePrice * 1.3) basePrice = basePrice * 1.3;
+      // 가격이 너무 낮아지지 않도록
+      if (basePrice < 30000) basePrice = 30000;
+      if (basePrice > 80000) basePrice = 80000;
       
       seed++;
       const open = basePrice + (seededRandom(seed) - 0.5) * 200;
@@ -116,7 +120,7 @@ export default function OrdersPage() {
         time: time,
         open: open,
         high: high,
-        low: Math.max(low, open * 0.95),
+        low: Math.max(low, 100), // 최소 가격 보장
         close: close,
         volume: 500000 + seededRandom(seed++) * 1000000
       });
@@ -261,11 +265,11 @@ export default function OrdersPage() {
 
   // 임시 차트 데이터 생성 (PolMACD 차트용)
   useEffect(() => {
-    if (mounted && currentPrice) {
+    if (mounted) {
       const tempData = generateTempData();
       setChartData(tempData);
     }
-  }, [mounted, currentPrice]);
+  }, [mounted]);
 
   const handleOrderCreated = () => {
     // OpenOrders 컴포넌트의 새로고침 함수 호출
