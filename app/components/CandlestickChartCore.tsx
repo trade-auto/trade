@@ -40,7 +40,7 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   
   // 직접 dateRange 상태 관리
   const [localDateRange, setLocalDateRange] = React.useState<DateRange>({
-    startDate: new Date(new Date().getTime() - 48 * 60 * 60 * 1000), // 기본 48시간
+    startDate: new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000), // 기본 30일로 확대
     endDate: null
   });
   
@@ -182,30 +182,29 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   // 컴포넌트 마운트 시 날짜 범위를 명시적으로 설정
   useEffect(() => {
     const now = new Date();
-    let startDate = new Date(now.getTime() - 8 * 60 * 60 * 1000); // 기본값 설정
+    let startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 기본값 30일
     
     if (chartType.startsWith('seconds/')) {
-      // 초봉: 12시간으로 확장 (12시간 = 720개 캔들)
-      startDate = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-      console.log('초봉 차트 - 시작 날짜를 12시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
+      // 초봉: 24시간으로 확장 (24시간 = 1440개 캔들)
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      console.log('초봉 차트 - 시작 날짜를 24시간 전으로 설정:', startDate.toLocaleString('ko-KR'));
       setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
     } else if (chartType.startsWith('minutes/')) {
       // 분봉: 기간 설정
       const minutes = parseInt(chartType.split('/')[1]);
       if (minutes === 5) {
-        // 5분봉: 더 많은 데이터를 위해 7일로 확장 (7일 = 2016개 캔들)
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        // 5분봉: 더 많은 데이터를 위해 30일로 확장 (30일 = 8640개 캔들)
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       } else if (minutes === 15) {
-        // 15분봉: 14일로 확장 (14일 = 1344개 캔들)
-        startDate = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+        // 15분봉: 60일로 확장 (60일 = 5760개 캔들)
+        startDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
       }
       console.log(`${minutes}분봉 차트 - 시작 날짜 설정:`, startDate.toLocaleString('ko-KR'));
       setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
     }
 
-    // MACD 계산을 위한 추가 데이터 기간 설정
-    const macdStartDate = new Date(startDate.getTime() - 26 * 24 * 60 * 60 * 1000); // 26일 추가
-    setLocalDateRange((prev: DateRange) => ({ ...prev, startDate: macdStartDate }));
+    // MACD 계산을 위한 추가 데이터 기간은 이미 충분하므로 그대로 사용
+    setLocalDateRange((prev: DateRange) => ({ ...prev, startDate }));
   }, [chartType]);
   
   // 초봉 차트일 경우 자동 업데이트 및 실시간 API 효과

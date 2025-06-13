@@ -6,7 +6,7 @@ import querystring from 'querystring';
 
 export async function GET(
   request: Request,
-  { params }: { params: { uuid: string } }
+  { params }: { params: Promise<{ uuid: string }> }
 ) {
   const access_key = process.env.UPBIT_ACCESS_KEY;
   const secret_key = process.env.UPBIT_SECRET_KEY;
@@ -20,7 +20,8 @@ export async function GET(
   }
 
   try {
-    const body = { uuid: params.uuid };
+    const { uuid } = await params;
+    const body = { uuid };
     const query = querystring.encode(body);
 
     // 쿼리 해시 생성

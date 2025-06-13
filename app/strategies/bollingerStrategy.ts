@@ -52,7 +52,7 @@ const bollingerStrategy: BollingerStrategy = {
 
     // 이전 데이터 무결성 검사
     const dataSlice = data.slice(index - requiredData, index);
-    if (dataSlice.some(d => d === undefined || d.close === undefined)) {
+    if (dataSlice.some((d: CandlestickData<Time>) => d === undefined || d.close === undefined)) {
       console.log('이전 데이터에 누락된 값이 있습니다.');
       return null;
     }

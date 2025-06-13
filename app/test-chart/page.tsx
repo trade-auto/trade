@@ -5,6 +5,7 @@ import PolMACDChart from '../components/PolMACDChartFixed';
 import PolMACDChartSimple from '../components/PolMACDChartSimple';
 import SimpleTestChart from '../components/SimpleTestChart';
 import SeparatedStrategyCharts from '../components/SeparatedStrategyCharts';
+import { Time } from 'lightweight-charts';
 
 // 시드 기반 의사 난수 생성기
 function seededRandom(seed: number) {
@@ -53,7 +54,7 @@ const generateDummyData = () => {
     const low = Math.min(open, close) - seededRandom(seed) * 300;
     
     data.push({
-      time: time,
+      time: time as Time,
       open: open,
       high: high,
       low: Math.max(low, 100), // 최소 가격 보장

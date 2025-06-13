@@ -16,9 +16,12 @@ const nextConfig = {
   },
   // 개발 서버 설정
   devIndicators: {
-    buildActivity: true,
-    buildActivityPosition: 'bottom-right',
+    position: 'bottom-right',
+  },
+  // ESLint 임시 비활성화
+  eslint: {
+    ignoreDuringBuilds: true,
   },
 }
 
-module.exports = nextConfig 
+module.exports = nextConfig

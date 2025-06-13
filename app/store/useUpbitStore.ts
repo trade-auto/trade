@@ -416,7 +416,7 @@ const useUpbitStore = create<UpbitStore>((set, get) => {
     },
     
     // 전략 객체 및 분석 메서드
-    strategies,
+    strategies: strategies as Record<TradeStrategy, TradingStrategy>,
     getStrategy: (name) => strategies[name],
     analyzeStrategy: (data) => {
       const { tradeStrategy } = get();

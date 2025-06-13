@@ -1,7 +1,7 @@
 import { CandlestickData, Time } from 'lightweight-charts';
 
 // 전략 유형 정의
-export type TradeStrategy = 'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' ;
+export type TradeStrategy = 'MACD' | 'MA_CROSS' | 'MA_CROSS_DEVIATION' | 'SLOPE_FILTER' | 'BOLLINGER';
 
 // 포지션 유형 정의
 export type PositionType = 'buy' | 'sell' | null;
@@ -201,4 +201,11 @@ export interface MacdStrategy extends Omit<TradingStrategy, 'analyzeEntry' | 'an
   isMAFanSpreadOut?: (ma60: number, ma120: number, ma240: number, ma360: number, ma600: number, thresholdPercent?: number) => boolean;
   shouldTakeProfit?: (entryPrice: number, currentPrice: number, takeProfitPercent?: number) => boolean;
   isMA600SteadyUp?: (data: CandlestickData<Time>[], index: number) => boolean;
+}
+
+// Bollinger 밴드 전략 인터페이스
+export interface BollingerStrategy extends TradingStrategy {
+  period?: number;
+  stdDev?: number;
+  calculateBollingerBands?: (data: CandlestickData<Time>[], index: number) => { upper: number; middle: number; lower: number; };
 } 

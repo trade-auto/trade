@@ -3,7 +3,7 @@
     "name": "shrimp-task-manager",
     "version": "1.0.19",
     "data_dir": "/home/sk/trade/shrimp-data",
-    "enable_gui": false,
+    "enable_gui": true,
     "template_language": "en"
   },
   "trading": {

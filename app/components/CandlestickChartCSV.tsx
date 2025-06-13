@@ -212,7 +212,12 @@ export const useCsvFunctions = (symbol: string) => {
         setIsDataImported(true);
         
         // 매매 신호 분석 및 마커 생성
-        const selectedStrategy = useUpbitStore.getState().strategies[tradeStrategy];
+        const strategies = useUpbitStore.getState().strategies;
+        const selectedStrategy = strategies[tradeStrategy as keyof typeof strategies];
+        if (!selectedStrategy) {
+          console.error(`Strategy ${tradeStrategy} not found`);
+          return;
+        }
         const analysisResult = selectedStrategy.analyze(parsedData);
         const signals = analysisResult.signals;
         

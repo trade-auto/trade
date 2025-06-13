@@ -596,7 +596,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     }).filter(marker => marker !== null);
 
     // 테스트 마커 제거 (실제 신호만 표시)
-    const testMarkers = [];
+    const testMarkers: any[] = [];
 
     // 모든 마커 합치기 (조건별 + 매수/매도 + 테스트)
     const allMarkers = [
