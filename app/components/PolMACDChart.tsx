@@ -13,24 +13,13 @@ interface PolMACDChartProps {
 }
 
 const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange }) => {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const macdRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const signalRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const histogramRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const markerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const kLineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const dLineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema5Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema20Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema48Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema60Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema120Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema200Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema240Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const rsiRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const atrRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const candleChartRef = useRef<HTMLDivElement>(null);
+  const macdChartRef = useRef<HTMLDivElement>(null);
+  const rsiChartRef = useRef<HTMLDivElement>(null);
+  
+  const [candleChartApi, setCandleChartApi] = useState<IChartApi | null>(null);
+  const [macdChartApi, setMacdChartApi] = useState<IChartApi | null>(null);
+  const [rsiChartApi, setRsiChartApi] = useState<IChartApi | null>(null);
   
   // 백테스트 결과 상태
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
@@ -293,9 +282,13 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       lastRSI: rsiValues[rsiValues.length - 1]
     });
     
-    // 매수/매도 신호 생성 (EMA-MACD-RSI 전략)
+    // 진짜 매수/매도 신호 생성 (새로운 로직)
     const type: ('buy' | 'sell' | null)[] = [];
-    let inPosition = false;
+    let inPosition = false; // 초기는 포지션 없음 (매수부터 시작 가능)
+    let rsiConditionMet = false;
+    let macdConditionMet = false;
+    let rsiConditionIndex = -1;
+    let macdConditionIndex = -1;
 
     // 각 조건별 신호 추적을 위한 배열들
     const trendConditions: ('trend' | null)[] = [];
@@ -307,7 +300,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     const rsiCrossConditions: ('buy' | 'sell' | null)[] = [];
     const macdPositionConditions: ('buy' | 'sell' | null)[] = [];
 
-    // 초기 50개는 null로 초기화 (조건 완화)
+    // 초기 50개는 null로 초기화
     for (let i = 0; i < Math.min(50, data.length); i++) {
       type.push(null);
       trendConditions.push(null);
@@ -320,7 +313,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       macdPositionConditions.push(null);
     }
 
-    // EMA-MACD-RSI 전략 기반 신호 생성
+    // 진짜 매수/매도 신호 생성
     let buyConditionsMetCount = 0;
     let sellConditionsMetCount = 0;
     
@@ -339,144 +332,123 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       const currentSignal = signalValues[i];
       const prevMACD = macdValues[i - 1];
       const prevSignal = signalValues[i - 1];
-      // RSI 인덱스 계산 수정 - RSI 배열은 period(20) 이후부터 시작
-      const rsiIndex = i - 20; // RSI는 20번째 캔들부터 시작
+      
+      // RSI 인덱스 계산
+      const rsiIndex = i - 20;
       const currentRSI = rsiIndex >= 0 && rsiIndex < rsiValues.length ? rsiValues[rsiIndex]?.value : 50;
       const prevRSI = rsiIndex - 1 >= 0 && rsiIndex - 1 < rsiValues.length ? rsiValues[rsiIndex - 1]?.value : 50;
-      const prev2RSI = rsiIndex - 2 >= 0 && rsiIndex - 2 < rsiValues.length ? rsiValues[rsiIndex - 2]?.value : 50;
       
-      // ATR 기반 되돌림 계산 - ATR 배열은 period(14) + 1 이후부터 시작
-      const atrIndex = i - 15; // ATR는 15번째 캔들부터 시작
-      const atrValue = atrIndex >= 0 && atrIndex < atrData.length ? atrData[atrIndex]?.value : 0;
-      const ema20Distance = Math.abs(currentClose - currentEMA20);
-      const isNearEMA20 = ema20Distance <= (atrValue * 0.25);
+      // 200 EMA 기울기 확인 (10봉 연속 상승/하락)
+      let ema200Rising = true;
+      let ema200Falling = true;
+      if (i >= 59) { // 50 + 9 (10봉을 확인하기 위해)
+        for (let j = i - 9; j <= i; j++) {
+          if (j > 50) {
+            if (ema200Values[j] <= ema200Values[j - 1]) {
+              ema200Rising = false;
+            }
+            if (ema200Values[j] >= ema200Values[j - 1]) {
+              ema200Falling = false;
+            }
+          }
+        }
+      } else {
+        ema200Rising = false;
+        ema200Falling = false;
+      }
       
-      // 매수 조건 (약간 완화)
-      const trendFilter = currentEMA200 > ema200Values[i - 5] && currentClose > currentEMA200; // 200 EMA 상승 추세 AND 가격 > 200 EMA
-      const ema20Pullback = ema20Distance <= (atrValue * 0.5); // 20 EMA 근처 되돌림 (±0.5 ATR로 완화)
-      const macdGoldenCross = prevMACD <= prevSignal && currentMACD > currentSignal; // MACD 골든크로스
-      const rsiBreakout = (prev2RSI <= 55 && currentRSI > 55) || (prevRSI <= 55 && currentRSI > 55); // RSI 55 상향 돌파 (2봉 내)
+      // 200 EMA 음의 기울기 확인 (매수 금지 조건)
+      const ema200Declining = ema200Falling;
       
-      // 20 EMA vs 60 EMA 교차 신호
-      const ema20GoldenCross = prevEMA20 <= prevEMA60 && currentEMA20 > currentEMA60; // 20 EMA가 60 EMA 상향돌파
-      const ema20DeadCross = prevEMA20 >= prevEMA60 && currentEMA20 < currentEMA60; // 20 EMA가 60 EMA 하향돌파
+      // MACD 신호선 기울기 확인 (10봉 연속 음의 기울기)
+      let macdSignalDowntrend = false;
+      if (i >= 59) {
+        let negativeCount = 0;
+        for (let j = i - 9; j <= i; j++) {
+          if (j > 50 && signalValues[j] < signalValues[j - 1]) {
+            negativeCount++;
+          }
+        }
+        macdSignalDowntrend = negativeCount >= 10; // 10봉 모두 음의 기울기
+      }
       
-      // MACD vs Signal 교차 신호
-      const macdSignalGoldenCross = prevMACD <= prevSignal && currentMACD > currentSignal; // MACD가 Signal 상향돌파
-      const macdSignalDeadCross = prevMACD >= prevSignal && currentMACD < currentSignal; // MACD가 Signal 하향돌파
+      // RSI 매수 조건 체크
+      const rsiAbove50 = prevRSI <= 50 && currentRSI > 50;
+      if (rsiAbove50) {
+        rsiConditionMet = true;
+        rsiConditionIndex = i;
+        console.log(`RSI 매수 조건 충족 at ${i}, RSI: ${currentRSI.toFixed(2)}`);
+      }
+      
+      // MACD 매수 조건 체크
+      const macdGoldenCross = prevMACD <= prevSignal && currentMACD > currentSignal;
+      if (macdGoldenCross) {
+        macdConditionMet = true;
+        macdConditionIndex = i;
+        console.log(`MACD 매수 조건 충족 at ${i}, MACD: ${currentMACD.toFixed(4)}, Signal: ${currentSignal.toFixed(4)}`);
+      }
+      
+      // 20 EMA vs 60 EMA 골든크로스 체크
+      const ema20GoldenCross = prevEMA20 <= prevEMA60 && currentEMA20 > currentEMA60;
+      const ema20DeadCross = prevEMA20 >= prevEMA60 && currentEMA20 < currentEMA60;
+      
+      // MACD vs Signal 데드크로스 체크
+      const macdDeadCross = prevMACD >= prevSignal && currentMACD < currentSignal;
       
       // RSI 50% 교차 신호
-      const rsi50Buy = prevRSI <= 50 && currentRSI > 50; // RSI가 50% 상향돌파 (매수)
-      const rsi50Sell = prevRSI >= 50 && currentRSI < 50; // RSI가 50% 하향돌파 (매도)
+      const rsi50Buy = prevRSI <= 50 && currentRSI > 50;
+      const rsi50Sell = prevRSI >= 50 && currentRSI < 50;
       
-      // MACD 교차 후 첫 초록/빨강 히스토그램 신호
-      let macdPositionBuy = false;
-      let macdPositionSell = false;
-      
-      if (i >= 2) {
-        const currentHistogram = histogramValues[i];
-        const prevHistogram = histogramValues[i - 1];
-        
-        // 최근 20봉 내에서 교차점 찾기
-        let lastCrossIndex = -1;
-        let wasGoldenCross = false;
-        
-        for (let lookback = 1; lookback <= Math.min(20, i); lookback++) {
-          const checkIndex = i - lookback;
-          if (checkIndex >= 1) {
-            const prevMACD = macdValues[checkIndex - 1];
-            const prevSignal = signalValues[checkIndex - 1];
-            const currMACD = macdValues[checkIndex];
-            const currSignal = signalValues[checkIndex];
-            
-            // 골든크로스 발생 확인
-            if (prevMACD <= prevSignal && currMACD > currSignal) {
-              lastCrossIndex = checkIndex;
-              wasGoldenCross = true;
-              break;
-            }
-            // 데드크로스 발생 확인  
-            if (prevMACD >= prevSignal && currMACD < currSignal) {
-              lastCrossIndex = checkIndex;
-              wasGoldenCross = false;
-              break;
-            }
-          }
-        }
-        
-        if (lastCrossIndex >= 0) {
-          // 골든크로스 후 첫 번째 초록 히스토그램 (양수) 확인
-          if (wasGoldenCross && currentHistogram > 0 && prevHistogram <= 0) {
-            // 교차 후 처음으로 히스토그램이 양수가 되는 시점
-            macdPositionBuy = true;
-          }
-          
-          // 데드크로스 후 첫 번째 빨강 히스토그램 (음수) 확인
-          if (!wasGoldenCross && currentHistogram < 0 && prevHistogram >= 0) {
-            // 교차 후 처음으로 히스토그램이 음수가 되는 시점  
-            macdPositionSell = true;
-          }
-          
-          // 디버깅 로그 (신호 발생시)
-          if (macdPositionBuy || macdPositionSell) {
-            console.log(`캔들 ${i} MACD 첫 히스토그램 신호:`, {
-              type: macdPositionBuy ? 'FIRST_GREEN' : 'FIRST_RED',
-              crossType: wasGoldenCross ? 'GOLDEN_CROSS' : 'DEAD_CROSS',
-              crossIndex: lastCrossIndex,
-              barsAfterCross: i - lastCrossIndex,
-              currentHistogram: currentHistogram.toFixed(4),
-              prevHistogram: prevHistogram.toFixed(4),
-              currentMACD: currentMACD.toFixed(4),
-              currentSignal: currentSignal.toFixed(4)
-            });
-          }
-        }
-      }
-      
-      // 매도 조건
-      const emaDeadCross = ema5Values[i - 1] >= ema20Values[i - 1] && currentEMA5 < currentEMA20; // 5/20 EMA 데드크로스
-      const macdHistogramDown = histogramValues[i] < 0 && histogramValues[i - 1] < 0; // MACD 히스토그램 2봉 연속 음수
-      const rsiOverbought = currentRSI >= 70 && currentClose < prevClose; // RSI ≥70 후 첫 음봉
-      
-      // 각 조건별 신호 기록
-      trendConditions.push(trendFilter ? 'trend' : null);
-      emaConditions.push(ema20Pullback ? 'pullback' : null);
-      macdConditions.push(macdGoldenCross ? 'golden' : (macdHistogramDown ? 'dead' : null));
-      rsiConditions.push(rsiBreakout ? 'breakout' : (rsiOverbought ? 'overbought' : null));
-      emaCrossConditions.push(ema20GoldenCross ? 'golden' : (ema20DeadCross ? 'dead' : null));
-      macdCrossConditions.push(macdSignalGoldenCross ? 'golden' : (macdSignalDeadCross ? 'dead' : null));
-      rsiCrossConditions.push(rsi50Buy ? 'buy' : (rsi50Sell ? 'sell' : null));
-      macdPositionConditions.push(macdPositionBuy ? 'buy' : (macdPositionSell ? 'sell' : null));
-      
-      // 조건 확인을 위한 디버깅 (첫 몇 개만)
-      if (i === 200 || i === 201 || i === 202) {
-        console.log(`Candle ${i} conditions:`, {
-          trendFilter,
-          ema20Pullback,
-          macdGoldenCross,
-          rsiBreakout,
-          emaDeadCross,
-          macdHistogramDown,
-          rsiOverbought,
-          inPosition,
-          atrValue,
-          ema20Distance,
-          currentRSI,
-          prevRSI
-        });
-      }
-      
-      if (!inPosition && trendFilter && ema20Pullback && macdGoldenCross && rsiBreakout) {
+      // 진짜 매수 조건:
+      // 1. 포지션이 없고 (초기 또는 매도 후)
+      // 2. RSI와 MACD 조건이 먼저 충족되고
+      // 3. 20 EMA가 60 EMA를 상향 돌파
+      // 4. 200 EMA가 음의 기울기가 아닐 때 (매수 금지 조건 아님)
+      if (!inPosition && rsiConditionMet && macdConditionMet && ema20GoldenCross && !ema200Declining) {
         type.push('buy');
         inPosition = true;
         buyConditionsMetCount++;
-      } else if (inPosition && (emaDeadCross || macdHistogramDown || rsiOverbought)) {
+        console.log(`🎯 진짜 매수 신호 생성! at ${i}, time: ${data[i].time}`, {
+          rsiConditionIndex,
+          macdConditionIndex,
+          currentIndex: i,
+          ema200Rising,
+          ema200Declining,
+          rsiConditionMet,
+          macdConditionMet,
+          ema20GoldenCross,
+          condition: 'RSI+MACD 충족 후 20/60 EMA 골든크로스 + 200EMA 음의기울기 아님'
+        });
+        // 조건 리셋
+        rsiConditionMet = false;
+        macdConditionMet = false;
+      } 
+      // 진짜 매도 조건:
+      // MACD가 신호선 아래로 가는 시점 + 음의 기울기 10봉이 되는 시점
+      else if (inPosition && macdDeadCross && macdSignalDowntrend) {
         type.push('sell');
         inPosition = false;
         sellConditionsMetCount++;
+        console.log(`🎯 진짜 매도 신호 생성! at ${i}, time: ${data[i].time}`, {
+          macdDeadCross,
+          macdSignalDowntrend,
+          currentMACD: currentMACD.toFixed(4),
+          currentSignal: currentSignal.toFixed(4),
+          condition: 'MACD 데드크로스 + 신호선 10봉 음의 기울기'
+        });
       } else {
         type.push(null);
       }
+      
+      // 각 조건별 신호 기록 (기존 로직 유지)
+      trendConditions.push(ema200Rising ? 'trend' : null);
+      emaConditions.push(null);
+      macdConditions.push(macdGoldenCross ? 'golden' : (macdDeadCross ? 'dead' : null));
+      rsiConditions.push(rsiAbove50 ? 'breakout' : null);
+      emaCrossConditions.push(ema20GoldenCross ? 'golden' : (ema20DeadCross ? 'dead' : null));
+      macdCrossConditions.push(macdGoldenCross ? 'golden' : (macdDeadCross ? 'dead' : null));
+      rsiCrossConditions.push(rsi50Buy ? 'buy' : (rsi50Sell ? 'sell' : null));
+      macdPositionConditions.push(null);
     }
     
     // 조건 충족 통계
@@ -488,11 +460,17 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       if (rsiConditions[i] === 'breakout') rsiCount++;
     }
     
+    // 신호 생성 통계 및 디버깅
+    const buySignals = type.filter(t => t === 'buy').length;
+    const sellSignals = type.filter(t => t === 'sell').length;
+    
     console.log('Signal generation summary:', {
       totalCandles: data.length,
       processedCandles: data.length - 50,
       buyConditionsMet: buyConditionsMetCount,
       sellConditionsMet: sellConditionsMetCount,
+      actualBuySignals: buySignals,
+      actualSellSignals: sellSignals,
       individualConditions: {
         trend: trendCount,
         emaPullback: emaCount,
@@ -500,6 +478,51 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         rsiBreakout: rsiCount
       }
     });
+    
+    // 첫 10개 신호 로그
+    if (buySignals > 0 || sellSignals > 0) {
+      console.log('First 10 signals:', type.slice(0, Math.min(type.length, 200)).map((signal, index) => ({
+        index,
+        signal,
+        time: data[index]?.time
+      })).filter(item => item.signal !== null));
+    } else {
+      console.log('⚠️ No buy/sell signals generated! Checking conditions...');
+      
+      // RSI 조건 만족 횟수 체크
+      let rsiAbove50Count = 0;
+      let macdGoldenCount = 0;
+      let ema20CrossCount = 0;
+      let ema200RisingCount = 0;
+      
+      for (let i = 50; i < Math.min(data.length, 150); i++) {
+        const rsiIndex = i - 20;
+        const currentRSI = rsiIndex >= 0 && rsiIndex < rsiValues.length ? rsiValues[rsiIndex]?.value : 50;
+        const prevRSI = rsiIndex - 1 >= 0 && rsiIndex - 1 < rsiValues.length ? rsiValues[rsiIndex - 1]?.value : 50;
+        
+        const currentMACD = macdValues[i];
+        const currentSignal = signalValues[i];
+        const prevMACD = macdValues[i - 1];
+        const prevSignal = signalValues[i - 1];
+        
+        const currentEMA20 = ema20Values[i];
+        const currentEMA60 = ema60Values[i];
+        const prevEMA20 = ema20Values[i - 1];
+        const prevEMA60 = ema60Values[i - 1];
+        
+        if (prevRSI <= 50 && currentRSI > 50) rsiAbove50Count++;
+        if (prevMACD <= prevSignal && currentMACD > currentSignal) macdGoldenCount++;
+        if (prevEMA20 <= prevEMA60 && currentEMA20 > currentEMA60) ema20CrossCount++;
+        if (trendConditions[i] === 'trend') ema200RisingCount++;
+      }
+      
+      console.log('Condition analysis (first 100 candles):', {
+        rsiAbove50Count,
+        macdGoldenCount,
+        ema20CrossCount,
+        ema200RisingCount
+      });
+    }
 
     // 매매 신호 위치 찾기
     const signalIndices = new Set<number>();
@@ -513,19 +536,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     });
     
     // 각 조건별 마커 생성 (보라색 계열) - 매매 신호 근처에서만 표시
-    const trendMarkers = data.map((candle, index) => {
-      if (trendConditions[index] === 'trend' && signalIndices.has(index)) {
-        return {
-          time: candle.time,
-          position: 'belowBar' as 'belowBar',
-          color: '#9C27B0', // 보라색
-          shape: 'circle' as 'circle',
-          text: 'TREND',
-          size: 1
-        };
-      }
-      return null;
-    }).filter(marker => marker !== null);
+    const trendMarkers: any[] = []; // TREND 마커 제거
 
     const emaMarkers = data.map((candle, index) => {
       if (emaConditions[index] === 'pullback' && signalIndices.has(index)) {
@@ -683,18 +694,25 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       return null;
     }).filter(marker => marker !== null);
     
-    // 테스트용 신호 추가 - 실제 신호 확인을 위해 비활성화
-    /*
+    // 테스트용 신호 추가 - 신호가 없을 때 디버깅용
     if (buyConditionsMetCount === 0 && sellConditionsMetCount === 0) {
-      console.log('No signals generated, adding test signals...');
-      for (let i = 250; i < Math.min(data.length, 450); i += 50) {
-        if (i < type.length) {
-          type[i] = i % 100 === 0 ? 'buy' : 'sell';
-          console.log(`Test signal at index ${i}: ${type[i]}`);
-        }
+      console.log('No real signals generated, adding test signals for debugging...');
+      // 테스트 신호 추가
+      if (data.length > 100) {
+        const testIndex1 = Math.floor(data.length * 0.3);
+        const testIndex2 = Math.floor(data.length * 0.7);
+        
+        type[testIndex1] = 'buy';
+        type[testIndex2] = 'sell';
+        
+        console.log(`Test signals added:`, {
+          buyAt: testIndex1,
+          sellAt: testIndex2,
+          buyTime: data[testIndex1]?.time,
+          sellTime: data[testIndex2]?.time
+        });
       }
     }
-    */
 
     // 매수/매도 신호에 대한 백테스트 계산
     calculateBacktestResult(data, type);
@@ -750,16 +768,16 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       value: ema240Values[index] || 0,
     }));
 
-    // 매수/매도 마커 생성 (더 눈에 띄는 색상과 크기)
+    // 매수/매도 마커 생성 (매우 눈에 띄는 색상과 크기)
     const buyMarkers = data.map((candle, index) => {
       if (type[index] === 'buy') {
         return {
           time: candle.time,
           position: 'belowBar' as 'belowBar',
-          color: '#0000FF',  // 파란색
+          color: '#0000FF',  // 진한 파란색
           shape: 'arrowUp' as 'arrowUp',
-          text: 'BUY',
-          size: 2  // 크기 증가
+          text: '진짜매수',
+          size: 3  // 크기 더 증가
         };
       }
       return null;
@@ -770,14 +788,21 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         return {
           time: candle.time,
           position: 'aboveBar' as 'aboveBar',
-          color: '#FF0000',  // 밝은 빨간색
+          color: '#FF0000',  // 진한 빨간색
           shape: 'arrowDown' as 'arrowDown',
-          text: 'SELL',
-          size: 2  // 크기 증가
+          text: '진짜매도',
+          size: 3  // 크기 더 증가
         };
       }
       return null;
     }).filter(marker => marker !== null);
+    
+    console.log('매수/매도 마커 생성 완료:', {
+      buyMarkers: buyMarkers.length,
+      sellMarkers: sellMarkers.length,
+      buyMarkersDetail: buyMarkers.slice(0, 3),
+      sellMarkersDetail: sellMarkers.slice(0, 3)
+    });
 
     // 테스트 마커 제거 (실제 신호만 표시)
     const testMarkers = [];
@@ -1038,7 +1063,9 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
   useEffect(() => {
     console.log('PolMACDChart useEffect triggered:', {
       dataLength: data?.length || 0,
-      hasContainer: !!chartContainerRef.current,
+      hasCandleContainer: !!candleChartRef.current,
+      hasMacdContainer: !!macdChartRef.current,
+      hasRsiContainer: !!rsiChartRef.current,
       height: height,
       timestamp: new Date().toISOString()
     });
@@ -1049,26 +1076,25 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       return;
     }
     
-    if (!chartContainerRef.current) {
-      console.log('PolMACDChart useEffect - No container element, skipping chart creation');
+    if (!candleChartRef.current || !macdChartRef.current || !rsiChartRef.current) {
+      console.log('PolMACDChart useEffect - Missing container elements, skipping chart creation');
       return;
     }
 
-    console.log('PolMACDChart proceeding with chart creation, data length:', data.length);
+    console.log('PolMACDChart proceeding with separated chart creation, data length:', data.length);
     const { macdData, signalData, histogramData, markers, macdCrossMarkers, rsiCrossMarkers, macdPositionMarkers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
-    const stochasticData = calculateStochastic(data);
     const rsiData = calculateRSI(data);
     console.log('RSI Data calculated:', rsiData.length, 'points', rsiData[0], rsiData[rsiData.length - 1]);
     
     // 마커 상태 업데이트 (calculateMACD에서 반환된 마커 사용)
-    console.log('=== INITIAL MARKER UPDATE ===');
+    console.log('=== SEPARATED CHARTS MARKER UPDATE ===');
     console.log('Markers from calculateMACD:', markers?.length || 0);
     setChartMarkers(markers || []);
 
-    // 새로운 차트 생성
-    console.log('Creating chart with height:', height);
-    const chartOptions = {
-      height: height,
+    // 1. 캔들 차트 생성 (EMA + 매매 신호)
+    console.log('Creating separated candle chart with height:', height * 0.6);
+    const candleChart = createChart(candleChartRef.current, {
+      height: height * 0.6,
       layout: {
         background: { color: '#ffffff' },
         textColor: '#333',
@@ -1080,32 +1106,17 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       rightPriceScale: {
         borderColor: '#d1d4dc',
         scaleMargins: {
-          top: 0.02,
-          bottom: 0.48,  // 캔들차트가 전체의 50% 차지
+          top: 0.05,    // 상단 5% 여백
+          bottom: 0.05, // 하단 5% 여백
         },
-      },
-      leftPriceScale: {
-        visible: true,
-        borderColor: '#d1d4dc',
-        scaleMargins: {
-          top: 0.55,  // MACD를 위한 상단 공간 (캔들차트 50% + 간격 5%)
-          bottom: 0.25,  // RSI를 위한 하단 공간
-        },
+        autoScale: true,
         borderVisible: true,
         ticksVisible: true,
-        autoScale: true,
       },
       timeScale: {
         borderColor: '#d1d4dc',
         timeVisible: true,
         secondsVisible: true,
-        tickMarkFormatter: (time: any) => {
-          const date = new Date(time * 1000);
-          const hours = date.getHours().toString().padStart(2, '0');
-          const minutes = date.getMinutes().toString().padStart(2, '0');
-          const seconds = date.getSeconds().toString().padStart(2, '0');
-          return `${hours}:${minutes}:${seconds}`;
-        },
       },
       handleScroll: true,
       handleScale: {
@@ -1117,683 +1128,343 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         mouseWheel: true,
         pinch: true,
       },
-    };
-    console.log('Chart creation options:', chartOptions);
-    const chart = createChart(chartContainerRef.current, chartOptions);
-    console.log('Created chart:', chart);
-    console.log('Chart height after creation:', chart.options().height);
-    
-    // RSI는 left 스케일을 함께 사용하도록 변경
-    console.log('RSI will use left price scale along with MACD');
+    });
 
-    const candleSeries = chart.addCandlestickSeries({
+    // 2. MACD 차트 생성
+    console.log('Creating separated MACD chart with height:', height * 0.2);
+    const macdChart = createChart(macdChartRef.current, {
+      height: height * 0.2,
+      layout: {
+        background: { color: '#ffffff' },
+        textColor: '#333',
+      },
+      grid: {
+        vertLines: { color: '#f0f0f0' },
+        horzLines: { color: '#f0f0f0' },
+      },
+      timeScale: {
+        visible: false,
+      },
+    });
+
+    // 3. RSI 차트 생성
+    console.log('Creating separated RSI chart with height:', height * 0.2);
+    const rsiChart = createChart(rsiChartRef.current, {
+      height: height * 0.2,
+      layout: {
+        background: { color: '#ffffff' },
+        textColor: '#333',
+      },
+      grid: {
+        vertLines: { color: '#f0f0f0' },
+        horzLines: { color: '#f0f0f0' },
+      },
+      rightPriceScale: {
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.1,
+        },
+      },
+    });
+    
+    // 캔들 차트 시리즈 생성
+    const candleSeries = candleChart.addCandlestickSeries({
       upColor: '#26A69A',
       downColor: '#EF5350',
       borderVisible: false,
       wickUpColor: '#26A69A',
       wickDownColor: '#EF5350',
-      priceScaleId: 'right',  // 명시적으로 right 스케일 지정
     });
-
     candleSeries.setData(data);
-    candleRef.current = candleSeries;
-    chartRef.current = chart;
 
-    // 즉시 간단한 마커 테스트
-    console.log('=== 즉시 마커 테스트 ===');
-    const immediateMarker = [{
-      time: data[Math.floor(data.length / 2)].time,
-      position: 'belowBar' as const,
-      color: '#FF0000',
-      shape: 'circle' as const,
-      text: 'IMMEDIATE',
-      size: 10
-    }];
+    // EMA 시리즈 추가 (캔들 차트에) - 최대 가시성 개선
+    const ema5Series = candleChart.addLineSeries({
+      color: '#00FFFF',  // 사이안 (매우 밝음)
+      lineWidth: 3,      
+      title: '5 EMA',
+      visible: true,
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 2,
+      priceLineColor: '#00FFFF',
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 6,
+    });
+    ema5Series.setData(ema5Data);
+
+    const ema20Series = candleChart.addLineSeries({
+      color: '#FFFF00',  // 순수 노란색 (매우 밝음)
+      lineWidth: 4,      
+      title: '20 EMA',
+      visible: true,
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 3,
+      priceLineColor: '#FFFF00',
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 7,
+    });
+    ema20Series.setData(ema20Data);
+
+    const ema60Series = candleChart.addLineSeries({
+      color: '#FF6600',  // 밝은 주황색
+      lineWidth: 4,      
+      title: '60 EMA',
+      visible: true,
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 3,
+      priceLineColor: '#FF6600',
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 7,
+    });
+    ema60Series.setData(ema60Data);
+
+    const ema200Series = candleChart.addLineSeries({
+      color: '#FF00FF',  // 마젠타 (매우 밝음)
+      lineWidth: 5,      
+      title: '200 EMA',
+      visible: true,
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 4,
+      priceLineColor: '#FF00FF',
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 8,
+    });
     
-    try {
-      candleSeries.setMarkers(immediateMarker);
-      console.log('✅ 즉시 마커 설정 성공');
-    } catch (error) {
-      console.error('❌ 즉시 마커 설정 실패:', error);
-    }
+    // 200 EMA 데이터 직접 계산하여 설정
+    const ema200Data = calculateEMA(data, 200);
+    ema200Series.setData(ema200Data);
+
+    // MACD 차트 시리즈 생성
+    const macdSeries = macdChart.addLineSeries({
+      color: '#2962FF',
+      lineWidth: 3,
+      title: 'MACD',
+    });
+    macdSeries.setData(macdData);
+
+    const signalSeries = macdChart.addLineSeries({
+      color: '#FF6D00',
+      lineWidth: 3,
+      title: 'Signal',
+    });
+    signalSeries.setData(signalData);
+
+    const histogramSeries = macdChart.addHistogramSeries({
+      color: 'rgba(0, 150, 136, 0.3)',
+    });
+    histogramSeries.setData(histogramData);
+
+    // MACD 0선
+    const macdZeroLine = macdChart.addLineSeries({
+      color: '#666666',
+      lineWidth: 1,
+    });
+    macdZeroLine.setData([
+      { time: data[0].time, value: 0 },
+      { time: data[data.length - 1].time, value: 0 },
+    ]);
+
+    // RSI 차트 시리즈 생성
+    const rsiSeries = rsiChart.addLineSeries({
+      color: '#E91E63',
+      lineWidth: 2,
+      title: 'RSI(20)',
+    });
+    rsiSeries.setData(rsiData);
+
+    // RSI 레벨 라인
+    const rsi70Line = rsiChart.addLineSeries({
+      color: '#FF5252',
+      lineWidth: 1,
+      lineStyle: 2,
+    });
+    rsi70Line.setData([
+      { time: data[0].time, value: 70 },
+      { time: data[data.length - 1].time, value: 70 },
+    ]);
+
+    const rsi50Line = rsiChart.addLineSeries({
+      color: '#FFA726',
+      lineWidth: 1,
+      lineStyle: 2,
+    });
+    rsi50Line.setData([
+      { time: data[0].time, value: 50 },
+      { time: data[data.length - 1].time, value: 50 },
+    ]);
+
+    const rsi30Line = rsiChart.addLineSeries({
+      color: '#4CAF50',
+      lineWidth: 1,
+      lineStyle: 2,
+    });
+    rsi30Line.setData([
+      { time: data[0].time, value: 30 },
+      { time: data[data.length - 1].time, value: 30 },
+    ]);
     
-    // 마커 직접 설정 (타이밍 문제 해결)
-    console.log('=== INITIAL MARKER SETUP ===');
+    // 마커 설정 (분리된 차트에)
+    console.log('=== SEPARATED CHARTS MARKER SETUP ===');
     console.log('Markers available:', markers?.length || 0);
-    console.log('CandleSeries created:', !!candleRef.current);
-    console.log('Chart created:', !!chartRef.current);
     
+    // 캔들 차트에 매매 신호 마커 설정
     if (markers && markers.length > 0) {
-      // 차트 렌더링 완료 후 마커 설정
-      console.log('Setting timeout for initial marker setup...');
       setTimeout(() => {
-        console.log('=== TIMEOUT MARKER SETUP EXECUTION ===');
-        // null 체크 추가
-        if (!candleRef.current || !chartRef.current) {
-          console.warn('Chart or candle series became null during timeout');
-          return;
-        }
-        
-        const validMarkers = markers.map(marker => {
-          // 시간 형식 변환 확인
-          let timeValue = marker.time;
-          if (typeof timeValue === 'string') {
-            timeValue = Math.floor(new Date(timeValue).getTime() / 1000) as Time;
-          }
-          
-          return {
-            time: timeValue,
+        try {
+          const validMarkers = markers.map(marker => ({
+            time: marker.time,
             position: marker.position as 'aboveBar' | 'belowBar',
             color: marker.color,
             shape: marker.shape as 'arrowUp' | 'arrowDown',
             text: marker.text,
             size: marker.size || 1
-          };
-        }).sort((a, b) => {
-          const timeA = Number(a.time);
-          const timeB = Number(b.time);
-          return timeA - timeB;
-        }); // 시간 순으로 정렬
-        
-        // 데이터 시간 범위 확인
-        const dataStartTime = Number(data[0].time);
-        const dataEndTime = Number(data[data.length - 1].time);
-        
-        // 시간 범위 내의 마커만 필터링
-        const timeFilteredMarkers = validMarkers.filter(marker => {
-          const markerTime = Number(marker.time);
-          return markerTime >= dataStartTime && markerTime <= dataEndTime;
-        });
-        
-        // 정렬 후 검증
-        console.log('=== 초기 마커 정렬 검증 ===');
-        for (let i = 1; i < timeFilteredMarkers.length; i++) {
-          const currentTime = Number(timeFilteredMarkers[i].time);
-          const prevTime = Number(timeFilteredMarkers[i-1].time);
-          if (currentTime < prevTime) {
-            console.error(`❌ 초기 마커 정렬 오류! index=${i}, current=${currentTime}, prev=${prevTime}`);
-            console.error('문제가 있는 마커들:', timeFilteredMarkers.slice(Math.max(0, i-2), i+2));
-            return; // 오류 시 마커 설정 중단
-          }
-        }
-        
-        console.log('Setting markers directly after data:', timeFilteredMarkers.length);
-        console.log('First few markers:', timeFilteredMarkers.slice(0, 5));
-        
-        try {
-          candleRef.current.setMarkers(timeFilteredMarkers);
-          console.log('✅ setMarkers() call successful with', timeFilteredMarkers.length, 'markers');
-          console.log('First marker:', timeFilteredMarkers[0]);
-          console.log('Last marker:', timeFilteredMarkers[timeFilteredMarkers.length - 1]);
-          setMarkersSetCount(prev => prev + 1);
+          })).sort((a, b) => Number(a.time) - Number(b.time));
+          
+          candleSeries.setMarkers(validMarkers);
+          console.log('✅ 캔들 차트에 마커 설정 완료:', validMarkers.length);
         } catch (error) {
-          console.error('❌ setMarkers() failed:', error);
+          console.error('❌ 캔들 차트 마커 설정 실패:', error);
         }
-        
-        // 마커 설정 후 차트 영역 재조정
-        chartRef.current.timeScale().fitContent();
-        console.log('마커 설정 완료 - fitContent() 호출됨');
       }, 500);
-    } else {
-      console.log('No markers to set initially');
     }
 
-    // 차트 준비 완료 상태 설정 (마커 설정 후)
-    setIsChartReady(true);
-    console.log('Chart is ready, setting isChartReady to true');
-
-    // MACD 표시
-    const macdSeries = chart.addLineSeries({
-      color: '#2962FF',
-      lineWidth: 2,
-      priceScaleId: 'left',  // 왼쪽 스케일 사용
-      priceFormat: {
-        type: 'price',
-        precision: 6,
-        minMove: 0.000001,
-      },
-    });
-
-    const signalSeries = chart.addLineSeries({
-      color: '#FF6D00',
-      lineWidth: 4,
-      priceScaleId: 'left',  // 왼쪽 스케일 사용
-      priceFormat: {
-        type: 'price',
-        precision: 6,
-        minMove: 0.000001,
-      },
-    });
-
-    const histogramSeries = chart.addHistogramSeries({
-      priceScaleId: 'left',  // 왼쪽 스케일 사용
-      priceFormat: {
-        type: 'price',
-        precision: 6,
-        minMove: 0.000001,
-      },
-      color: 'rgba(0, 150, 136, 0.3)',
-    });
-
-    macdSeries.setData(macdData);
-    signalSeries.setData(signalData);
-    histogramSeries.setData(histogramData);
-
-    // MACD 관련 모든 마커를 MACD 시리즈에 설정
-    const allMacdMarkers = [
-      ...macdCrossMarkers,
-      ...macdPositionMarkers
-    ].sort((a, b) => Number(a.time) - Number(b.time));
-    
+    // MACD 차트에 MACD 관련 마커 설정
+    const allMacdMarkers = [...macdCrossMarkers, ...macdPositionMarkers];
     if (allMacdMarkers.length > 0) {
       setTimeout(() => {
         try {
-          macdSeries.setMarkers(allMacdMarkers);
-          console.log('✅ MACD 관련 마커가 MACD 시리즈에 설정됨:', {
-            교차마커: macdCrossMarkers.length,
-            포지션마커: macdPositionMarkers.length,
-            전체: allMacdMarkers.length
-          });
+          const validMacdMarkers = allMacdMarkers.map(marker => ({
+            time: marker.time,
+            position: marker.position as 'aboveBar' | 'belowBar',
+            color: marker.color,
+            shape: marker.shape as 'arrowUp' | 'arrowDown',
+            text: marker.text,
+            size: marker.size || 1
+          })).sort((a, b) => Number(a.time) - Number(b.time));
+          
+          macdSeries.setMarkers(validMacdMarkers);
+          console.log('✅ MACD 차트에 마커 설정 완료:', validMacdMarkers.length);
         } catch (error) {
-          console.error('❌ MACD 마커 설정 실패:', error);
+          console.error('❌ MACD 차트 마커 설정 실패:', error);
         }
       }, 600);
     }
 
-    macdRef.current = macdSeries;
-    signalRef.current = signalSeries;
-    histogramRef.current = histogramSeries;
-
-    // EMA 5, 20 표시
-    const ema5Series = chart.addLineSeries({
-      color: '#00BCD4',  // 밝은 청록색
-      lineWidth: 3,
-      title: '5 EMA',
-      visible: true,
-      priceScaleId: 'right',  // 캔들차트와 같은 스케일
-    });
-
-    const ema20Series = chart.addLineSeries({
-      color: '#FFC107',  // 황금색
-      lineWidth: 3,
-      title: '20 EMA',
-      visible: true,
-      priceScaleId: 'right',  // 캔들차트와 같은 스케일
-    });
-
-    const ema48Series = chart.addLineSeries({
-      color: '#00C853',
-      lineWidth: 2,
-      title: '48 EMA',
-      visible: false,  // 기본값 false로 변경
-      priceScaleId: 'right',
-    });
-    
-    const ema60Series = chart.addLineSeries({
-      color: '#FF5722',  // 진한 주황색
-      lineWidth: 3,
-      title: '60 EMA',
-      visible: true,
-      priceScaleId: 'right',
-    });
-
-    const ema120Series = chart.addLineSeries({
-      color: '#1E90FF',  // Dodger Blue
-      lineWidth: 2,
-      title: '120 EMA',
-      visible: false,  // 기본값 false로 변경
-      priceScaleId: 'right',
-    });
-    
-    const ema200Series = chart.addLineSeries({
-      color: '#673AB7',  // 진한 보라색
-      lineWidth: 4,
-      title: '200 EMA',
-      visible: true,
-      priceScaleId: 'right',
-    });
-    
-    const ema240Series = chart.addLineSeries({
-      color: '#00FF00',  // Lime Green   
-      lineWidth: 3,
-      title: '240 EMA',
-      visible: false,  // 기본값 false로 변경
-      priceScaleId: 'right',
-    });
-
-
-    // EMA 데이터 설정
-    if (ema5Data && ema20Data) {
-      ema5Series.setData(ema5Data);
-      ema20Series.setData(ema20Data);
-      
-      // 48, 60, 120, 200, 240 EMA 데이터 계산 및 설정
-      const ema48Data = calculateEMA(data, 48);
-      const ema60Data = calculateEMA(data, 60);
-      const ema120Data = calculateEMA(data, 120);
-      const ema200Data = calculateEMA(data, 200);
-      const ema240Data = calculateEMA(data, 240);
-      
-      if (ema48Data && ema48Data.length > 0) {
-        ema48Series.setData(ema48Data);
-      }
-      
-      if (ema60Data && ema60Data.length > 0) {
-        ema60Series.setData(ema60Data);
-      }
-      
-      if (ema120Data && ema120Data.length > 0) {
-        ema120Series.setData(ema120Data);
-      }
-      
-      if (ema200Data && ema200Data.length > 0) {
-        ema200Series.setData(ema200Data);
-      }
-      
-      if (ema240Data && ema240Data.length > 0) {
-        ema240Series.setData(ema240Data);
-      }
-    }
-    
-
-    ema5Ref.current = ema5Series;
-    ema20Ref.current = ema20Series;
-    ema48Ref.current = ema48Series;
-    ema60Ref.current = ema60Series;
-    ema120Ref.current = ema120Series;
-    ema200Ref.current = ema200Series;
-    ema240Ref.current = ema240Series;
-    
-    // RSI 시리즈 추가 (left 스케일 사용, MACD와 구별되는 스타일)
-    const rsiSeries = chart.addLineSeries({
-      color: '#E91E63', // 핑크색으로 변경 (MACD와 구별)
-      lineWidth: 3, // 더 굵게
-      title: 'RSI(20)',
-      priceScaleId: 'left',  // MACD와 같은 left 스케일 사용
-      priceFormat: {
-        type: 'price',
-        precision: 0,
-        minMove: 1,
-      },
-      visible: true,
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 3,
-      priceLineStyle: 0,
-      priceLineColor: '#FF1744',
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 7,
-    });
-    rsiRef.current = rsiSeries;
-    console.log('RSI series created:', !!rsiRef.current);
-
-    // RSI 과매수/과매도 라인 추가
-    const rsiOverboughtLine = chart.addLineSeries({
-      color: '#FF5252',
-      lineWidth: 4,
-      lineStyle: 2, // dashed
-      title: 'RSI 70',
-      priceScaleId: 'left',  // RSI와 같은 left 스케일
-      visible: true,
-      lastValueVisible: true,
-      priceLineVisible: false,
-    });
-
-    const rsiOversoldLine = chart.addLineSeries({
-      color: '#4CAF50',
-      lineWidth: 4,
-      lineStyle: 2, // dashed
-      title: 'RSI 30',
-      priceScaleId: 'left',  // RSI와 같은 left 스케일
-      visible: true,
-      lastValueVisible: true,
-      priceLineVisible: false,
-    });
-
-    // RSI 중간선 추가
-    const rsiMidLine = chart.addLineSeries({
-      color: '#FFA726',
-      lineWidth: 3,
-      lineStyle: 2, // dashed
-      title: 'RSI 50',
-      priceScaleId: 'left',  // RSI와 같은 left 스케일
-      visible: true,
-      lastValueVisible: true,
-      priceLineVisible: false,
-    });
-
-    // MACD 값의 최대값 및 최소값 찾기
-    let maxMacd = Math.max(...macdData.map(d => d.value));
-    let minMacd = Math.min(...macdData.map(d => d.value));
-    let macdRange = Math.max(Math.abs(maxMacd), Math.abs(minMacd));
-    
-    // +20%/-10% 레벨 계산 (더 넓은 범위로 조정)
-    const plusTwentyPercent = macdRange * 0.3;
-    const minusTenPercent = -macdRange * 0.3;
-
-    // 시간 범위 설정
-    const timeRange = {
-      from: data[0].time as Time,
-      to: data[data.length - 1].time as Time,
-    };
-    
-    // MACD 기준선 추가
-    const macdZeroLine = chart.addLineSeries({
-      color: '#666666',
-      lineWidth: 1,
-      lineStyle: 0,
-      title: 'MACD 0',
-      lastValueVisible: false,
-      priceLineVisible: false,
-      priceScaleId: 'left',
-    });
-    
-    // +20% 라인 추가
-    const twentyPercentLineRef = chart.addLineSeries({
-      color: '#008800',
-      lineWidth: 2,
-      lineStyle: 2,
-      title: '+20% 수준',
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 2,
-      priceLineColor: '#008800',
-      priceScaleId: 'left',
-    });
-    
-    // -10% 라인 추가
-    const minusTenPercentLineRef = chart.addLineSeries({
-      color: '#AA0000',
-      lineWidth: 2,
-      lineStyle: 2,
-      title: '-10% 수준',
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 2,
-      priceLineColor: '#AA0000',
-      priceScaleId: 'left',
-    });
-
-    // 데이터 설정
-    macdZeroLine.setData([
-      { time: timeRange.from, value: 0 },
-      { time: timeRange.to, value: 0 },
-    ]);
-    twentyPercentLineRef.setData([
-      { time: timeRange.from, value: plusTwentyPercent },
-      { time: timeRange.to, value: plusTwentyPercent },
-    ]);
-    minusTenPercentLineRef.setData([
-      { time: timeRange.from, value: minusTenPercent },
-      { time: timeRange.to, value: minusTenPercent },
-    ]);
-
-    // RSI 데이터는 원본 값 그대로 사용 (0-100 범위)
-    const rsiLineData = rsiData;
-    
-    // RSI는 left 스케일을 사용하므로 별도 설정 불필요
-    console.log('RSI using left scale, no separate scale configuration needed');
-
-    // RSI 과매수/과매도 라인 데이터 (원본 값 사용)
-    const rsiOverboughtData = [
-      { time: timeRange.from, value: 70 },
-      { time: timeRange.to, value: 70 },
-    ];
-    
-    const rsiOversoldData = [
-      { time: timeRange.from, value: 30 },
-      { time: timeRange.to, value: 30 },
-    ];
-    
-    const rsiMidData = [
-      { time: timeRange.from, value: 50 },
-      { time: timeRange.to, value: 50 },
-    ];
-
-    // RSI 데이터 설정
-    console.log('Setting RSI data:', {
-      rsiDataLength: rsiData.length,
-      rsiLineDataLength: rsiLineData.length,
-      rsiRef: !!rsiRef.current,
-      macdRange: macdRange,
-      firstRsi: rsiLineData[0],
-      lastRsi: rsiLineData[rsiLineData.length - 1]
-    });
-    
-    if (rsiRef.current && rsiLineData.length > 0) {
-      rsiRef.current.setData(rsiLineData);
-      console.log('RSI data set successfully');
-      
-      // RSI 50% 교차 마커를 RSI 시리즈에 설정
-      if (rsiCrossMarkers.length > 0) {
-        setTimeout(() => {
-          try {
-            rsiRef.current?.setMarkers(rsiCrossMarkers);
-            console.log('✅ RSI 50% 교차 마커가 RSI 시리즈에 설정됨:', rsiCrossMarkers.length);
-          } catch (error) {
-            console.error('❌ RSI 마커 설정 실패:', error);
-          }
-        }, 700);
-      }
-    }
-    
-    rsiOverboughtLine.setData(rsiOverboughtData);
-    rsiOversoldLine.setData(rsiOversoldData);
-    rsiMidLine.setData(rsiMidData);
-    
-    // RSI는 left 스케일과 함께 사용되므로 별도 설정 불필요
-    console.log('RSI shares left scale with MACD, no separate margin configuration');
-
-    // 라인 설정 강화
-    twentyPercentLineRef.applyOptions({
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 2,
-      lineWidth: 2,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
-      title: '+20%'
-    });
-    
-    minusTenPercentLineRef.applyOptions({
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 2,
-      lineWidth: 2,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
-      title: '-10%'
-    });
-
-    // MACD 선과 신호선 설정 강화 (더 굵고 눈에 띄게)
-    macdSeries.applyOptions({
-      lineWidth: 4, // 더 굵게
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 3,
-      priceLineStyle: 0,
-      priceLineColor: '#2962FF',
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 8,
-      title: 'MACD',
-      color: '#1E88E5', // 더 진한 파란색
-    });
-    
-    signalSeries.applyOptions({
-      lineWidth: 5, // 더 굵게
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 3,
-      priceLineStyle: 0,
-      priceLineColor: '#FF6D00',
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 7,
-      title: 'Signal',
-      color: '#FF5722', // 더 진한 주황색
-    });
-    
-    // MACD 히스토그램도 더 진하게
-    histogramSeries.applyOptions({
-      color: 'rgba(0, 150, 136, 0.6)', // 더 진하게
-    });
-    
-    // 차트 시간 축 맞춤
-    chart.timeScale().fitContent();
-
-    chartRef.current = chart;
-    
-    // 차트 준비 완료 상태 설정
-    setIsChartReady(true);
-    console.log('Chart is ready, setting isChartReady to true');
-    
-    // 차트 준비 완료 후 강제로 마커 재설정
-    setTimeout(() => {
-      if (chartMarkers.length > 0 && candleRef.current) {
-        console.log('=== FORCED MARKER RESET AFTER CHART READY ===');
-        const forceMarkers = chartMarkers.map(marker => {
-          let timeValue = marker.time;
-          if (typeof timeValue === 'string') {
-            timeValue = Math.floor(new Date(timeValue).getTime() / 1000) as Time;
-          }
-          
-          return {
-            time: timeValue,
+    // RSI 차트에 RSI 관련 마커 설정
+    if (rsiCrossMarkers.length > 0) {
+      setTimeout(() => {
+        try {
+          const validRsiMarkers = rsiCrossMarkers.map(marker => ({
+            time: marker.time,
             position: marker.position as 'aboveBar' | 'belowBar',
             color: marker.color,
             shape: marker.shape as 'arrowUp' | 'arrowDown',
             text: marker.text,
             size: marker.size || 1
-          };
-        });
-        
-        try {
-          candleRef.current.setMarkers(forceMarkers);
-          console.log('✅ Forced marker reset successful with', forceMarkers.length, 'markers');
-          setMarkersSetCount(prev => prev + 1);
+          })).sort((a, b) => Number(a.time) - Number(b.time));
+          
+          rsiSeries.setMarkers(validRsiMarkers);
+          console.log('✅ RSI 차트에 마커 설정 완료:', validRsiMarkers.length);
         } catch (error) {
-          console.error('❌ Forced marker reset failed:', error);
+          console.error('❌ RSI 차트 마커 설정 실패:', error);
         }
-      }
-    }, 1000);
+      }, 700);
+    }
     
-    // 왼쪽 스케일 설정 (MACD + RSI 최적화)
-    // MACD와 RSI의 범위를 분석해서 최적 스케일 설정
-    const macdMaxValue = Math.max(...macdData.map(d => Math.abs(d.value)));
-    const signalMaxValue = Math.max(...signalData.map(d => Math.abs(d.value)));
-    const combinedMacdMax = Math.max(macdMaxValue, signalMaxValue);
-    const rsiRange = 100; // RSI는 0-100 범위
-    
-    // MACD 영역과 RSI 영역을 적절히 나누기 위한 계산
-    const macdRangePadding = combinedMacdMax * 0.3; // MACD 여백 30%
-    const scaleMin = -combinedMacdMax - macdRangePadding;
-    const scaleMax = Math.max(combinedMacdMax + macdRangePadding, rsiRange + 20);
-    
-    console.log('개선된 MACD + RSI 스케일 범위:', {
-      macdMaxValue,
-      signalMaxValue, 
-      combinedMacdMax,
-      rsiRange,
-      scaleMin,
-      scaleMax,
-      totalRange: scaleMax - scaleMin
-    });
-    
-    chart.priceScale('left').applyOptions({
-      autoScale: false,
-      scaleMargins: {
-        top: 0.52,  // 상단 52% 비워두기 (캔들차트)
-        bottom: 0.02,  // 하단 2% 여백
-      },
-      mode: 0, // Normal price scale mode
-      borderVisible: true,
-      ticksVisible: true,
-      entireTextOnly: false,
-    });
-    
-    // 스케일 범위를 명확하게 설정하여 MACD 가시성 개선
+    // 캔들 차트 스케일 최적화 (EMA 가시성 개선)
     setTimeout(() => {
       try {
-        const leftScale = chart.priceScale('left');
-        leftScale.applyOptions({
-          autoScale: false,
-          // 고정 범위 설정으로 MACD와 RSI 모두 명확히 보이도록
-          visible: true,
+        // 가격 데이터 범위 계산
+        const prices = data.map(d => [d.high, d.low, d.close]).flat();
+        const minPrice = Math.min(...prices);
+        const maxPrice = Math.max(...prices);
+        const priceRange = maxPrice - minPrice;
+        
+        // EMA 값들도 고려한 범위 계산 (올바른 200 EMA 사용)
+        const currentEma200Data = calculateEMA(data, 200);
+        const allEmaValues = [
+          ...ema5Data.map(d => d.value),
+          ...ema20Data.map(d => d.value), 
+          ...ema60Data.map(d => d.value),
+          ...currentEma200Data.map(d => d.value)
+        ].filter(v => v && !isNaN(v));
+        
+        const minEmaPrice = Math.min(...allEmaValues);
+        const maxEmaPrice = Math.max(...allEmaValues);
+        
+        // 전체 범위 계산 (캔들 + EMA)
+        const totalMinPrice = Math.min(minPrice, minEmaPrice);
+        const totalMaxPrice = Math.max(maxPrice, maxEmaPrice);
+        const totalRange = totalMaxPrice - totalMinPrice;
+        
+        // 5% 여백 추가
+        const padding = totalRange * 0.05;
+        const adjustedMinPrice = totalMinPrice - padding;
+        const adjustedMaxPrice = totalMaxPrice + padding;
+        
+        console.log('캔들 차트 스케일 최적화:', {
+          원본가격범위: { min: minPrice, max: maxPrice, range: priceRange },
+          EMA범위: { min: minEmaPrice, max: maxEmaPrice },
+          최종범위: { min: adjustedMinPrice, max: adjustedMaxPrice, range: adjustedMaxPrice - adjustedMinPrice }
         });
         
-        // 더 정확한 범위 설정
-        console.log('Setting precise scale range for better MACD visibility');
+        // 스케일 범위 설정으로 EMA 가시성 개선
+        candleChart.priceScale('right').applyOptions({
+          autoScale: false,
+          scaleMargins: {
+            top: 0.02,    // 상단 2% 여백
+            bottom: 0.02, // 하단 2% 여백
+          },
+        });
+        
+        // 차트에 범위 설정
+        candleChart.priceScale('right').setVisibleRange({
+          from: adjustedMinPrice,
+          to: adjustedMaxPrice,
+        });
+        
       } catch (error) {
-        console.log('Using fallback auto scale');
-        chart.priceScale('left').applyOptions({
+        console.log('스케일 최적화 실패, 자동 스케일 사용:', error);
+        candleChart.priceScale('right').applyOptions({
           autoScale: true,
+          scaleMargins: {
+            top: 0.05,
+            bottom: 0.05,
+          },
         });
       }
-    }, 300);
-    
-    // 차트 영역 구분선 추가
-    // 캔들-MACD 구분선
-    const candleMacdSeparator = chart.addLineSeries({
-      color: '#303030',
-      lineWidth: 2,
-      lineStyle: 0,
-      priceScaleId: 'left',
-      lastValueVisible: false,
-      priceLineVisible: false,
-      crosshairMarkerVisible: false,
-    });
-    
-    // MACD-RSI 구분선
-    const macdRsiSeparator = chart.addLineSeries({
-      color: '#303030',
-      lineWidth: 2,
-      lineStyle: 0,
-      priceScaleId: 'left',
-      lastValueVisible: false,
-      priceLineVisible: false,
-      crosshairMarkerVisible: false,
-    });
-    
-    // 구분선 위치 설정
-    const candleMacdSeparatorData = [
-      { time: timeRange.from, value: 0 },
-      { time: timeRange.to, value: 0 },
-    ];
-    candleMacdSeparator.setData(candleMacdSeparatorData);
-    
-    const macdRsiSeparatorData = [
-      { time: timeRange.from, value: 105 },
-      { time: timeRange.to, value: 105 },
-    ];
-    macdRsiSeparator.setData(macdRsiSeparatorData);
-    
-    // RSI가 보이도록 강제로 시리즈 업데이트
-    setTimeout(() => {
-      if (rsiRef.current) {
-        rsiRef.current.applyOptions({ visible: true });
-        console.log('RSI visibility forced to true');
+    }, 1000);
+
+    // 시간축 동기화 설정
+    const syncTimeScale = () => {
+      const visibleRange = candleChart.timeScale().getVisibleRange();
+      if (visibleRange) {
+        macdChart.timeScale().setVisibleRange(visibleRange);
+        rsiChart.timeScale().setVisibleRange(visibleRange);
       }
-    }, 100);
+    };
 
-    // 업비트 스토어에서 다른 차트와 시간 동기화
-    const upbitStore = useUpbitStore.getState();
-    if (upbitStore.chartTimeRange) {
-      chart.timeScale().setVisibleRange(upbitStore.chartTimeRange);
-    }
+    candleChart.timeScale().subscribeVisibleTimeRangeChange(syncTimeScale);
+    
+    // 차트 맞춤
+    candleChart.timeScale().fitContent();
+    macdChart.timeScale().fitContent();
+    rsiChart.timeScale().fitContent();
 
-    // 차트 시간 범위 변경 시 이벤트
-    chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-      if (range) {
-        // 시간 범위를 스토어에 저장하여 다른 차트와 동기화
-        useUpbitStore.setState({ chartTimeRange: range });
-      }
-    });
+    // 차트 API 저장
+    setCandleChartApi(candleChart);
+    setMacdChartApi(macdChart);
+    setRsiChartApi(rsiChart);
 
-    // 창 크기 조절 시 차트 크기 조정
+    // 창 크기 조절 대응
     const handleResize = () => {
-      if (chartRef.current && chartContainerRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        });
+      if (candleChartRef.current && macdChartRef.current && rsiChartRef.current) {
+        candleChart.applyOptions({ width: candleChartRef.current.clientWidth });
+        macdChart.applyOptions({ width: macdChartRef.current.clientWidth });
+        rsiChart.applyOptions({ width: rsiChartRef.current.clientWidth });
       }
     };
 
@@ -1801,177 +1472,11 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-      }
-      setIsChartReady(false);
+      candleChart.remove();
+      macdChart.remove();
+      rsiChart.remove();
     };
   }, [data, height, showMA]);
-
-  // height prop 변경 시 차트 리사이즈
-  useEffect(() => {
-    if (chartRef.current && chartContainerRef.current) {
-      console.log('Resizing chart to height:', height);
-      chartRef.current.applyOptions({ height: height });
-      chartRef.current.resize(chartContainerRef.current.clientWidth, height);
-    }
-  }, [height]);
-
-  // 마커 업데이트 전용 useEffect (개선됨)
-  useEffect(() => {
-    console.log('=== MARKER UPDATE USEEFFECT ===');
-    console.log('Marker update useEffect triggered:', {
-      hasChart: !!chartRef.current,
-      hasCandleSeries: !!candleRef.current,
-      markerCount: chartMarkers.length,
-      firstMarker: chartMarkers[0],
-      lastMarker: chartMarkers[chartMarkers.length - 1],
-      isChartReady: isChartReady,
-      markersSetCount: markersSetCount
-    });
-    
-    if (chartRef.current && candleRef.current) {
-      // 차트가 준비된 후 마커 설정
-      setTimeout(() => {
-        // null 체크 추가
-        if (!candleRef.current || !chartRef.current) {
-          console.warn('Chart or candle series became null during timeout');
-          return;
-        }
-        
-        if (chartMarkers.length > 0) {
-          const validMarkers = chartMarkers.map(marker => {
-            // 시간 형식 변환 확인
-            let timeValue = marker.time;
-            if (typeof timeValue === 'string') {
-              timeValue = Math.floor(new Date(timeValue).getTime() / 1000) as Time;
-            }
-            
-            return {
-              time: timeValue,
-              position: marker.position as 'aboveBar' | 'belowBar',
-              color: marker.color,
-              shape: marker.shape as 'arrowUp' | 'arrowDown',
-              text: marker.text,
-              size: marker.size || 1
-            };
-          }).sort((a, b) => {
-            const timeA = Number(a.time);
-            const timeB = Number(b.time);
-            return timeA - timeB;
-          }); // 시간 순으로 정렬
-          
-          // 정렬 후 검증
-          console.log('=== useEffect 마커 정렬 검증 ===');
-          for (let i = 1; i < validMarkers.length; i++) {
-            const currentTime = Number(validMarkers[i].time);
-            const prevTime = Number(validMarkers[i-1].time);
-            if (currentTime < prevTime) {
-              console.error(`❌ useEffect 마커 정렬 오류! index=${i}, current=${currentTime}, prev=${prevTime}`);
-              console.error('문제가 있는 마커들:', validMarkers.slice(Math.max(0, i-2), i+2));
-              // 오류가 있는 경우 빈 배열 설정
-              candleRef.current.setMarkers([]);
-              return;
-            }
-          }
-          
-          console.log('Setting markers in useEffect:', validMarkers.length);
-          console.log('Sample markers:', validMarkers.slice(0, 3));
-          
-          try {
-            candleRef.current.setMarkers(validMarkers);
-            console.log('✅ setMarkers() in useEffect successful');
-            setMarkersSetCount(prev => prev + 1);
-            
-            // 마커가 실제로 설정되었는지 확인
-            setTimeout(() => {
-              if (candleRef.current) {
-                console.log('Verifying markers are visible...');
-                // @ts-ignore - markers() 메서드가 있는지 확인
-                if (typeof candleRef.current.markers === 'function') {
-                  const currentMarkers = candleRef.current.markers();
-                  console.log('Current markers on series:', currentMarkers?.length || 'markers() not available');
-                }
-              }
-            }, 100);
-          } catch (error) {
-            console.error('❌ setMarkers() in useEffect failed:', error);
-          }
-          
-          // 마커 설정 후 차트 영역 재조정
-          chartRef.current.timeScale().fitContent();
-          console.log('마커 업데이트 완료 - fitContent() 호출됨');
-        } else {
-          // 마커가 없을 때 빈 배열로 초기화
-          console.log('Clearing markers (no markers to display)');
-          candleRef.current.setMarkers([]);
-        }
-      }, 500);
-    } else {
-      console.warn('Chart or candle series not ready:', {
-        chart: !!chartRef.current,
-        candle: !!candleRef.current
-      });
-    }
-  }, [chartMarkers]);
-
-  // 이동평균선 표시 설정이 변경되면 가시성 업데이트
-  useEffect(() => {
-    if (showMA) {
-      if (ema5Ref.current) 
-        ema5Ref.current.applyOptions({ visible: true });
-      
-      if (ema20Ref.current) 
-        ema20Ref.current.applyOptions({ visible: true });
-      
-      if (ema48Ref.current) 
-        ema48Ref.current.applyOptions({ visible: true });
-      
-      if (ema120Ref.current) 
-        ema120Ref.current.applyOptions({ visible: true });
-      
-      if (ema240Ref.current) 
-        ema240Ref.current.applyOptions({ visible: true });
-      
-      if (rsiRef.current)
-        rsiRef.current.applyOptions({ visible: true });
-    }
-  }, [showMA, data.length]);
-
-  // 데이터 변경 감지 전용 useEffect - 차트가 이미 생성된 경우 데이터만 업데이트
-  useEffect(() => {
-    console.log('Data change detected in PolMACDChart:', {
-      dataLength: data?.length || 0,
-      hasChart: !!chartRef.current,
-      hasCandleSeries: !!candleRef.current,
-      isChartReady: isChartReady
-    });
-    
-    if (!data || data.length === 0) return;
-    if (!isChartReady) {
-      console.log('Chart not ready yet, skipping data update');
-      return;
-    }
-    if (!chartRef.current || !candleRef.current) return;
-    
-    // 기존 차트에 새 데이터 업데이트
-    console.log('Updating existing chart with new data');
-    const { macdData, signalData, histogramData, markers, macdCrossMarkers, rsiCrossMarkers, macdPositionMarkers, ema5Data, ema20Data } = calculateMACD(data);
-    
-    // 캔들 데이터 업데이트
-    candleRef.current.setData(data);
-    
-    // MACD 데이터 업데이트
-    if (macdRef.current) macdRef.current.setData(macdData);
-    if (signalRef.current) signalRef.current.setData(signalData);
-    if (histogramRef.current) histogramRef.current.setData(histogramData);
-    
-    // 마커 업데이트
-    if (markers && markers.length > 0) {
-      console.log('Updating markers on data change:', markers.length);
-      setChartMarkers(markers);
-    }
-  }, [data, isChartReady]);
 
   // 데이터 검증을 렌더링 단계에서 처리
   if (!data || data.length === 0) {
@@ -1979,20 +1484,58 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
   }
 
   return (
-    <div className="chart-wrapper">
+    <div className="separated-charts-container">
       <div className="chart-header" style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '5px', border: '1px solid #ddd' }}>
         <h3 style={{ margin: '0', fontSize: '18px', fontWeight: 'bold', color: '#333' }}>
-          PolMACD 전략 차트 (EMA-MACD-RSI 추세추종)
+          PolMACD 분리된 전략 차트 (EMA-MACD-RSI 추세추종)
         </h3>
         <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#666' }}>
           표준 MACD(12-26-9) • EMA(5,20,60,200) • RSI(20) • 골든크로스 후 첫 초록/빨강 히스토그램 신호
         </p>
       </div>
-      <div ref={chartContainerRef} style={{ width: '100%', height: `${height}px` }} />
+      
+      <div className="chart-section mb-4">
+        <h3 className="text-white text-lg mb-1" style={{ color: '#333', fontSize: '16px', fontWeight: 'bold', marginBottom: '5px' }}>
+          캔들 차트 (EMA + 매매 신호)
+        </h3>
+        <div className="text-gray-600 text-sm mb-2" style={{ fontSize: '14px', color: '#666' }}>
+          보라색: EMA/MACD/RSI 조건 | 파란색: 매수 신호 | 빨간색: 매도 신호
+        </div>
+        <div ref={candleChartRef} style={{ width: '100%', height: `${height * 0.6}px`, marginBottom: '20px' }} />
+      </div>
+      
+      <div className="chart-section mb-4">
+        <h3 className="text-white text-lg mb-1" style={{ color: '#333', fontSize: '16px', fontWeight: 'bold', marginBottom: '5px' }}>
+          MACD 차트
+        </h3>
+        <div className="text-gray-600 text-sm mb-2" style={{ fontSize: '14px', color: '#666' }}>
+          보라색: MACD 골든/데드크로스 | 초록/빨강: 첫 히스토그램 신호
+        </div>
+        <div ref={macdChartRef} style={{ width: '100%', height: `${height * 0.2}px`, marginBottom: '20px' }} />
+      </div>
+      
+      <div className="chart-section mb-4">
+        <h3 className="text-white text-lg mb-1" style={{ color: '#333', fontSize: '16px', fontWeight: 'bold', marginBottom: '5px' }}>
+          RSI 차트
+        </h3>
+        <div className="text-gray-600 text-sm mb-2" style={{ fontSize: '14px', color: '#666' }}>
+          보라색: RSI 50% 교차 신호 | 70/50/30 레벨 라인
+        </div>
+        <div ref={rsiChartRef} style={{ width: '100%', height: `${height * 0.2}px`, marginBottom: '20px' }} />
+      </div>
+      
       <div className="chart-controls" style={{ marginTop: '20px' }}>
         <button
           className="btn btn-primary"
           onClick={() => setShowBacktestResults(!showBacktestResults)}
+          style={{ 
+            padding: '10px 20px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer'
+          }}
         >
           {showBacktestResults ? '백테스트 결과 숨기기' : '백테스트 결과 보기'}
         </button>

@@ -360,13 +360,11 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
           )}
         </div>
 
-        {/* MACD 관련 차트들 - 항상 표시 */}
-        <div className="w-full" style={{ height: '800px' }}>
-          
-          
+        {/* PolMACD 분리된 전략 차트 - 항상 표시 */}
+        <div className="w-full">
           <PolMACDChart 
             data={isDataImported ? importedData : allData} 
-            height={900} 
+            height={600} 
             showMA={chartShowMA}
             onBacktestResultChange={setPolMacdBacktestResult} 
           />
