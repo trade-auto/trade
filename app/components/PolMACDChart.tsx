@@ -10,9 +10,28 @@ interface PolMACDChartProps {
   height?: number;
   showMA?: MASettings;
   onBacktestResultChange?: (result: BacktestResult | null) => void;
+  visibleBars?: number; // 표시할 캔들 개수
 }
 
-const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange }) => {
+const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange, visibleBars = 100 }) => {
+  // 받은 데이터 디버깅
+  console.log('🔍 PolMACDChart 받은 데이터 확인:', {
+    dataLength: data?.length,
+    첫번째시간: data?.[0]?.time,
+    마지막시간: data?.[data?.length - 1]?.time,
+    첫번째날짜: data?.[0]?.time ? new Date(Number(data[0].time) * 1000).toLocaleString('ko-KR') : 'N/A',
+    마지막날짜: data?.[data?.length - 1]?.time ? new Date(Number(data[data.length - 1].time) * 1000).toLocaleString('ko-KR') : 'N/A',
+    visibleBars: visibleBars
+  });
+  
+  // 최근 100개 데이터만 확인
+  if (data && data.length > 100) {
+    const last100Data = data.slice(-100);
+    console.log('🔍 최근 100개 데이터 범위:', {
+      첫번째: new Date(Number(last100Data[0].time) * 1000).toLocaleString('ko-KR'),
+      마지막: new Date(Number(last100Data[last100Data.length - 1].time) * 1000).toLocaleString('ko-KR')
+    });
+  }
   const candleChartRef = useRef<HTMLDivElement>(null);
   const macdChartRef = useRef<HTMLDivElement>(null);
   const rsiChartRef = useRef<HTMLDivElement>(null);
@@ -726,9 +745,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       return null;
     }).filter(marker => marker !== null);
     
-    // 테스트용 신호 추가 - 신호가 없을 때 디버깅용
+    // 테스트용 신호 추가 - 비활성화
+    /*
     if (buyConditionsMetCount === 0 && sellConditionsMetCount === 0) {
-      console.log('No real signals generated, adding test signals for debugging...');
+      console.log('⚠️ No real signals generated, adding test signals for debugging...');
       // 테스트 신호 추가
       if (data.length > 100) {
         const testIndex1 = Math.floor(data.length * 0.3);
@@ -736,15 +756,28 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         
         type[testIndex1] = 'buy';
         type[testIndex2] = 'sell';
+        buyConditionsMetCount = 1;  // 테스트 신호도 카운트
+        sellConditionsMetCount = 1;
         
-        console.log(`Test signals added:`, {
+        console.log(`🧪 Test signals added:`, {
           buyAt: testIndex1,
           sellAt: testIndex2,
           buyTime: data[testIndex1]?.time,
-          sellTime: data[testIndex2]?.time
+          sellTime: data[testIndex2]?.time,
+          dataLength: data.length
         });
       }
     }
+    */
+    
+    // 신호 생성 여부 최종 확인
+    console.log('📊 Final signal generation check:', {
+      buyConditionsMetCount,
+      sellConditionsMetCount,
+      totalSignals: type.filter(t => t !== null).length,
+      firstBuyIndex: type.findIndex(t => t === 'buy'),
+      firstSellIndex: type.findIndex(t => t === 'sell')
+    });
 
     // 매수/매도 신호에 대한 백테스트 계산
     calculateBacktestResult(data, type);
@@ -1093,29 +1126,69 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
   };
 
   useEffect(() => {
-    console.log('PolMACDChart useEffect triggered:', {
-      dataLength: data?.length || 0,
-      hasCandleContainer: !!candleChartRef.current,
-      hasMacdContainer: !!macdChartRef.current,
-      hasRsiContainer: !!rsiChartRef.current,
-      height: height,
-      timestamp: new Date().toISOString()
-    });
+    console.log('📊 PolMACDChart useEffect 시작');
     
     // 데이터 또는 컨테이너가 없으면 early return
     if (!data || data.length === 0) {
-      console.log('PolMACDChart useEffect - No data available, skipping chart creation');
+      console.log('❌ PolMACDChart - 데이터 없음');
       return;
     }
     
     if (!candleChartRef.current || !macdChartRef.current || !rsiChartRef.current) {
-      console.log('PolMACDChart useEffect - Missing container elements, skipping chart creation');
+      console.log('❌ PolMACDChart - 컨테이너 없음');
       return;
     }
 
-    console.log('PolMACDChart proceeding with separated chart creation, data length:', data.length);
-    const { macdData, signalData, histogramData, markers, macdCrossMarkers, rsiCrossMarkers, macdPositionMarkers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
-    const rsiData = calculateRSI(data);
+    // 기존 차트 제거
+    if (candleChartApi || macdChartApi || rsiChartApi) {
+      console.log('🔄 기존 차트 제거 중...');
+      try {
+        if (candleChartApi) {
+          candleChartApi.remove();
+          setCandleChartApi(null);
+        }
+      } catch (error) {
+        console.log('캔들 차트 제거 중 오류 (무시):', error);
+      }
+      
+      try {
+        if (macdChartApi) {
+          macdChartApi.remove();
+          setMacdChartApi(null);
+        }
+      } catch (error) {
+        console.log('MACD 차트 제거 중 오류 (무시):', error);
+      }
+      
+      try {
+        if (rsiChartApi) {
+          rsiChartApi.remove();
+          setRsiChartApi(null);
+        }
+      } catch (error) {
+        console.log('RSI 차트 제거 중 오류 (무시):', error);
+      }
+    }
+
+    console.log('✅ PolMACDChart 차트 생성 시작, 데이터 길이:', data.length);
+    
+    // 데이터를 시간순으로 정렬 (오래된 것부터 최신순으로)
+    const sortedDataForCalculation = [...data].sort((a, b) => {
+      const timeA = typeof a.time === 'number' ? a.time : new Date(a.time).getTime() / 1000;
+      const timeB = typeof b.time === 'number' ? b.time : new Date(b.time).getTime() / 1000;
+      return timeA - timeB;
+    });
+    
+    console.log('📊 PolMACDChart 정렬된 데이터:', {
+      정렬후길이: sortedDataForCalculation.length,
+      첫번째: sortedDataForCalculation[0]?.time,
+      마지막: sortedDataForCalculation[sortedDataForCalculation.length - 1]?.time,
+      첫번째날짜: new Date(Number(sortedDataForCalculation[0]?.time) * 1000).toLocaleString('ko-KR'),
+      마지막날짜: new Date(Number(sortedDataForCalculation[sortedDataForCalculation.length - 1]?.time) * 1000).toLocaleString('ko-KR')
+    });
+    
+    const { macdData, signalData, histogramData, markers, macdCrossMarkers, rsiCrossMarkers, macdPositionMarkers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(sortedDataForCalculation);
+    const rsiData = calculateRSI(sortedDataForCalculation);
     console.log('RSI Data calculated:', rsiData.length, 'points', rsiData[0], rsiData[rsiData.length - 1]);
     
     // 마커 상태 업데이트 (calculateMACD에서 반환된 마커 사용)
@@ -1124,8 +1197,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     setChartMarkers(markers || []);
 
     // 1. 캔들 차트 생성 (EMA + 매매 신호)
-    console.log('Creating separated candle chart with height:', height * 0.6);
-    const candleChart = createChart(candleChartRef.current, {
+    console.log('📈 캔들 차트 생성 중... 높이:', height * 0.6);
+    let candleChart: IChartApi;
+    try {
+      candleChart = createChart(candleChartRef.current, {
       height: height * 0.6,
       layout: {
         background: { color: '#ffffff' },
@@ -1149,6 +1224,13 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         borderColor: '#d1d4dc',
         timeVisible: true,
         secondsVisible: true,
+        tickMarkFormatter: (time: number) => {
+          const date = new Date(time * 1000);
+          const hours = date.getHours().toString().padStart(2, '0');
+          const minutes = date.getMinutes().toString().padStart(2, '0');
+          const seconds = date.getSeconds().toString().padStart(2, '0');
+          return `${hours}:${minutes}:${seconds}`;
+        }
       },
       handleScroll: true,
       handleScale: {
@@ -1161,52 +1243,84 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         pinch: true,
       },
     });
+    } catch (error) {
+      console.error('❌ 캔들 차트 생성 실패:', error);
+      return;
+    }
 
+    console.log('✅ 캔들 차트 생성 성공');
+    
     // 2. MACD 차트 생성
-    console.log('Creating separated MACD chart with height:', height * 0.2);
-    const macdChart = createChart(macdChartRef.current, {
-      height: height * 0.2,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333',
-      },
-      grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
-      },
-      timeScale: {
-        borderColor: '#d1d4dc',
-        timeVisible: true,
-        secondsVisible: true,
-        visible: true,
-      },
-    });
+    console.log('📊 MACD 차트 생성 중... 높이:', height * 0.2);
+    let macdChart: IChartApi;
+    try {
+      macdChart = createChart(macdChartRef.current, {
+        height: height * 0.2,
+        layout: {
+          background: { color: '#ffffff' },
+          textColor: '#333',
+        },
+        grid: {
+          vertLines: { color: '#f0f0f0' },
+          horzLines: { color: '#f0f0f0' },
+        },
+        timeScale: {
+          borderColor: '#d1d4dc',
+          timeVisible: true,
+          secondsVisible: true,
+          visible: true,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const seconds = date.getSeconds().toString().padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+          }
+        },
+      });
+    } catch (error) {
+      console.error('❌ MACD 차트 생성 실패:', error);
+      return;
+    }
 
     // 3. RSI 차트 생성
     console.log('Creating separated RSI chart with height:', height * 0.2);
-    const rsiChart = createChart(rsiChartRef.current, {
-      height: height * 0.2,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333',
-      },
-      grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
-      },
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
+    let rsiChart: IChartApi;
+    try {
+      rsiChart = createChart(rsiChartRef.current, {
+        height: height * 0.2,
+        layout: {
+          background: { color: '#ffffff' },
+          textColor: '#333',
         },
-      },
-      timeScale: {
-        borderColor: '#d1d4dc',
-        timeVisible: true,
-        secondsVisible: true,
-        visible: true,
-      },
-    });
+        grid: {
+          vertLines: { color: '#f0f0f0' },
+          horzLines: { color: '#f0f0f0' },
+        },
+        rightPriceScale: {
+          scaleMargins: {
+            top: 0.1,
+            bottom: 0.1,
+          },
+        },
+        timeScale: {
+          borderColor: '#d1d4dc',
+          timeVisible: true,
+          secondsVisible: true,
+          visible: true,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const seconds = date.getSeconds().toString().padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+          }
+        },
+      });
+    } catch (error) {
+      console.error('❌ RSI 차트 생성 실패:', error);
+      return;
+    }
     
     // 캔들 차트 시리즈 생성
     const candleSeries = candleChart.addCandlestickSeries({
@@ -1216,7 +1330,14 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       wickUpColor: '#26A69A',
       wickDownColor: '#EF5350',
     });
-    candleSeries.setData(data);
+    candleSeries.setData(sortedDataForCalculation);
+    
+    console.log('차트에 설정된 데이터 범위:', {
+      첫번째: sortedDataForCalculation[0]?.time,
+      마지막: sortedDataForCalculation[sortedDataForCalculation.length - 1]?.time,
+      첫번째날짜: new Date(Number(sortedDataForCalculation[0]?.time) * 1000).toLocaleString('ko-KR'),
+      마지막날짜: new Date(Number(sortedDataForCalculation[sortedDataForCalculation.length - 1]?.time) * 1000).toLocaleString('ko-KR')
+    });
 
     // EMA 시리즈 추가 (캔들 차트에) - 최대 가시성 개선
     const ema5Series = candleChart.addLineSeries({
@@ -1352,9 +1473,15 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     console.log('Markers available:', markers?.length || 0);
     
     // 캔들 차트에 매매 신호 마커 설정
-    if (markers && markers.length > 0) {
+    if (markers && markers.length > 0 && candleSeries) {
       setTimeout(() => {
         try {
+          // 차트가 여전히 존재하는지 확인
+          if (!candleChartRef.current || !candleSeries) {
+            console.log('차트가 이미 제거됨 - 마커 설정 건너뛰기');
+            return;
+          }
+          
           const validMarkers = markers.map(marker => ({
             time: marker.time,
             position: marker.position as 'aboveBar' | 'belowBar',
@@ -1374,9 +1501,15 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
 
     // MACD 차트에 MACD 관련 마커 설정
     const allMacdMarkers = [...macdCrossMarkers, ...macdPositionMarkers];
-    if (allMacdMarkers.length > 0) {
+    if (allMacdMarkers.length > 0 && macdSeries) {
       setTimeout(() => {
         try {
+          // 차트가 여전히 존재하는지 확인
+          if (!macdChartRef.current || !macdSeries) {
+            console.log('MACD 차트가 이미 제거됨 - 마커 설정 건너뛰기');
+            return;
+          }
+          
           const validMacdMarkers = allMacdMarkers.map(marker => ({
             time: marker.time,
             position: marker.position as 'aboveBar' | 'belowBar',
@@ -1395,9 +1528,15 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     }
 
     // RSI 차트에 RSI 관련 마커 설정
-    if (rsiCrossMarkers.length > 0) {
+    if (rsiCrossMarkers.length > 0 && rsiSeries) {
       setTimeout(() => {
         try {
+          // 차트가 여전히 존재하는지 확인
+          if (!rsiChartRef.current || !rsiSeries) {
+            console.log('RSI 차트가 이미 제거됨 - 마커 설정 건너뛰기');
+            return;
+          }
+          
           const validRsiMarkers = rsiCrossMarkers.map(marker => ({
             time: marker.time,
             position: marker.position as 'aboveBar' | 'belowBar',
@@ -1418,6 +1557,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     // 캔들 차트 스케일 최적화 (EMA 가시성 개선)
     setTimeout(() => {
       try {
+        // 차트가 여전히 존재하는지 확인
+        if (!candleChartRef.current || !candleChart) {
+          console.log('캔들 차트가 이미 제거됨 - 스케일 최적화 건너뛰기');
+          return;
+        }
+        
         // 가격 데이터 범위 계산
         const prices = data.map(d => [d.high, d.low, d.close]).flat();
         const minPrice = Math.min(...prices);
@@ -1454,32 +1599,28 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
         
         // 스케일 범위 설정으로 EMA 가시성 개선
         candleChart.priceScale('right').applyOptions({
-          autoScale: false,
+          autoScale: true,  // 자동 스케일 사용
           scaleMargins: {
-            top: 0.02,    // 상단 2% 여백
-            bottom: 0.02, // 하단 2% 여백
+            top: 0.05,    // 상단 5% 여백
+            bottom: 0.05, // 하단 5% 여백
           },
-        });
-        
-        // 차트에 범위 설정
-        candleChart.priceScale('right').setVisibleRange({
-          from: adjustedMinPrice,
-          to: adjustedMaxPrice,
         });
         
       } catch (error) {
         console.log('스케일 최적화 실패, 자동 스케일 사용:', error);
-        candleChart.priceScale('right').applyOptions({
-          autoScale: true,
-          scaleMargins: {
-            top: 0.05,
-            bottom: 0.05,
-          },
-        });
+        if (candleChart && candleChartRef.current) {
+          candleChart.priceScale('right').applyOptions({
+            autoScale: true,
+            scaleMargins: {
+              top: 0.05,
+              bottom: 0.05,
+            },
+          });
+        }
       }
     }, 1000);
 
-    // 시간축 동기화 설정
+    // 시간축 동기화 설정 - 캔들 차트가 마스터
     const syncTimeScale = () => {
       const visibleRange = candleChart.timeScale().getVisibleRange();
       if (visibleRange) {
@@ -1488,12 +1629,79 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       }
     };
 
+    // 캔들 차트의 시간 범위가 변경될 때만 다른 차트들을 동기화
     candleChart.timeScale().subscribeVisibleTimeRangeChange(syncTimeScale);
     
-    // 차트 맞춤
+    // MACD와 RSI 차트는 캔들 차트를 따라가도록 설정
+    macdChart.timeScale().subscribeVisibleTimeRangeChange(() => {
+      const candleRange = candleChart.timeScale().getVisibleRange();
+      const macdRange = macdChart.timeScale().getVisibleRange();
+      if (candleRange && macdRange && 
+          (candleRange.from !== macdRange.from || candleRange.to !== macdRange.to)) {
+        macdChart.timeScale().setVisibleRange(candleRange);
+      }
+    });
+    
+    rsiChart.timeScale().subscribeVisibleTimeRangeChange(() => {
+      const candleRange = candleChart.timeScale().getVisibleRange();
+      const rsiRange = rsiChart.timeScale().getVisibleRange();
+      if (candleRange && rsiRange && 
+          (candleRange.from !== rsiRange.from || candleRange.to !== rsiRange.to)) {
+        rsiChart.timeScale().setVisibleRange(candleRange);
+      }
+    });
+    
+    // 차트 초기화
     candleChart.timeScale().fitContent();
-    macdChart.timeScale().fitContent();
-    rsiChart.timeScale().fitContent();
+    
+    // 상위 CandlestickChart와 동일한 시간 범위 표시
+    setTimeout(() => {
+      const dataLength = sortedDataForCalculation.length;
+      if (dataLength > visibleBars) {
+        // 상위 차트와 동일하게 지정된 개수의 캔들 표시
+        const barsCount = visibleBars;
+        
+        // 논리적 범위 설정 (최신 캔들부터)
+        const logicalRange = {
+          from: dataLength - barsCount,
+          to: dataLength - 1
+        };
+        
+        candleChart.timeScale().setVisibleLogicalRange(logicalRange);
+        
+        // 시간 범위 확인
+        setTimeout(() => {
+          const visibleRange = candleChart.timeScale().getVisibleRange();
+          if (visibleRange) {
+            const startTime = new Date(Number(visibleRange.from) * 1000).toLocaleString('ko-KR');
+            const endTime = new Date(Number(visibleRange.to) * 1000).toLocaleString('ko-KR');
+            console.log('📍 PolMACDChart 실제 표시 범위:', {
+              시작시간: startTime,
+              종료시간: endTime,
+              전체데이터: dataLength,
+              표시캔들수: barsCount,
+              논리범위: logicalRange,
+              첫번째캔들시간: new Date(Number(sortedDataForCalculation[logicalRange.from].time) * 1000).toLocaleString('ko-KR'),
+              마지막캔들시간: new Date(Number(sortedDataForCalculation[logicalRange.to].time) * 1000).toLocaleString('ko-KR')
+            });
+          }
+        }, 100);
+      }
+      
+      // 모든 차트 동기화
+      const visibleRange = candleChart.timeScale().getVisibleRange();
+      const logicalRange = candleChart.timeScale().getVisibleLogicalRange();
+      
+      if (visibleRange) {
+        macdChart.timeScale().setVisibleRange(visibleRange);
+        rsiChart.timeScale().setVisibleRange(visibleRange);
+      }
+      
+      if (logicalRange) {
+        macdChart.timeScale().setVisibleLogicalRange(logicalRange);
+        rsiChart.timeScale().setVisibleLogicalRange(logicalRange);
+      }
+    }, 500);
 
     // 차트 API 저장
     setCandleChartApi(candleChart);
@@ -1513,11 +1721,38 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      candleChart.remove();
-      macdChart.remove();
-      rsiChart.remove();
+      
+      // 차트 제거 전에 참조 초기화
+      setCandleChartApi(null);
+      setMacdChartApi(null);
+      setRsiChartApi(null);
+      
+      // 차트 제거
+      if (candleChart) {
+        try {
+          candleChart.remove();
+        } catch (error) {
+          console.error('캔들 차트 제거 오류:', error);
+        }
+      }
+      
+      if (macdChart) {
+        try {
+          macdChart.remove();
+        } catch (error) {
+          console.error('MACD 차트 제거 오류:', error);
+        }
+      }
+      
+      if (rsiChart) {
+        try {
+          rsiChart.remove();
+        } catch (error) {
+          console.error('RSI 차트 제거 오류:', error);
+        }
+      }
     };
-  }, [data, height, showMA]);
+  }, [data, height, showMA, visibleBars]);
 
   // 데이터 검증을 렌더링 단계에서 처리
   if (!data || data.length === 0) {

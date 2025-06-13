@@ -363,15 +363,15 @@ export const useChartData = (
       console.log(`예상 캔들 수: ${estimatedCandles}개, 총 일수: ${totalDays}일`);
       
       // 목표 캔들 수 설정
-      let targetCandles = initialDataCount; // 전달받은 initialDataCount 사용
+      let targetCandles = initialDataCount; // initialDataCount 파라미터 사용
       console.log(`목표 캔들 수 설정 - initialDataCount: ${initialDataCount}, chartType: ${chartType}`);
       
       if (chartType.startsWith('minutes/')) {
         const minutesInterval = parseInt(chartType.split('/')[1]);
         if (minutesInterval === 5) {
-          targetCandles = Math.max(576, initialDataCount); // 5분봉 최소 576개 또는 initialDataCount
+          targetCandles = Math.max(initialDataCount, initialDataCount); // initialDataCount 사용
         } else if (minutesInterval === 15) {
-          targetCandles = Math.max(672, initialDataCount); // 15분봉 최소 672개 또는 initialDataCount
+          targetCandles = Math.max(initialDataCount, initialDataCount); // initialDataCount 사용
         }
       }
       
@@ -403,18 +403,22 @@ export const useChartData = (
         // API URL 구성 - 차트 타입에 따라 다른 엔드포인트 사용
         let apiUrl = '';
         
+        // 남은 필요한 캔들 수 계산
+        const remainingCandles = targetCandles - allProcessedData.length;
+        const requestCount = Math.min(200, remainingCandles); // 최대 200개씩 요청
+        
         if (chartType.startsWith('seconds/')) {
           // 초봉 차트를 위해 내부 API 사용
           const unit = chartType.split('/')[1]; // 60 추출
-          apiUrl = `/api/candles/seconds?market=${symbol}&count=200`; // 전체 데이터 로드
+          apiUrl = `/api/candles/seconds?market=${symbol}&count=${requestCount}`;
           console.log(`초봉 데이터 로드 API 요청: ${apiUrl} (내부 API 사용)`);
         } else if (chartType.startsWith('minutes/')) {
           // 분봉 차트는 기존대로 업비트 API 직접 호출
           const minUnit = chartType.split('/')[1]; // 5 또는 15 추출
-          apiUrl = `https://api.upbit.com/v1/candles/minutes/${minUnit}?market=${symbol}&to=${to}&count=200`; // 전체 데이터 로드
+          apiUrl = `https://api.upbit.com/v1/candles/minutes/${minUnit}?market=${symbol}&to=${to}&count=${requestCount}`;
           console.log(`분봉 데이터 로드 API 요청: ${apiUrl}`);
         } else {
-          apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=200`;
+          apiUrl = `https://api.upbit.com/v1/candles/${endpoint}?market=${symbol}&to=${to}&count=${requestCount}`;
           console.log(`기타 차트 API 요청: ${apiUrl}`);
         }
         
@@ -437,6 +441,20 @@ export const useChartData = (
         }
         
         console.log(`데이터 ${data.length}개 수신 완료. 첫번째 캔들 시간: ${data[0].candle_date_time_kst}, 마지막 캔들 시간: ${data[data.length-1].candle_date_time_kst}`);
+        
+        // 시간대 디버깅
+        if (data.length > 0) {
+          const firstCandle = data[0];
+          const kstTime = firstCandle.candle_date_time_kst;
+          const timestamp = new Date(kstTime).getTime() / 1000;
+          console.log('🕐 시간대 디버깅:', {
+            원본KST시간: kstTime,
+            timestamp: timestamp,
+            로컬시간: new Date(timestamp * 1000).toLocaleString('ko-KR'),
+            UTC시간: new Date(timestamp * 1000).toISOString(),
+            시간차이: new Date().getTimezoneOffset() / 60 + '시간'
+          });
+        }
         
         // 데이터 처리
         const processedData = data.map((candle: UpbitCandle) => ({
@@ -547,7 +565,7 @@ export const useChartData = (
     } finally {
       ongoingRequestRef.current = false;
     }
-  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress, runStrategyAnalysis]);
+  }, [symbol, chartType, dateRange, isRealtimeAPIEnabled, isAutoUpdate, setAllData, setChartPrice, setProgress, runStrategyAnalysis, initialDataCount]);
 
   // 차트 초기화 콜백
   const handleChartReady = useCallback((

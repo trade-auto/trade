@@ -379,8 +379,30 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
     });
 
     // 데이터가 제공된 경우 사용
-    if (data) {
+    if (data && data.length > 0) {
       seriesRefs.current.candle!.setData(data);
+      
+      // 초기 표시 범위 설정 - 최신 100개 캔들만 표시
+      if (data.length > 100) {
+        setTimeout(() => {
+          const visibleBars = 100;
+          const logicalRange = {
+            from: data.length - visibleBars,
+            to: data.length - 1
+          };
+          
+          chart.timeScale().setVisibleLogicalRange(logicalRange);
+          
+          console.log('📍 ChartContainer 초기 표시 범위 설정:', {
+            전체데이터: data.length,
+            표시캔들수: visibleBars,
+            시작인덱스: logicalRange.from,
+            종료인덱스: logicalRange.to,
+            시작시간: new Date(Number(data[logicalRange.from].time) * 1000).toLocaleString('ko-KR'),
+            종료시간: new Date(Number(data[logicalRange.to].time) * 1000).toLocaleString('ko-KR')
+          });
+        }, 100);
+      }
     }
 
     // 차트 준비 완료 콜백
@@ -639,6 +661,26 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         console.log(`볼륨 데이터 설정 완료: ${volumeData.length}개`);
       }
       
+      // 차트 타입 변경 시 초기 표시 범위 설정
+      setTimeout(() => {
+        if (processedData.length > 100) {
+          const visibleBars = 100;
+          const logicalRange = {
+            from: processedData.length - visibleBars,
+            to: processedData.length - 1
+          };
+          
+          chartRef.current.timeScale().setVisibleLogicalRange(logicalRange);
+          
+          console.log('📍 ChartContainer 차트 타입 변경 시 표시 범위 설정:', {
+            전체데이터: processedData.length,
+            표시캔들수: visibleBars,
+            시작인덱스: logicalRange.from,
+            종료인덱스: logicalRange.to
+          });
+        }
+      }, 200);
+      
       // 이동평균선 데이터 계산 및 설정
       if (processedData.length >= 5 && seriesRefs.current.fiveEMA) {
         const ema5Data = calculateEMA(processedData, 5);
@@ -747,8 +789,27 @@ const ChartContainer: React.FC<ChartContainerProps> = memo(({
         console.log(`900MA 설정 완료: ${ema900Data.length}개, 표시: ${showMA?.nineHundred ? '표시' : '숨김'}`);
       }
       
-      // 차트 영역 조정
-      chartRef.current.timeScale().fitContent();
+      // 차트 영역 조정 - 최신 100개 캔들만 표시
+      if (processedData.length > 100) {
+        const visibleBars = 100;
+        const logicalRange = {
+          from: processedData.length - visibleBars,
+          to: processedData.length - 1
+        };
+        
+        chartRef.current.timeScale().setVisibleLogicalRange(logicalRange);
+        
+        console.log('📍 ChartContainer 표시 범위 설정:', {
+          전체데이터: processedData.length,
+          표시캔들수: visibleBars,
+          시작인덱스: logicalRange.from,
+          종료인덱스: logicalRange.to,
+          시작시간: new Date(Number(processedData[logicalRange.from].time) * 1000).toLocaleString('ko-KR'),
+          종료시간: new Date(Number(processedData[logicalRange.to].time) * 1000).toLocaleString('ko-KR')
+        });
+      } else {
+        chartRef.current.timeScale().fitContent();
+      }
     }
   }, [chartType, data, showMA]);
 
