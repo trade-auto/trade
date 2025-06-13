@@ -10,7 +10,6 @@ import { OpenOrders } from '../components/OpenOrders';
 import { ClosedOrders } from '../components/ClosedOrders';
 import { CreateOrder } from '../components/CreateOrder';
 import { CandlestickChart, OrderParams } from '../components/CandlestickChart';
-import PolMACDChartFixed from '../components/PolMACDChartFixed';
 import SeparatedStrategyCharts from '../components/SeparatedStrategyCharts';
 import { CandlestickData } from '../types/candlestick';
 import { getAccountBalance } from '../api/upbitAccount';
@@ -510,7 +509,7 @@ export default function OrdersPage() {
         {/* PolMACD 분리된 전략 차트 섹션 */}
         {chartData.length > 0 && (
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-white mb-4">PolMACD 분리된 전략 차트</h2>
+            <h2 className="text-xl font-bold text-white mb-4">PolMACD 분리된 전략 차트만 표시</h2>
             <div className="bg-gray-800 p-4 rounded-lg">
               <SeparatedStrategyCharts 
                 data={chartData}

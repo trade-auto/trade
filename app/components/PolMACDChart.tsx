@@ -13,9 +13,6 @@ interface PolMACDChartProps {
 }
 
 const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA, onBacktestResultChange }) => {
-  if (!data || data.length === 0) {
-    return <div>데이터가 없습니다.</div>;
-  }
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -305,6 +302,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     const emaConditions: ('pullback' | null)[] = [];
     const macdConditions: ('golden' | 'dead' | null)[] = [];
     const rsiConditions: ('breakout' | 'overbought' | null)[] = [];
+    const emaCrossConditions: ('golden' | 'dead' | null)[] = [];
+    const macdCrossConditions: ('golden' | 'dead' | null)[] = [];
+    const rsiCrossConditions: ('buy' | 'sell' | null)[] = [];
+    const macdPositionConditions: ('buy' | 'sell' | null)[] = [];
 
     // 초기 50개는 null로 초기화 (조건 완화)
     for (let i = 0; i < Math.min(50, data.length); i++) {
@@ -313,6 +314,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       emaConditions.push(null);
       macdConditions.push(null);
       rsiConditions.push(null);
+      emaCrossConditions.push(null);
+      macdCrossConditions.push(null);
+      rsiCrossConditions.push(null);
+      macdPositionConditions.push(null);
     }
 
     // EMA-MACD-RSI 전략 기반 신호 생성
@@ -326,7 +331,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       // 현재 지표 값들
       const currentEMA5 = ema5Values[i];
       const currentEMA20 = ema20Values[i];
+      const currentEMA60 = ema60Values[i];
       const currentEMA200 = ema200Values[i];
+      const prevEMA20 = ema20Values[i - 1];
+      const prevEMA60 = ema60Values[i - 1];
       const currentMACD = macdValues[i];
       const currentSignal = signalValues[i];
       const prevMACD = macdValues[i - 1];
@@ -349,6 +357,82 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       const macdGoldenCross = prevMACD <= prevSignal && currentMACD > currentSignal; // MACD 골든크로스
       const rsiBreakout = (prev2RSI <= 55 && currentRSI > 55) || (prevRSI <= 55 && currentRSI > 55); // RSI 55 상향 돌파 (2봉 내)
       
+      // 20 EMA vs 60 EMA 교차 신호
+      const ema20GoldenCross = prevEMA20 <= prevEMA60 && currentEMA20 > currentEMA60; // 20 EMA가 60 EMA 상향돌파
+      const ema20DeadCross = prevEMA20 >= prevEMA60 && currentEMA20 < currentEMA60; // 20 EMA가 60 EMA 하향돌파
+      
+      // MACD vs Signal 교차 신호
+      const macdSignalGoldenCross = prevMACD <= prevSignal && currentMACD > currentSignal; // MACD가 Signal 상향돌파
+      const macdSignalDeadCross = prevMACD >= prevSignal && currentMACD < currentSignal; // MACD가 Signal 하향돌파
+      
+      // RSI 50% 교차 신호
+      const rsi50Buy = prevRSI <= 50 && currentRSI > 50; // RSI가 50% 상향돌파 (매수)
+      const rsi50Sell = prevRSI >= 50 && currentRSI < 50; // RSI가 50% 하향돌파 (매도)
+      
+      // MACD 교차 후 첫 초록/빨강 히스토그램 신호
+      let macdPositionBuy = false;
+      let macdPositionSell = false;
+      
+      if (i >= 2) {
+        const currentHistogram = histogramValues[i];
+        const prevHistogram = histogramValues[i - 1];
+        
+        // 최근 20봉 내에서 교차점 찾기
+        let lastCrossIndex = -1;
+        let wasGoldenCross = false;
+        
+        for (let lookback = 1; lookback <= Math.min(20, i); lookback++) {
+          const checkIndex = i - lookback;
+          if (checkIndex >= 1) {
+            const prevMACD = macdValues[checkIndex - 1];
+            const prevSignal = signalValues[checkIndex - 1];
+            const currMACD = macdValues[checkIndex];
+            const currSignal = signalValues[checkIndex];
+            
+            // 골든크로스 발생 확인
+            if (prevMACD <= prevSignal && currMACD > currSignal) {
+              lastCrossIndex = checkIndex;
+              wasGoldenCross = true;
+              break;
+            }
+            // 데드크로스 발생 확인  
+            if (prevMACD >= prevSignal && currMACD < currSignal) {
+              lastCrossIndex = checkIndex;
+              wasGoldenCross = false;
+              break;
+            }
+          }
+        }
+        
+        if (lastCrossIndex >= 0) {
+          // 골든크로스 후 첫 번째 초록 히스토그램 (양수) 확인
+          if (wasGoldenCross && currentHistogram > 0 && prevHistogram <= 0) {
+            // 교차 후 처음으로 히스토그램이 양수가 되는 시점
+            macdPositionBuy = true;
+          }
+          
+          // 데드크로스 후 첫 번째 빨강 히스토그램 (음수) 확인
+          if (!wasGoldenCross && currentHistogram < 0 && prevHistogram >= 0) {
+            // 교차 후 처음으로 히스토그램이 음수가 되는 시점  
+            macdPositionSell = true;
+          }
+          
+          // 디버깅 로그 (신호 발생시)
+          if (macdPositionBuy || macdPositionSell) {
+            console.log(`캔들 ${i} MACD 첫 히스토그램 신호:`, {
+              type: macdPositionBuy ? 'FIRST_GREEN' : 'FIRST_RED',
+              crossType: wasGoldenCross ? 'GOLDEN_CROSS' : 'DEAD_CROSS',
+              crossIndex: lastCrossIndex,
+              barsAfterCross: i - lastCrossIndex,
+              currentHistogram: currentHistogram.toFixed(4),
+              prevHistogram: prevHistogram.toFixed(4),
+              currentMACD: currentMACD.toFixed(4),
+              currentSignal: currentSignal.toFixed(4)
+            });
+          }
+        }
+      }
+      
       // 매도 조건
       const emaDeadCross = ema5Values[i - 1] >= ema20Values[i - 1] && currentEMA5 < currentEMA20; // 5/20 EMA 데드크로스
       const macdHistogramDown = histogramValues[i] < 0 && histogramValues[i - 1] < 0; // MACD 히스토그램 2봉 연속 음수
@@ -359,6 +443,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       emaConditions.push(ema20Pullback ? 'pullback' : null);
       macdConditions.push(macdGoldenCross ? 'golden' : (macdHistogramDown ? 'dead' : null));
       rsiConditions.push(rsiBreakout ? 'breakout' : (rsiOverbought ? 'overbought' : null));
+      emaCrossConditions.push(ema20GoldenCross ? 'golden' : (ema20DeadCross ? 'dead' : null));
+      macdCrossConditions.push(macdSignalGoldenCross ? 'golden' : (macdSignalDeadCross ? 'dead' : null));
+      rsiCrossConditions.push(rsi50Buy ? 'buy' : (rsi50Sell ? 'sell' : null));
+      macdPositionConditions.push(macdPositionBuy ? 'buy' : (macdPositionSell ? 'sell' : null));
       
       // 조건 확인을 위한 디버깅 (첫 몇 개만)
       if (i === 200 || i === 201 || i === 202) {
@@ -498,6 +586,102 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       }
       return null;
     }).filter(marker => marker !== null);
+
+    // 20 EMA vs 60 EMA 교차 마커 생성 (보라색 계열)
+    const emaCrossMarkers = data.map((candle, index) => {
+      if (emaCrossConditions[index] === 'golden') {
+        return {
+          time: candle.time,
+          position: 'belowBar' as 'belowBar',
+          color: '#9C27B0', // 진한 보라색
+          shape: 'arrowUp' as 'arrowUp',
+          text: '20/60 골든',
+          size: 3
+        };
+      } else if (emaCrossConditions[index] === 'dead') {
+        return {
+          time: candle.time,
+          position: 'aboveBar' as 'aboveBar',
+          color: '#7B1FA2', // 더 진한 보라색
+          shape: 'arrowDown' as 'arrowDown',
+          text: '20/60 데드',
+          size: 3
+        };
+      }
+      return null;
+    }).filter(marker => marker !== null);
+
+    // MACD vs Signal 교차 마커 생성 (다른 보라색 계열)
+    const macdCrossMarkers = data.map((candle, index) => {
+      if (macdCrossConditions[index] === 'golden') {
+        return {
+          time: candle.time,
+          position: 'belowBar' as 'belowBar',
+          color: '#8E24AA', // 중간 보라색
+          shape: 'arrowUp' as 'arrowUp',
+          text: 'MACD 골든',
+          size: 2
+        };
+      } else if (macdCrossConditions[index] === 'dead') {
+        return {
+          time: candle.time,
+          position: 'aboveBar' as 'aboveBar',
+          color: '#6A1B9A', // 진한 보라색
+          shape: 'arrowDown' as 'arrowDown',
+          text: 'MACD 데드',
+          size: 2
+        };
+      }
+      return null;
+    }).filter(marker => marker !== null);
+
+    // RSI 50% 교차 마커 생성 (보라색 계열)
+    const rsiCrossMarkers = data.map((candle, index) => {
+      if (rsiCrossConditions[index] === 'buy') {
+        return {
+          time: candle.time,
+          position: 'belowBar' as 'belowBar',
+          color: '#BA68C8', // 밝은 보라색
+          shape: 'arrowUp' as 'arrowUp',
+          text: 'RSI 50+ 매수',
+          size: 2
+        };
+      } else if (rsiCrossConditions[index] === 'sell') {
+        return {
+          time: candle.time,
+          position: 'aboveBar' as 'aboveBar',
+          color: '#9C27B0', // 진한 보라색
+          shape: 'arrowDown' as 'arrowDown',
+          text: 'RSI 50- 매도',
+          size: 2
+        };
+      }
+      return null;
+    }).filter(marker => marker !== null);
+
+    // MACD 교차 후 10봉 신호 마커 생성
+    const macdPositionMarkers = data.map((candle, index) => {
+      if (macdPositionConditions[index] === 'buy') {
+        return {
+          time: candle.time,
+          position: 'belowBar' as 'belowBar',
+          color: '#4CAF50', // 초록색 (매수)
+          shape: 'arrowUp' as 'arrowUp',
+          text: '골든크로스 후 매수',
+          size: 2
+        };
+      } else if (macdPositionConditions[index] === 'sell') {
+        return {
+          time: candle.time,
+          position: 'aboveBar' as 'aboveBar',
+          color: '#F44336', // 빨간색 (매도)
+          shape: 'arrowDown' as 'arrowDown',
+          text: '데드크로스 후 매도',
+          size: 2
+        };
+      }
+      return null;
+    }).filter(marker => marker !== null);
     
     // 테스트용 신호 추가 - 실제 신호 확인을 위해 비활성화
     /*
@@ -598,13 +782,14 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     // 테스트 마커 제거 (실제 신호만 표시)
     const testMarkers = [];
 
-    // 모든 마커 합치기 (조건별 + 매수/매도 + 테스트)
+    // 모든 마커 합치기 (조건별 + 매수/매도 + EMA교차 + 테스트) - MACD교차 제외
     const allMarkers = [
       ...testMarkers,
       ...trendMarkers,
       ...emaMarkers,
       ...macdMarkers,
       ...rsiMarkers,
+      ...emaCrossMarkers,
       ...buyMarkers,
       ...sellMarkers
     ].sort((a, b) => {
@@ -632,6 +817,10 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       emaMarkers: emaMarkers.length,
       macdMarkers: macdMarkers.length,
       rsiMarkers: rsiMarkers.length,
+      emaCrossMarkers: emaCrossMarkers.length,
+      macdCrossMarkers: macdCrossMarkers.length,
+      rsiCrossMarkers: rsiCrossMarkers.length,
+      macdPositionMarkers: macdPositionMarkers.length,
       buyMarkers: buyMarkers.length,
       sellMarkers: sellMarkers.length,
       totalMarkers: allMarkers.length,
@@ -694,6 +883,9 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       signalData,
       histogramData,
       markers: uniqueMarkers,
+      macdCrossMarkers,
+      rsiCrossMarkers,
+      macdPositionMarkers,
       ema5Data,
       ema20Data,
       ema30Data,
@@ -863,7 +1055,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     }
 
     console.log('PolMACDChart proceeding with chart creation, data length:', data.length);
-    const { macdData, signalData, histogramData, markers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
+    const { macdData, signalData, histogramData, markers, macdCrossMarkers, rsiCrossMarkers, macdPositionMarkers, ema5Data, ema20Data, ema30Data, ema48Data, ema60Data, ema90Data, ema120Data, ema240Data } = calculateMACD(data);
     const stochasticData = calculateStochastic(data);
     const rsiData = calculateRSI(data);
     console.log('RSI Data calculated:', rsiData.length, 'points', rsiData[0], rsiData[rsiData.length - 1]);
@@ -931,24 +1123,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     console.log('Created chart:', chart);
     console.log('Chart height after creation:', chart.options().height);
     
-    // RSI를 위한 독립적인 프라이스 스케일 생성 시도
-    console.log('Available price scales:', Object.keys(chart));
-    try {
-      const rsiScale = chart.priceScale('rsi');
-      console.log('RSI scale created:', rsiScale);
-      rsiScale.applyOptions({
-        scaleMargins: {
-          top: 0.80,  // RSI 영역을 차트 하단 20%에 배치
-          bottom: 0.02,
-        },
-        autoScale: false,
-        borderVisible: true,
-        borderColor: '#d1d4dc',
-      });
-    } catch (error) {
-      console.error('Failed to create RSI scale:', error);
-      console.log('Falling back to overlay solution');
-    }
+    // RSI는 left 스케일을 함께 사용하도록 변경
+    console.log('RSI will use left price scale along with MACD');
 
     const candleSeries = chart.addCandlestickSeries({
       upColor: '#26A69A',
@@ -1103,6 +1279,27 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     signalSeries.setData(signalData);
     histogramSeries.setData(histogramData);
 
+    // MACD 관련 모든 마커를 MACD 시리즈에 설정
+    const allMacdMarkers = [
+      ...macdCrossMarkers,
+      ...macdPositionMarkers
+    ].sort((a, b) => Number(a.time) - Number(b.time));
+    
+    if (allMacdMarkers.length > 0) {
+      setTimeout(() => {
+        try {
+          macdSeries.setMarkers(allMacdMarkers);
+          console.log('✅ MACD 관련 마커가 MACD 시리즈에 설정됨:', {
+            교차마커: macdCrossMarkers.length,
+            포지션마커: macdPositionMarkers.length,
+            전체: allMacdMarkers.length
+          });
+        } catch (error) {
+          console.error('❌ MACD 마커 설정 실패:', error);
+        }
+      }, 600);
+    }
+
     macdRef.current = macdSeries;
     signalRef.current = signalSeries;
     histogramRef.current = histogramSeries;
@@ -1207,12 +1404,12 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     ema200Ref.current = ema200Series;
     ema240Ref.current = ema240Series;
     
-    // RSI 시리즈 추가 (독립 스케일 사용)
+    // RSI 시리즈 추가 (left 스케일 사용, MACD와 구별되는 스타일)
     const rsiSeries = chart.addLineSeries({
-      color: '#FF1744', // 더 밝은 빨간색
-      lineWidth: 2, // 더 굵게
+      color: '#E91E63', // 핑크색으로 변경 (MACD와 구별)
+      lineWidth: 3, // 더 굵게
       title: 'RSI(20)',
-      priceScaleId: 'rsi',  // RSI 전용 독립 스케일
+      priceScaleId: 'left',  // MACD와 같은 left 스케일 사용
       priceFormat: {
         type: 'price',
         precision: 0,
@@ -1236,7 +1433,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       lineWidth: 4,
       lineStyle: 2, // dashed
       title: 'RSI 70',
-      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
+      priceScaleId: 'left',  // RSI와 같은 left 스케일
       visible: true,
       lastValueVisible: true,
       priceLineVisible: false,
@@ -1247,7 +1444,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       lineWidth: 4,
       lineStyle: 2, // dashed
       title: 'RSI 30',
-      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
+      priceScaleId: 'left',  // RSI와 같은 left 스케일
       visible: true,
       lastValueVisible: true,
       priceLineVisible: false,
@@ -1259,7 +1456,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       lineWidth: 3,
       lineStyle: 2, // dashed
       title: 'RSI 50',
-      priceScaleId: 'rsi',  // RSI와 같은 독립 스케일
+      priceScaleId: 'left',  // RSI와 같은 left 스케일
       visible: true,
       lastValueVisible: true,
       priceLineVisible: false,
@@ -1334,23 +1531,8 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     // RSI 데이터는 원본 값 그대로 사용 (0-100 범위)
     const rsiLineData = rsiData;
     
-    // RSI 스케일 범위 설정 (0-100 고정)
-    setTimeout(() => {
-      if (chart && chart.priceScale('rsi')) {
-        chart.priceScale('rsi').applyOptions({
-          autoScale: false,
-          ticksVisible: true,
-        });
-        // RSI 스케일을 0-100으로 고정
-        const rsiVisibleRange = {
-          from: -5,
-          to: 105,
-        };
-        chart.priceScale('rsi').applyOptions({
-          autoScale: false,
-        });
-      }
-    }, 100);
+    // RSI는 left 스케일을 사용하므로 별도 설정 불필요
+    console.log('RSI using left scale, no separate scale configuration needed');
 
     // RSI 과매수/과매도 라인 데이터 (원본 값 사용)
     const rsiOverboughtData = [
@@ -1381,20 +1563,26 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     if (rsiRef.current && rsiLineData.length > 0) {
       rsiRef.current.setData(rsiLineData);
       console.log('RSI data set successfully');
+      
+      // RSI 50% 교차 마커를 RSI 시리즈에 설정
+      if (rsiCrossMarkers.length > 0) {
+        setTimeout(() => {
+          try {
+            rsiRef.current?.setMarkers(rsiCrossMarkers);
+            console.log('✅ RSI 50% 교차 마커가 RSI 시리즈에 설정됨:', rsiCrossMarkers.length);
+          } catch (error) {
+            console.error('❌ RSI 마커 설정 실패:', error);
+          }
+        }, 700);
+      }
     }
     
     rsiOverboughtLine.setData(rsiOverboughtData);
     rsiOversoldLine.setData(rsiOversoldData);
     rsiMidLine.setData(rsiMidData);
     
-    // RSI 스케일 범위 고정 (0-100)
-    chart.priceScale('rsi').applyOptions({
-      autoScale: false,
-      scaleMargins: {
-        top: 0.80,  // RSI를 하단 20%에 배치
-        bottom: 0.02,
-      },
-    });
+    // RSI는 left 스케일과 함께 사용되므로 별도 설정 불필요
+    console.log('RSI shares left scale with MACD, no separate margin configuration');
 
     // 라인 설정 강화
     twentyPercentLineRef.applyOptions({
@@ -1417,29 +1605,36 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       title: '-10%'
     });
 
-    // MACD 선과 신호선 설정 강화
+    // MACD 선과 신호선 설정 강화 (더 굵고 눈에 띄게)
     macdSeries.applyOptions({
-      lineWidth: 2,
+      lineWidth: 4, // 더 굵게
       lastValueVisible: true,
       priceLineVisible: true,
-      priceLineWidth: 2,
+      priceLineWidth: 3,
       priceLineStyle: 0,
       priceLineColor: '#2962FF',
       crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 6,
-      title: 'MACD'
+      crosshairMarkerRadius: 8,
+      title: 'MACD',
+      color: '#1E88E5', // 더 진한 파란색
     });
     
     signalSeries.applyOptions({
-      lineWidth: 4,
+      lineWidth: 5, // 더 굵게
       lastValueVisible: true,
       priceLineVisible: true,
-      priceLineWidth: 2,
+      priceLineWidth: 3,
       priceLineStyle: 0,
       priceLineColor: '#FF6D00',
       crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 5,
-      title: 'Signal'
+      crosshairMarkerRadius: 7,
+      title: 'Signal',
+      color: '#FF5722', // 더 진한 주황색
+    });
+    
+    // MACD 히스토그램도 더 진하게
+    histogramSeries.applyOptions({
+      color: 'rgba(0, 150, 136, 0.6)', // 더 진하게
     });
     
     // 차트 시간 축 맞춤
@@ -1481,14 +1676,59 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       }
     }, 1000);
     
-    // 왼쪽 스케일 자동 조정 설정 (MACD 전용)
-    chart.priceScale('left').applyOptions({
-      autoScale: true,
-      scaleMargins: {
-        top: 0.55,  // 상단 55% 비워두기 (캔들차트 50% + 간격 5%)
-        bottom: 0.25,  // 하단 25% 비워두기 (RSI 20% + 간격 5%)
-      },
+    // 왼쪽 스케일 설정 (MACD + RSI 최적화)
+    // MACD와 RSI의 범위를 분석해서 최적 스케일 설정
+    const macdMaxValue = Math.max(...macdData.map(d => Math.abs(d.value)));
+    const signalMaxValue = Math.max(...signalData.map(d => Math.abs(d.value)));
+    const combinedMacdMax = Math.max(macdMaxValue, signalMaxValue);
+    const rsiRange = 100; // RSI는 0-100 범위
+    
+    // MACD 영역과 RSI 영역을 적절히 나누기 위한 계산
+    const macdRangePadding = combinedMacdMax * 0.3; // MACD 여백 30%
+    const scaleMin = -combinedMacdMax - macdRangePadding;
+    const scaleMax = Math.max(combinedMacdMax + macdRangePadding, rsiRange + 20);
+    
+    console.log('개선된 MACD + RSI 스케일 범위:', {
+      macdMaxValue,
+      signalMaxValue, 
+      combinedMacdMax,
+      rsiRange,
+      scaleMin,
+      scaleMax,
+      totalRange: scaleMax - scaleMin
     });
+    
+    chart.priceScale('left').applyOptions({
+      autoScale: false,
+      scaleMargins: {
+        top: 0.52,  // 상단 52% 비워두기 (캔들차트)
+        bottom: 0.02,  // 하단 2% 여백
+      },
+      mode: 0, // Normal price scale mode
+      borderVisible: true,
+      ticksVisible: true,
+      entireTextOnly: false,
+    });
+    
+    // 스케일 범위를 명확하게 설정하여 MACD 가시성 개선
+    setTimeout(() => {
+      try {
+        const leftScale = chart.priceScale('left');
+        leftScale.applyOptions({
+          autoScale: false,
+          // 고정 범위 설정으로 MACD와 RSI 모두 명확히 보이도록
+          visible: true,
+        });
+        
+        // 더 정확한 범위 설정
+        console.log('Setting precise scale range for better MACD visibility');
+      } catch (error) {
+        console.log('Using fallback auto scale');
+        chart.priceScale('left').applyOptions({
+          autoScale: true,
+        });
+      }
+    }, 300);
     
     // 차트 영역 구분선 추가
     // 캔들-MACD 구분선
@@ -1507,7 +1747,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
       color: '#303030',
       lineWidth: 2,
       lineStyle: 0,
-      priceScaleId: 'rsi',
+      priceScaleId: 'left',
       lastValueVisible: false,
       priceLineVisible: false,
       crosshairMarkerVisible: false,
@@ -1716,7 +1956,7 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     
     // 기존 차트에 새 데이터 업데이트
     console.log('Updating existing chart with new data');
-    const { macdData, signalData, histogramData, markers, ema5Data, ema20Data } = calculateMACD(data);
+    const { macdData, signalData, histogramData, markers, macdCrossMarkers, rsiCrossMarkers, macdPositionMarkers, ema5Data, ema20Data } = calculateMACD(data);
     
     // 캔들 데이터 업데이트
     candleRef.current.setData(data);
@@ -1733,8 +1973,21 @@ const PolMACDChart: React.FC<PolMACDChartProps> = ({ data, height = 800, showMA,
     }
   }, [data, isChartReady]);
 
+  // 데이터 검증을 렌더링 단계에서 처리
+  if (!data || data.length === 0) {
+    return <div>데이터가 없습니다.</div>;
+  }
+
   return (
     <div className="chart-wrapper">
+      <div className="chart-header" style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '5px', border: '1px solid #ddd' }}>
+        <h3 style={{ margin: '0', fontSize: '18px', fontWeight: 'bold', color: '#333' }}>
+          PolMACD 전략 차트 (EMA-MACD-RSI 추세추종)
+        </h3>
+        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#666' }}>
+          표준 MACD(12-26-9) • EMA(5,20,60,200) • RSI(20) • 골든크로스 후 첫 초록/빨강 히스토그램 신호
+        </p>
+      </div>
       <div ref={chartContainerRef} style={{ width: '100%', height: `${height}px` }} />
       <div className="chart-controls" style={{ marginTop: '20px' }}>
         <button

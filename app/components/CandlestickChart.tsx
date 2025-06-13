@@ -7,7 +7,6 @@
 // - CandlestickChartBacktest.tsx: 백테스트 관련 기능
 // - CandlestickChartCSV.tsx: CSV 관련 기능
 
-import PolMACDChart from './PolMACDChart';
 import { forwardRef, useState, useCallback } from 'react';
 import { CandlestickChartProps, ChartRefs } from './CandlestickChartTypes';
 

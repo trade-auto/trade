@@ -7,8 +7,6 @@ import useUpbitStore from '../store/useUpbitStore';
 import { TradeStrategy } from '../strategies/types';
 import { DateRange, BacktestResult } from '../types/candlestick';
 import { CandlestickChart } from './CandlestickChart';
-import MACDChart from './MACDChart';
-import PolMACDChart from './PolMACDChart';
 
 // 컴포넌트
 import ChartControls from './ChartControls';
@@ -19,6 +17,7 @@ import CsvDownloader from './CsvDownloader';
 import ChartContainer from './ChartContainer';
 import TradingStrategyHover from './TradingStrategyHover';
 import { CoinSelector } from './CoinSelector';
+import PolMACDChart from './PolMACDChart';
 
 const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
   const {
@@ -367,16 +366,11 @@ const CandlestickChartCore: React.FC<CandlestickChartProps> = (props) => {
           
           <PolMACDChart 
             data={isDataImported ? importedData : allData} 
-            height={800} 
+            height={900} 
             showMA={chartShowMA}
             onBacktestResultChange={setPolMacdBacktestResult} 
           />
         </div>
-        {tradeStrategy === 'MACD' && (
-          <div className="w-full" style={{ height: '300px' }}>
-            <MACDChart data={isDataImported ? importedData : allData} />
-          </div>
-        )}
         
         {/* 설정 및 결과 섹션 */}
         <div className="flex flex-col md:flex-row gap-4">

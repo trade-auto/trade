@@ -49,7 +49,7 @@ Next.js App Router를 사용하며 다음의 주요 라우트를 포함합니다
 
 #### 차트 컴포넌트 (`/app/components/`)
 - **CandlestickChartCore**: 캔들스틱 표시, MA 지표, 매매 신호가 포함된 메인 차트 컴포넌트
-- **MACDChart**: MACD 지표 시각화 (표준 MACD 12-26-9, RSI, 캔들차트, EMA)
+**MACDChart**: MACD 지표 시각화 (표준 MACD 12-26-9, RSI, 캔들차트, EMA)
 - **PolMACDChart**: EMA-MACD-RSI 추세추종 전략 구현
   - 표준 MACD (12-26-9)
   - EMA: 5, 20, 60, 200 (주요 지표)
